@@ -50,6 +50,11 @@ out/
 *.sqlite3
 *.db
 
+# Fixtures cache/metadata (not committed)
+fixtures/cache/
+fixtures/tmp/
+fixtures/manifest.json
+
 # Docker
 .docker/
 
