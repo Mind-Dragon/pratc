@@ -1,0 +1,33 @@
+{
+  "additions": 282,
+  "author": "Tinnci",
+  "base_branch": "main",
+  "body": "- Add DeepSeek models: chat, coder, and reasoner (R1)\r\n- Implement DeepSeek provider client using OpenAI-compatible API\r\n- Add DEEPSEEK_API_KEY environment variable support\r\n- Update configuration defaults and priority order\r\n- Add DeepSeek to supported models in README\r\n- Update configuration schema with new models\r\n",
+  "changed_files_count": 8,
+  "ci_status": "unknown",
+  "cluster_id": "",
+  "created_at": "2025-07-12T07:03:47Z",
+  "deletions": 128,
+  "files_changed": [
+    "README.md",
+    "cmd/schema/main.go",
+    "internal/config/config.go",
+    "internal/llm/models/deepseek.go",
+    "internal/llm/models/models.go",
+    "internal/llm/provider/deepseek.go",
+    "internal/llm/provider/provider.go",
+    "opencode-schema.json"
+  ],
+  "head_branch": "feat/add-deepseek-api-support",
+  "id": "opencode-ai/opencode#310",
+  "is_bot": false,
+  "is_draft": false,
+  "labels": [],
+  "mergeable": "mergeable",
+  "number": 310,
+  "repo": "opencode-ai/opencode",
+  "review_status": "unknown",
+  "title": "feat: add DeepSeek API support",
+  "updated_at": "2025-07-29T17:43:30Z",
+  "url": "https://github.com/opencode-ai/opencode/pull/310"
+}

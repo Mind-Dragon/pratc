@@ -1,0 +1,28 @@
+{
+  "additions": 411,
+  "author": "bitomule",
+  "base_branch": "main",
+  "body": "## Summary\nThis PR fixes the GitHub Copilot authentication flow in OpenCode, which currently has issues with token retrieval and exchange.\n\n## Problem Description\nCurrently, the GitHub Copilot integration has several issues:\n\n1. The code tries to use standard GitHub tokens (like those from `gh auth token`) which don't work with Copilot API because they lack the required Copilot scope\n2. There's no proper authentication flow when no token is found\n3. The token exchange process fails due to missing required headers and incorrect API version\n4. Missing documentation on how to properly set up and use the Copilot integration\n\n## Solution\nThis PR implements a complete authentication flow inspired by the one used in the Neovim Copilot plugin:\n\n1. Properly checks for Copilot tokens in standard locations (hosts.json and apps.json)\n2. Implements OAuth device code flow when no token is found\n3. Adds proper GitHub API headers including the correct API version (X-GitHub-Api-Version: 2022-11-28)\n4. Uses the standard Copilot client ID (same as used by VS Code and Neovim plugins)\n5. Stores tokens in the standard location for reuse across sessions\n\n## Documentation\nAdded comprehensive documentation to the README explaining:\n- How to configure Copilot in OpenCode\n- The authentication flow process\n- Where tokens are stored\n\nThis PR makes Copilot integration work seamlessly with OpenCode, especially important for users wanting to access Claude models through Copilot.",
+  "changed_files_count": 3,
+  "ci_status": "unknown",
+  "cluster_id": "",
+  "created_at": "2025-07-04T13:42:21Z",
+  "deletions": 17,
+  "files_changed": [
+    "README.md",
+    "internal/config/config.go",
+    "internal/llm/provider/copilot.go"
+  ],
+  "head_branch": "improve-copilot-auth",
+  "id": "opencode-ai/opencode#294",
+  "is_bot": false,
+  "is_draft": false,
+  "labels": [],
+  "mergeable": "mergeable",
+  "number": 294,
+  "repo": "opencode-ai/opencode",
+  "review_status": "unknown",
+  "title": "Fix GitHub Copilot authentication flow",
+  "updated_at": "2025-07-14T17:54:22Z",
+  "url": "https://github.com/opencode-ai/opencode/pull/294"
+}

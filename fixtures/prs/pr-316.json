@@ -1,0 +1,27 @@
+{
+  "additions": 16,
+  "author": "imsaar",
+  "base_branch": "main",
+  "body": "Add Grok 4 model configuration for OpenRouter provider with 256K context window and reasoning capabilities enabled.",
+  "changed_files_count": 2,
+  "ci_status": "unknown",
+  "cluster_id": "",
+  "created_at": "2025-07-13T17:07:50Z",
+  "deletions": 0,
+  "files_changed": [
+    "internal/llm/models/openrouter.go",
+    "opencode-schema.json"
+  ],
+  "head_branch": "feature/openrouter-grok-4",
+  "id": "opencode-ai/opencode#316",
+  "is_bot": false,
+  "is_draft": false,
+  "labels": [],
+  "mergeable": "mergeable",
+  "number": 316,
+  "repo": "opencode-ai/opencode",
+  "review_status": "unknown",
+  "title": "feat: add OpenRouter x-ai/grok-4 model support",
+  "updated_at": "2025-07-29T17:42:56Z",
+  "url": "https://github.com/opencode-ai/opencode/pull/316"
+}

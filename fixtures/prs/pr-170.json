@@ -1,0 +1,26 @@
+{
+  "additions": 166,
+  "author": "webdevtodayjason",
+  "base_branch": "main",
+  "body": "Add SECURITY.md for responsible vulnerability disclosure\r\n\r\nEstablishes security reporting guidelines, response timelines, and best practices for OpenCode users. Covers tool execution risks, API key management, and MCP/LSP integration security considerations.",
+  "changed_files_count": 1,
+  "ci_status": "unknown",
+  "cluster_id": "",
+  "created_at": "2025-06-04T11:19:10Z",
+  "deletions": 0,
+  "files_changed": [
+    "SECURITY.md"
+  ],
+  "head_branch": "patch-1",
+  "id": "opencode-ai/opencode#170",
+  "is_bot": false,
+  "is_draft": false,
+  "labels": [],
+  "mergeable": "mergeable",
+  "number": 170,
+  "repo": "opencode-ai/opencode",
+  "review_status": "unknown",
+  "title": "Create SECURITY.md",
+  "updated_at": "2025-06-04T11:19:10Z",
+  "url": "https://github.com/opencode-ai/opencode/pull/170"
+}

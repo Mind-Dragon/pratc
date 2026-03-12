@@ -1,0 +1,27 @@
+{
+  "additions": 82,
+  "author": "0xpetersatoshi",
+  "base_branch": "main",
+  "body": "Adds the following OpenRouter models:\r\n- Claude 4 Sonnet\r\n- Claude 4 Opus\r\n- Gemini 2.5 Flash 05-20 (thinking)\r\n\r\nAdditionally adds Gemini 2.5 Flash 04-17 (thinking) (this is the latest public version available directly from the Google Gemini API) to the Gemini models list and updates Gemini 2.5 flash to the 05-20 version.",
+  "changed_files_count": 2,
+  "ci_status": "unknown",
+  "cluster_id": "",
+  "created_at": "2025-06-14T22:08:25Z",
+  "deletions": 28,
+  "files_changed": [
+    "internal/llm/models/gemini.go",
+    "internal/llm/models/openrouter.go"
+  ],
+  "head_branch": "feature/add-latest-openrouter-models",
+  "id": "opencode-ai/opencode#238",
+  "is_bot": false,
+  "is_draft": false,
+  "labels": [],
+  "mergeable": "mergeable",
+  "number": 238,
+  "repo": "opencode-ai/opencode",
+  "review_status": "unknown",
+  "title": "feat(models): add latest openrouter and gemini models",
+  "updated_at": "2025-06-14T22:08:25Z",
+  "url": "https://github.com/opencode-ai/opencode/pull/238"
+}

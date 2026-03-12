@@ -1,0 +1,31 @@
+{
+  "additions": 147,
+  "author": "nnamon",
+  "base_branch": "main",
+  "body": "\u2026g your awareness.\r\n\r\nThis commit introduces several changes to improve data privacy and security:\r\n\r\n1.  **Sourcegraph Tool Permission:** I added a permission check to the Sourcegraph tool. You will now be prompted before any search query is sent to the Sourcegraph API, preventing inadvertent leakage of sensitive data that might be included in an LLM-generated query.\r\n\r\n2.  **File View/Search Permissions:** I added permission checks when viewing or searching file contents. You will be prompted before I read or search file contents, providing an explicit layer of consent.\r\n\r\n3.  **README Updates for Your Awareness:**\r\n    *   I added a section on \"Local Data Storage and Privacy\" to inform you\r\n        that conversation history and file contents are stored locally in an\r\n        unencrypted SQLite database, explaining the location and risks.\r\n    *   I added a note on \"Automatic Context Files\" to make you aware that\r\n        certain files in your project root might be automatically sent to LLMs.\r\n    *   I added a \"Tool Usage and Permissions\" security note emphasizing the\r\n        importance of reviewing permission prompts for powerful actions like\r\n        running commands and fetching web content, and the risks of auto-approving sessions.\r\n\r\nThese changes aim to give you more control over your data and make you more aware of the application's interactions with your file system and external services.",
+  "changed_files_count": 6,
+  "ci_status": "unknown",
+  "cluster_id": "",
+  "created_at": "2025-06-01T00:50:21Z",
+  "deletions": 23,
+  "files_changed": [
+    "README.md",
+    "internal/llm/agent/agent-tool.go",
+    "internal/llm/agent/tools.go",
+    "internal/llm/tools/grep.go",
+    "internal/llm/tools/sourcegraph.go",
+    "internal/llm/tools/view.go"
+  ],
+  "head_branch": "enhance-privacy-and-security",
+  "id": "opencode-ai/opencode#167",
+  "is_bot": false,
+  "is_draft": false,
+  "labels": [],
+  "mergeable": "conflicting",
+  "number": 167,
+  "repo": "opencode-ai/opencode",
+  "review_status": "unknown",
+  "title": "Enhance privacy and security by adding permission checks and improvin\u2026",
+  "updated_at": "2025-06-01T00:50:21Z",
+  "url": "https://github.com/opencode-ai/opencode/pull/167"
+}

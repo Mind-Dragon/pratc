@@ -1,0 +1,26 @@
+{
+  "additions": 1,
+  "author": "shivamklr",
+  "base_branch": "main",
+  "body": "Fixes: #300 ",
+  "changed_files_count": 1,
+  "ci_status": "unknown",
+  "cluster_id": "",
+  "created_at": "2025-07-07T20:00:02Z",
+  "deletions": 1,
+  "files_changed": [
+    "internal/llm/models/gemini.go"
+  ],
+  "head_branch": "fix/gemini-25pro",
+  "id": "opencode-ai/opencode#301",
+  "is_bot": false,
+  "is_draft": false,
+  "labels": [],
+  "mergeable": "mergeable",
+  "number": 301,
+  "repo": "opencode-ai/opencode",
+  "review_status": "unknown",
+  "title": "fix: gemini 429 response",
+  "updated_at": "2025-07-29T17:43:54Z",
+  "url": "https://github.com/opencode-ai/opencode/pull/301"
+}

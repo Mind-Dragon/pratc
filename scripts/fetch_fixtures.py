@@ -35,6 +35,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repo", default=DEFAULT_REPO, help="GitHub repository in owner/name form.")
     parser.add_argument("--limit", type=int, default=100, help="Maximum number of PRs to fetch.")
     parser.add_argument(
+        "--output",
+        default=str(PRS_DIR),
+        help="Directory where per-PR fixture JSON files should be written.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Fetch and transform data without writing fixture files.",
@@ -145,15 +150,18 @@ def transform_pr(repo: str, payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def write_fixtures(repo: str, fixtures: list[dict[str, Any]]) -> FixtureManifest:
-    FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
-    PRS_DIR.mkdir(parents=True, exist_ok=True)
+def write_fixtures(repo: str, output_dir: Path, fixtures: list[dict[str, Any]]) -> FixtureManifest:
+    fixtures_dir = output_dir.parent
+    manifest_path = fixtures_dir / "manifest.json"
 
-    for path in PRS_DIR.glob("pr-*.json"):
+    fixtures_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for path in output_dir.glob("pr-*.json"):
         path.unlink()
 
     for fixture in fixtures:
-        target = PRS_DIR / f"pr-{fixture['number']}.json"
+        target = output_dir / f"pr-{fixture['number']}.json"
         target.write_text(json.dumps(fixture, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     manifest = FixtureManifest(
@@ -165,7 +173,7 @@ def write_fixtures(repo: str, fixtures: list[dict[str, Any]]) -> FixtureManifest
         sanitized=True,
         description="Public open PR fixtures normalized to prATC internal/types.PR shape.",
     )
-    MANIFEST_PATH.write_text(
+    manifest_path.write_text(
         json.dumps(manifest.__dict__, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
@@ -174,6 +182,7 @@ def write_fixtures(repo: str, fixtures: list[dict[str, Any]]) -> FixtureManifest
 
 def main() -> int:
     args = parse_args()
+    output_dir = Path(args.output).resolve()
     time.sleep(REQUEST_SLEEP_SECONDS)
     pulled = run_gh_list(args.repo, args.limit)
     fixtures = [transform_pr(args.repo, payload) for payload in pulled]
@@ -194,7 +203,7 @@ def main() -> int:
         )
         return 0
 
-    manifest = write_fixtures(args.repo, fixtures)
+    manifest = write_fixtures(args.repo, output_dir, fixtures)
     print(json.dumps(manifest.__dict__, indent=2, sort_keys=True))
     return 0
 

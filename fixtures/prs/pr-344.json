@@ -1,0 +1,26 @@
+{
+  "additions": 5,
+  "author": "micahwalter",
+  "base_branch": "main",
+  "body": "AWS Bedrock should be Amazon Bedrock.",
+  "changed_files_count": 1,
+  "ci_status": "unknown",
+  "cluster_id": "",
+  "created_at": "2025-07-22T13:54:15Z",
+  "deletions": 5,
+  "files_changed": [
+    "README.md"
+  ],
+  "head_branch": "patch-1",
+  "id": "opencode-ai/opencode#344",
+  "is_bot": false,
+  "is_draft": false,
+  "labels": [],
+  "mergeable": "mergeable",
+  "number": 344,
+  "repo": "opencode-ai/opencode",
+  "review_status": "unknown",
+  "title": "Update README.md with Amazon Bedrock",
+  "updated_at": "2025-07-29T17:41:18Z",
+  "url": "https://github.com/opencode-ai/opencode/pull/344"
+}

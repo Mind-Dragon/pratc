@@ -1,0 +1,26 @@
+{
+  "additions": 15,
+  "author": "yu-iskw",
+  "base_branch": "main",
+  "body": "> Dependabot helps you stay on top of your dependency ecosystems. With Dependabot, you can keep the dependencies you rely on up-to-date, addressing any potential security issues in your supply chain.\r\n\r\nhttps://docs.github.com/en/code-security/dependabot/ecosystems-supported-by-dependabot/supported-ecosystems-and-repositories",
+  "changed_files_count": 1,
+  "ci_status": "unknown",
+  "cluster_id": "",
+  "created_at": "2025-06-20T12:46:54Z",
+  "deletions": 0,
+  "files_changed": [
+    ".github/dependabot.yml"
+  ],
+  "head_branch": "add-dependabot",
+  "id": "opencode-ai/opencode#249",
+  "is_bot": false,
+  "is_draft": false,
+  "labels": [],
+  "mergeable": "mergeable",
+  "number": 249,
+  "repo": "opencode-ai/opencode",
+  "review_status": "unknown",
+  "title": "Add dependabot config",
+  "updated_at": "2025-06-26T12:17:46Z",
+  "url": "https://github.com/opencode-ai/opencode/pull/249"
+}

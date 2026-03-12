@@ -1,0 +1,30 @@
+{
+  "additions": 309,
+  "author": "xhd2015",
+  "base_branch": "main",
+  "body": "1. fixed is a typo in the GPT-4-mini model definition\r\n2. in my use case I found the system prompt goes crazy, so added a limit on both depth and size to it",
+  "changed_files_count": 5,
+  "ci_status": "unknown",
+  "cluster_id": "",
+  "created_at": "2025-06-17T00:36:43Z",
+  "deletions": 36,
+  "files_changed": [
+    "internal/config/config.go",
+    "internal/llm/models/openai.go",
+    "internal/llm/prompt/coder.go",
+    "internal/llm/tools/ls.go",
+    "internal/llm/tools/ls_test.go"
+  ],
+  "head_branch": "limit-project-size",
+  "id": "opencode-ai/opencode#239",
+  "is_bot": false,
+  "is_draft": false,
+  "labels": [],
+  "mergeable": "mergeable",
+  "number": 239,
+  "repo": "opencode-ai/opencode",
+  "review_status": "unknown",
+  "title": "fix model typo and limit project size in system prompt to 4K max",
+  "updated_at": "2025-07-04T05:22:13Z",
+  "url": "https://github.com/opencode-ai/opencode/pull/239"
+}

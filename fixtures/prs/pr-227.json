@@ -1,0 +1,30 @@
+{
+  "additions": 101,
+  "author": "Schniz",
+  "base_branch": "main",
+  "body": "Implement ANSI focus tracking cursor control to reduce visual distraction when switching panes. The cursor now automatically hides when the OpenCode pane is not focused and reappears when returning to it.\r\n\r\nKey changes:\r\n- Use ANSI focus tracking (like in https://github.com/vim/vim/issues/609)\r\n- Control cursor visibility in textarea component using cursor.CursorHide/CursorBlink modes\r\n- Add FocusMsg for communicating focus changes between components\r\n\r\n\ud83e\udd16 Generated with opencode",
+  "changed_files_count": 5,
+  "ci_status": "unknown",
+  "cluster_id": "",
+  "created_at": "2025-06-11T07:25:52Z",
+  "deletions": 0,
+  "files_changed": [
+    "cmd/root.go",
+    "internal/tui/components/chat/editor.go",
+    "internal/tui/tui.go",
+    "internal/tui/util/focus.go",
+    "internal/tui/util/util.go"
+  ],
+  "head_branch": "schniz/dont-blink-cursor-on-tmux-blur",
+  "id": "opencode-ai/opencode#227",
+  "is_bot": false,
+  "is_draft": false,
+  "labels": [],
+  "mergeable": "mergeable",
+  "number": 227,
+  "repo": "opencode-ai/opencode",
+  "review_status": "unknown",
+  "title": "feat: hide cursor when process loses focus",
+  "updated_at": "2025-06-11T07:53:35Z",
+  "url": "https://github.com/opencode-ai/opencode/pull/227"
+}

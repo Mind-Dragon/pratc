@@ -1,0 +1,27 @@
+{
+  "additions": 58,
+  "author": "DanielPe05",
+  "base_branch": "main",
+  "body": "This change adds first-class support for \u201cglobal context paths\u201d in OpenCode. Previously, OpenCode only loaded a fixed set of built-in context files. With this PR you can now append your own Markdown or instruction files\u2014globally or per-project\u2014while preserving the existing defaults.\r\n\r\nWhat\u2019s changed:\r\n* Add `processContextPaths()`\r\n* Starts from the built-in `defaultContextPaths`\r\n* Appends any `contextPaths` from your Viper config\r\n * Resolves relative paths against the configured working directory\r\n* Leaves absolute paths untouched\r\n* Deduplicates the final list\r\n* Wire `processContextPaths()` into `Load()` so it runs after reading global & local configs, but before unmarshalling into `Config`.\r\n* Provide a `ContextPaths()` helper to retrieve the normalized list at runtime.\r\n* Update README with a **Context Paths** section showing how to configure and use this feature.",
+  "changed_files_count": 2,
+  "ci_status": "unknown",
+  "cluster_id": "",
+  "created_at": "2025-05-06T21:47:28Z",
+  "deletions": 0,
+  "files_changed": [
+    "README.md",
+    "internal/config/config.go"
+  ],
+  "head_branch": "feature/add-support-for-global-context-paths",
+  "id": "opencode-ai/opencode#149",
+  "is_bot": false,
+  "is_draft": false,
+  "labels": [],
+  "mergeable": "mergeable",
+  "number": 149,
+  "repo": "opencode-ai/opencode",
+  "review_status": "unknown",
+  "title": "Support global context paths by merging built-in defaults with user-specified paths",
+  "updated_at": "2025-05-09T14:45:28Z",
+  "url": "https://github.com/opencode-ai/opencode/pull/149"
+}

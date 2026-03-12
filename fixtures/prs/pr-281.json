@@ -1,0 +1,26 @@
+{
+  "additions": 4,
+  "author": "gedzeppelin",
+  "base_branch": "main",
+  "body": "When an MCP server runs with a tool that has an empty string as its `input`, the runner fails with a parameter parsing error. This issue was found with Copilot's Claude models, which pass `\"\"` instead of `\"{}\"` sometimes.\r\n\r\n![image](https://github.com/user-attachments/assets/4acbf687-7673-4198-a0d2-db424a6df597)\r\n",
+  "changed_files_count": 1,
+  "ci_status": "unknown",
+  "cluster_id": "",
+  "created_at": "2025-07-01T18:23:15Z",
+  "deletions": 0,
+  "files_changed": [
+    "internal/llm/agent/mcp-tools.go"
+  ],
+  "head_branch": "main",
+  "id": "opencode-ai/opencode#281",
+  "is_bot": false,
+  "is_draft": false,
+  "labels": [],
+  "mergeable": "mergeable",
+  "number": 281,
+  "repo": "opencode-ai/opencode",
+  "review_status": "unknown",
+  "title": "fix(mcp): handle empty input by initializing with empty JSON object",
+  "updated_at": "2025-07-01T22:13:36Z",
+  "url": "https://github.com/opencode-ai/opencode/pull/281"
+}
