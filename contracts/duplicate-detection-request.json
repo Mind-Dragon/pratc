@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pratc.dev/contracts/duplicate-detection-request.json",
+  "title": "DuplicateDetectionRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repo": { "type": "string" },
+    "prs": {
+      "type": "array",
+      "items": { "$ref": "shared-definitions.json#/$defs/PR" }
+    },
+    "duplicateThreshold": { "type": "number", "minimum": 0, "maximum": 1 },
+    "overlapThreshold": { "type": "number", "minimum": 0, "maximum": 1 }
+  },
+  "required": ["repo", "prs", "duplicateThreshold", "overlapThreshold"]
+}

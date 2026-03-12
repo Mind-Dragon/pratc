@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pratc.dev/contracts/analysis-response.json",
+  "title": "AnalysisResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repo": { "type": "string" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "counts": { "$ref": "shared-definitions.json#/$defs/Counts" },
+    "prs": {
+      "type": "array",
+      "items": { "$ref": "shared-definitions.json#/$defs/PR" }
+    },
+    "clusters": {
+      "type": "array",
+      "items": { "$ref": "shared-definitions.json#/$defs/PRCluster" }
+    },
+    "duplicates": {
+      "type": "array",
+      "items": { "$ref": "shared-definitions.json#/$defs/DuplicateGroup" }
+    },
+    "overlaps": {
+      "type": "array",
+      "items": { "$ref": "shared-definitions.json#/$defs/DuplicateGroup" }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": { "$ref": "shared-definitions.json#/$defs/ConflictPair" }
+    },
+    "stalenessSignals": {
+      "type": "array",
+      "items": { "$ref": "shared-definitions.json#/$defs/StalenessReport" }
+    }
+  },
+  "required": ["repo", "generatedAt", "counts", "prs", "clusters", "duplicates", "overlaps", "conflicts", "stalenessSignals"]
+}

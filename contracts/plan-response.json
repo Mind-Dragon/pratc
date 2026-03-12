@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pratc.dev/contracts/plan-response.json",
+  "title": "PlanResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repo": { "type": "string" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "target": { "type": "integer", "minimum": 1 },
+    "candidatePoolSize": { "type": "integer", "minimum": 0 },
+    "strategy": { "type": "string" },
+    "selected": {
+      "type": "array",
+      "items": { "$ref": "shared-definitions.json#/$defs/MergePlanCandidate" }
+    },
+    "ordering": {
+      "type": "array",
+      "items": { "$ref": "shared-definitions.json#/$defs/MergePlanCandidate" }
+    },
+    "rejections": {
+      "type": "array",
+      "items": { "$ref": "shared-definitions.json#/$defs/PlanRejection" }
+    }
+  },
+  "required": ["repo", "generatedAt", "target", "candidatePoolSize", "strategy", "selected", "ordering", "rejections"]
+}

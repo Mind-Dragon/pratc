@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pratc.dev/contracts/semantic-conflict-response.json",
+  "title": "SemanticConflictResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repo": { "type": "string" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "conflicts": {
+      "type": "array",
+      "items": { "$ref": "shared-definitions.json#/$defs/ConflictPair" }
+    }
+  },
+  "required": ["repo", "generatedAt", "conflicts"]
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pratc.dev/contracts/semantic-analysis-request.json",
+  "title": "SemanticAnalysisRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repo": { "type": "string" },
+    "prs": {
+      "type": "array",
+      "items": { "$ref": "shared-definitions.json#/$defs/PR" }
+    },
+    "analysisMode": { "type": "string" }
+  },
+  "required": ["repo", "prs", "analysisMode"]
+}

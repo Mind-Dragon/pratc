@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pratc.dev/contracts/shared-definitions.json",
+  "title": "SharedDefinitions",
+  "$defs": {
+    "PR": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "repo": { "type": "string" },
+        "number": { "type": "integer" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "author": { "type": "string" },
+        "labels": { "type": "array", "items": { "type": "string" } },
+        "files_changed": { "type": "array", "items": { "type": "string" } },
+        "review_status": { "type": "string" },
+        "ci_status": { "type": "string" },
+        "mergeable": { "type": "string" },
+        "base_branch": { "type": "string" },
+        "head_branch": { "type": "string" },
+        "cluster_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "is_draft": { "type": "boolean" },
+        "is_bot": { "type": "boolean" },
+        "additions": { "type": "integer" },
+        "deletions": { "type": "integer" },
+        "changed_files_count": { "type": "integer" }
+      },
+      "required": [
+        "id",
+        "repo",
+        "number",
+        "title",
+        "body",
+        "url",
+        "author",
+        "labels",
+        "files_changed",
+        "review_status",
+        "ci_status",
+        "mergeable",
+        "base_branch",
+        "head_branch",
+        "cluster_id",
+        "created_at",
+        "updated_at",
+        "is_draft",
+        "is_bot",
+        "additions",
+        "deletions",
+        "changed_files_count"
+      ]
+    },
+    "PRCluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cluster_id": { "type": "string" },
+        "cluster_label": { "type": "string" },
+        "summary": { "type": "string" },
+        "pr_ids": { "type": "array", "items": { "type": "integer" } },
+        "health_status": { "type": "string" },
+        "average_similarity": { "type": "number" },
+        "sample_titles": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["cluster_id", "cluster_label", "summary", "pr_ids", "health_status", "average_similarity", "sample_titles"]
+    },
+    "DuplicateGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "canonical_pr_number": { "type": "integer" },
+        "duplicate_pr_numbers": { "type": "array", "items": { "type": "integer" } },
+        "similarity": { "type": "number" },
+        "reason": { "type": "string" }
+      },
+      "required": ["canonical_pr_number", "duplicate_pr_numbers", "similarity", "reason"]
+    },
+    "ConflictPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_pr": { "type": "integer" },
+        "target_pr": { "type": "integer" },
+        "conflict_type": { "type": "string" },
+        "files_touched": { "type": "array", "items": { "type": "string" } },
+        "severity": { "type": "string" },
+        "reason": { "type": "string" }
+      },
+      "required": ["source_pr", "target_pr", "conflict_type", "files_touched", "severity", "reason"]
+    },
+    "StalenessReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pr_number": { "type": "integer" },
+        "score": { "type": "number" },
+        "signals": { "type": "array", "items": { "type": "string" } },
+        "reasons": { "type": "array", "items": { "type": "string" } },
+        "superseded_by": { "type": "array", "items": { "type": "integer" } }
+      },
+      "required": ["pr_number", "score", "signals", "reasons", "superseded_by"]
+    },
+    "MergePlanCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pr_number": { "type": "integer" },
+        "title": { "type": "string" },
+        "score": { "type": "number" },
+        "rationale": { "type": "string" },
+        "files_touched": { "type": "array", "items": { "type": "string" } },
+        "conflict_warnings": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["pr_number", "title", "score", "rationale", "files_touched", "conflict_warnings"]
+    },
+    "MergePlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "plan_id": { "type": "string" },
+        "mode": { "type": "string" },
+        "formula_expression": { "type": "string" },
+        "selected": { "type": "array", "items": { "$ref": "#/$defs/MergePlanCandidate" } },
+        "ordering": { "type": "array", "items": { "$ref": "#/$defs/MergePlanCandidate" } },
+        "total_score": { "type": "number" },
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["plan_id", "mode", "formula_expression", "selected", "ordering", "total_score", "warnings"]
+    },
+    "GraphNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pr_number": { "type": "integer" },
+        "title": { "type": "string" },
+        "cluster_id": { "type": "string" },
+        "ci_status": { "type": "string" }
+      },
+      "required": ["pr_number", "title", "cluster_id", "ci_status"]
+    },
+    "GraphEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "from_pr": { "type": "integer" },
+        "to_pr": { "type": "integer" },
+        "edge_type": { "type": "string" },
+        "reason": { "type": "string" }
+      },
+      "required": ["from_pr", "to_pr", "edge_type", "reason"]
+    },
+    "Counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total_prs": { "type": "integer" },
+        "cluster_count": { "type": "integer" },
+        "duplicate_groups": { "type": "integer" },
+        "overlap_groups": { "type": "integer" },
+        "conflict_pairs": { "type": "integer" },
+        "stale_prs": { "type": "integer" }
+      },
+      "required": ["total_prs", "cluster_count", "duplicate_groups", "overlap_groups", "conflict_pairs", "stale_prs"]
+    },
+    "Thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "duplicate": { "type": "number" },
+        "overlap": { "type": "number" }
+      },
+      "required": ["duplicate", "overlap"]
+    },
+    "PlanRejection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pr_number": { "type": "integer" },
+        "reason": { "type": "string" }
+      },
+      "required": ["pr_number", "reason"]
+    },
+    "ActionIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action": { "type": "string" },
+        "pr_number": { "type": "integer" },
+        "dry_run": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["action", "pr_number", "dry_run", "created_at"]
+    }
+  }
+}

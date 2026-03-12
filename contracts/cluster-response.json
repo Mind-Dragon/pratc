@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pratc.dev/contracts/cluster-response.json",
+  "title": "ClusterResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repo": { "type": "string" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "model": { "type": "string" },
+    "thresholds": { "$ref": "shared-definitions.json#/$defs/Thresholds" },
+    "clusters": {
+      "type": "array",
+      "items": { "$ref": "shared-definitions.json#/$defs/PRCluster" }
+    }
+  },
+  "required": ["repo", "generatedAt", "model", "thresholds", "clusters"]
+}

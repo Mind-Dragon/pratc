@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pratc.dev/contracts/duplicate-response.json",
+  "title": "DuplicateResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repo": { "type": "string" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "duplicates": {
+      "type": "array",
+      "items": { "$ref": "shared-definitions.json#/$defs/DuplicateGroup" }
+    },
+    "overlaps": {
+      "type": "array",
+      "items": { "$ref": "shared-definitions.json#/$defs/DuplicateGroup" }
+    }
+  },
+  "required": ["repo", "generatedAt", "duplicates", "overlaps"]
+}
