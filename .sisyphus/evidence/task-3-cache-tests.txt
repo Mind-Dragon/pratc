@@ -1,0 +1,30 @@
+=== RUN   TestCacheUpsertAndQuery
+=== PAUSE TestCacheUpsertAndQuery
+=== RUN   TestCacheUpdatedSinceFilter
+=== PAUSE TestCacheUpdatedSinceFilter
+=== RUN   TestCacheLastSyncRoundTrip
+=== PAUSE TestCacheLastSyncRoundTrip
+=== RUN   TestCacheMergedPRRoundTrip
+=== PAUSE TestCacheMergedPRRoundTrip
+=== RUN   TestCacheSyncJobLifecycle
+=== PAUSE TestCacheSyncJobLifecycle
+=== RUN   TestCacheResumeSyncJobReturnsLatestInProgress
+=== PAUSE TestCacheResumeSyncJobReturnsLatestInProgress
+=== RUN   TestCacheWALConcurrentReadWrite
+=== PAUSE TestCacheWALConcurrentReadWrite
+=== CONT  TestCacheSyncJobLifecycle
+=== CONT  TestCacheMergedPRRoundTrip
+=== CONT  TestCacheUpdatedSinceFilter
+=== CONT  TestCacheLastSyncRoundTrip
+=== CONT  TestCacheResumeSyncJobReturnsLatestInProgress
+=== CONT  TestCacheWALConcurrentReadWrite
+=== CONT  TestCacheUpsertAndQuery
+--- PASS: TestCacheLastSyncRoundTrip (0.05s)
+--- PASS: TestCacheMergedPRRoundTrip (0.05s)
+--- PASS: TestCacheSyncJobLifecycle (0.05s)
+--- PASS: TestCacheResumeSyncJobReturnsLatestInProgress (0.05s)
+--- PASS: TestCacheUpdatedSinceFilter (0.05s)
+--- PASS: TestCacheUpsertAndQuery (0.07s)
+--- PASS: TestCacheWALConcurrentReadWrite (2.05s)
+PASS
+ok  	github.com/jeffersonnunn/pratc/internal/cache	(cached)

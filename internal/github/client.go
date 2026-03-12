@@ -1,0 +1,418 @@
+package github
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/jeffersonnunn/pratc/internal/types"
+)
+
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+type Config struct {
+	BaseURL             string
+	HTTPClient          HTTPClient
+	Token               string
+	ReserveRequests     int
+	MaxSecondaryRetries int
+	Now                 func() time.Time
+	Sleep               func(time.Duration)
+}
+
+type Client struct {
+	baseURL             string
+	httpClient          HTTPClient
+	token               string
+	reserveRequests     int
+	maxSecondaryRetries int
+	now                 func() time.Time
+	sleep               func(time.Duration)
+}
+
+type PullRequestListOptions struct {
+	PerPage      int
+	Cursor       string
+	UpdatedSince time.Time
+	Progress     func(processed int, total int)
+}
+
+type Review struct {
+	State  string
+	Author string
+}
+
+func NewClient(cfg Config) *Client {
+	baseURL := strings.TrimRight(cfg.BaseURL, "/")
+	if baseURL == "" {
+		baseURL = "https://api.github.com"
+	}
+	httpClient := cfg.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	now := cfg.Now
+	if now == nil {
+		now = func() time.Time { return time.Now().UTC() }
+	}
+	sleep := cfg.Sleep
+	if sleep == nil {
+		sleep = time.Sleep
+	}
+	reserve := cfg.ReserveRequests
+	if reserve <= 0 {
+		reserve = 200
+	}
+	maxRetries := cfg.MaxSecondaryRetries
+	if maxRetries == 0 {
+		maxRetries = 8
+	}
+
+	return &Client{
+		baseURL:             baseURL,
+		httpClient:          httpClient,
+		token:               cfg.Token,
+		reserveRequests:     reserve,
+		maxSecondaryRetries: maxRetries,
+		now:                 now,
+		sleep:               sleep,
+	}
+}
+
+func (c *Client) FetchPullRequests(ctx context.Context, repo string, opts PullRequestListOptions) ([]types.PR, error) {
+	owner, name, err := splitRepo(repo)
+	if err != nil {
+		return nil, err
+	}
+
+	var prs []types.PR
+	cursor := opts.Cursor
+
+	for {
+		query, variables := buildPullRequestsQuery(owner, name, PullRequestListOptions{
+			PerPage:      opts.PerPage,
+			Cursor:       cursor,
+			UpdatedSince: opts.UpdatedSince,
+		})
+
+		var response struct {
+			Data struct {
+				Repository struct {
+					PullRequests struct {
+						PageInfo struct {
+							HasNextPage bool    `json:"hasNextPage"`
+							EndCursor   *string `json:"endCursor"`
+						} `json:"pageInfo"`
+						Nodes []pullRequestNode `json:"nodes"`
+					} `json:"pullRequests"`
+				} `json:"repository"`
+			} `json:"data"`
+		}
+
+		if err := c.graphQL(ctx, query, variables, &response); err != nil {
+			return nil, err
+		}
+
+		for _, node := range response.Data.Repository.PullRequests.Nodes {
+			pr := node.toPR(repo)
+			if !opts.UpdatedSince.IsZero() {
+				updatedAt, parseErr := time.Parse(time.RFC3339, pr.UpdatedAt)
+				if parseErr == nil && updatedAt.Before(opts.UpdatedSince) {
+					continue
+				}
+			}
+			prs = append(prs, pr)
+			if opts.Progress != nil {
+				opts.Progress(len(prs), 0)
+			}
+		}
+
+		if !response.Data.Repository.PullRequests.PageInfo.HasNextPage || response.Data.Repository.PullRequests.PageInfo.EndCursor == nil {
+			break
+		}
+		cursor = *response.Data.Repository.PullRequests.PageInfo.EndCursor
+	}
+
+	return prs, nil
+}
+
+func (c *Client) FetchPullRequestFiles(ctx context.Context, repo string, number int) ([]string, error) {
+	owner, name, err := splitRepo(repo)
+	if err != nil {
+		return nil, err
+	}
+	query, variables := buildFilesQuery(owner, name, number)
+
+	var response struct {
+		Data struct {
+			Repository struct {
+				PullRequest struct {
+					Files struct {
+						Nodes []struct {
+							Path string `json:"path"`
+						} `json:"nodes"`
+					} `json:"files"`
+				} `json:"pullRequest"`
+			} `json:"repository"`
+		} `json:"data"`
+	}
+
+	if err := c.graphQL(ctx, query, variables, &response); err != nil {
+		return nil, err
+	}
+
+	files := make([]string, 0, len(response.Data.Repository.PullRequest.Files.Nodes))
+	for _, node := range response.Data.Repository.PullRequest.Files.Nodes {
+		files = append(files, node.Path)
+	}
+	return files, nil
+}
+
+func (c *Client) FetchPullRequestReviews(ctx context.Context, repo string, number int) ([]Review, error) {
+	owner, name, err := splitRepo(repo)
+	if err != nil {
+		return nil, err
+	}
+	query, variables := buildReviewsQuery(owner, name, number)
+
+	var response struct {
+		Data struct {
+			Repository struct {
+				PullRequest struct {
+					Reviews struct {
+						Nodes []struct {
+							State  string `json:"state"`
+							Author struct {
+								Login string `json:"login"`
+							} `json:"author"`
+						} `json:"nodes"`
+					} `json:"reviews"`
+				} `json:"pullRequest"`
+			} `json:"repository"`
+		} `json:"data"`
+	}
+
+	if err := c.graphQL(ctx, query, variables, &response); err != nil {
+		return nil, err
+	}
+
+	reviews := make([]Review, 0, len(response.Data.Repository.PullRequest.Reviews.Nodes))
+	for _, node := range response.Data.Repository.PullRequest.Reviews.Nodes {
+		reviews = append(reviews, Review{State: node.State, Author: node.Author.Login})
+	}
+	return reviews, nil
+}
+
+func (c *Client) FetchPullRequestCIStatus(ctx context.Context, repo string, number int) (string, error) {
+	owner, name, err := splitRepo(repo)
+	if err != nil {
+		return "", err
+	}
+	query, variables := buildCIStatusQuery(owner, name, number)
+
+	var response struct {
+		Data struct {
+			Repository struct {
+				PullRequest struct {
+					StatusCheckRollup struct {
+						State string `json:"state"`
+					} `json:"statusCheckRollup"`
+				} `json:"pullRequest"`
+			} `json:"repository"`
+		} `json:"data"`
+	}
+
+	if err := c.graphQL(ctx, query, variables, &response); err != nil {
+		return "", err
+	}
+
+	return response.Data.Repository.PullRequest.StatusCheckRollup.State, nil
+}
+
+func (c *Client) graphQL(ctx context.Context, query string, variables map[string]any, dest any) error {
+	payload := map[string]any{
+		"query":     query,
+		"variables": variables,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal graphql payload: %w", err)
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= c.maxSecondaryRetries; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/graphql", bytes.NewReader(body))
+		if err != nil {
+			return fmt.Errorf("build graphql request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if c.token != "" {
+			req.Header.Set("Authorization", "Bearer "+c.token)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("perform graphql request: %w", err)
+		}
+
+		retry, retryErr := c.handleRateLimit(resp, attempt)
+		if retryErr != nil {
+			_ = resp.Body.Close()
+			return retryErr
+		}
+		if retry {
+			_ = resp.Body.Close()
+			continue
+		}
+
+		if resp.StatusCode >= 300 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			lastErr = fmt.Errorf("github graphql request failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+			return lastErr
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(dest); err != nil {
+			_ = resp.Body.Close()
+			return fmt.Errorf("decode graphql response: %w", err)
+		}
+		if err := resp.Body.Close(); err != nil {
+			return fmt.Errorf("close graphql response body: %w", err)
+		}
+		return nil
+	}
+
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("github graphql request failed after retries")
+}
+
+func (c *Client) handleRateLimit(resp *http.Response, attempt int) (bool, error) {
+	if resp.StatusCode == http.StatusForbidden {
+		wait := retryAfter(resp.Header.Get("Retry-After"))
+		if wait <= 0 {
+			wait = untilReset(c.now(), resp.Header.Get("X-RateLimit-Reset"))
+		}
+		if wait <= 0 {
+			wait = 2 * time.Second
+		}
+		if attempt >= c.maxSecondaryRetries {
+			return false, fmt.Errorf("github rate limit exceeded; retry after %s", wait)
+		}
+		c.sleep(wait)
+		return true, nil
+	}
+
+	remaining, err := strconv.Atoi(resp.Header.Get("X-RateLimit-Remaining"))
+	if err == nil && remaining < c.reserveRequests {
+		if wait := untilReset(c.now(), resp.Header.Get("X-RateLimit-Reset")); wait > 0 {
+			c.sleep(wait)
+		}
+	}
+
+	return false, nil
+}
+
+func splitRepo(repo string) (string, string, error) {
+	parts := strings.Split(repo, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("invalid repo %q, expected owner/repo", repo)
+	}
+	return parts[0], parts[1], nil
+}
+
+func retryAfter(raw string) time.Duration {
+	if raw == "" {
+		return 0
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func untilReset(now time.Time, raw string) time.Duration {
+	if raw == "" {
+		return 0
+	}
+	epoch, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0
+	}
+	resetAt := time.Unix(epoch, 0)
+	if !resetAt.After(now) {
+		return 0
+	}
+	return resetAt.Sub(now)
+}
+
+type pullRequestNode struct {
+	ID                string `json:"id"`
+	Number            int    `json:"number"`
+	Title             string `json:"title"`
+	Body              string `json:"body"`
+	URL               string `json:"url"`
+	IsDraft           bool   `json:"isDraft"`
+	CreatedAt         string `json:"createdAt"`
+	UpdatedAt         string `json:"updatedAt"`
+	Additions         int    `json:"additions"`
+	Deletions         int    `json:"deletions"`
+	ChangedFiles      int    `json:"changedFiles"`
+	Mergeable         string `json:"mergeable"`
+	BaseRefName       string `json:"baseRefName"`
+	HeadRefName       string `json:"headRefName"`
+	ReviewDecision    string `json:"reviewDecision"`
+	StatusCheckRollup struct {
+		State string `json:"state"`
+	} `json:"statusCheckRollup"`
+	Author struct {
+		Login string `json:"login"`
+	} `json:"author"`
+	Labels struct {
+		Nodes []struct {
+			Name string `json:"name"`
+		} `json:"nodes"`
+	} `json:"labels"`
+}
+
+func (n pullRequestNode) toPR(repo string) types.PR {
+	labels := make([]string, 0, len(n.Labels.Nodes))
+	for _, label := range n.Labels.Nodes {
+		labels = append(labels, label.Name)
+	}
+
+	return types.PR{
+		ID:                n.ID,
+		Repo:              repo,
+		Number:            n.Number,
+		Title:             n.Title,
+		Body:              n.Body,
+		URL:               n.URL,
+		Author:            n.Author.Login,
+		Labels:            labels,
+		FilesChanged:      nil,
+		ReviewStatus:      strings.ToLower(n.ReviewDecision),
+		CIStatus:          strings.ToLower(n.StatusCheckRollup.State),
+		Mergeable:         strings.ToLower(n.Mergeable),
+		BaseBranch:        n.BaseRefName,
+		HeadBranch:        n.HeadRefName,
+		CreatedAt:         n.CreatedAt,
+		UpdatedAt:         n.UpdatedAt,
+		IsDraft:           n.IsDraft,
+		Additions:         n.Additions,
+		Deletions:         n.Deletions,
+		ChangedFilesCount: n.ChangedFiles,
+	}
+}
