@@ -1,0 +1,22 @@
+FROM golang:1.23-bookworm AS builder
+
+WORKDIR /src
+
+COPY go.mod ./
+COPY cmd ./cmd
+COPY internal ./internal
+
+RUN go build -o /out/pratc ./cmd/pratc
+
+FROM python:3.11-slim-bookworm
+
+WORKDIR /app
+
+COPY --from=builder /out/pratc /usr/local/bin/pratc
+COPY ml-service ./ml-service
+
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8080
+
+CMD ["pratc", "serve", "--port=8080"]

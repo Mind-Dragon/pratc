@@ -1,0 +1,46 @@
+services:
+  pratc-cli:
+    profiles:
+      - local-ml
+      - openrouter-light
+    build:
+      context: .
+      dockerfile: Dockerfile.cli
+    image: pratc-cli:latest
+    container_name: pratc-cli
+    command: ["pratc", "serve", "--port=8080"]
+    environment:
+      PRATC_PORT: "8080"
+      PRATC_ANALYSIS_BACKEND: ${PRATC_ANALYSIS_BACKEND:-local}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "test -x /usr/local/bin/pratc"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  pratc-web:
+    profiles:
+      - local-ml
+      - openrouter-light
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: pratc-web:latest
+    container_name: pratc-web
+    environment:
+      PORT: "3000"
+      NEXT_PUBLIC_PRATC_API_URL: ${NEXT_PUBLIC_PRATC_API_URL:-http://pratc-cli:8080}
+    ports:
+      - "3000:3000"
+    depends_on:
+      pratc-cli:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -d /app"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
