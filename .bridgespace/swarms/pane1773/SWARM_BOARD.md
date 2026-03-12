@@ -137,13 +137,13 @@ Wave 2 dispatch in progress. Critical path: T3 → T13 → T14.
 ## Builder 2
 
 **Role:** builder
-**Status:** PLANNING
+**Status:** DONE
 **Assigned Task:** Task 3 — GitHub API client + SQLite cache (TDD)
 **Owned Files:** internal/github/, internal/cache/
 **Progress:**
-- Assignment confirmed from Coordinator 1. Dependencies satisfied: Task 1 complete.
-- Planning RED phase for `internal/github/` and `internal/cache/` based on Task 3 acceptance criteria.
-- Reviewing shared `internal/types/` contracts and existing Go scaffold before writing failing tests.
+- Implemented SQLite-backed cache with WAL mode, PR persistence/querying, merged PR metadata, and sync job/progress persistence.
+- Implemented rate-limit-aware GitHub GraphQL client with paginated PR fetch, file/review/CI queries, low-budget backoff, and descriptive limit errors.
+- Validation complete: `go test -race -v ./internal/cache/...` and `go test -race -v ./internal/github/...` both passing.
 
 ---
 
@@ -188,5 +188,6 @@ Task 13 assigned. Dependencies: T2, T6 complete. Write tests in internal/filter/
 
 | Task | Agent | Summary | Files Changed |
 |------|-------|---------|---------------|
+| 3 | Builder 2 | Implemented SQLite cache and GitHub GraphQL client with rate-limit handling, pagination, merged PR metadata, and sync job persistence. | `internal/cache/models.go`, `internal/cache/sqlite.go`, `internal/cache/sqlite_test.go`, `internal/github/client.go`, `internal/github/queries.go`, `internal/github/client_test.go`, `go.mod`, `go.sum` |
 | 9 | Builder 4 | Implemented graph engine package with dependency/conflict edges, topological sort, cycle detection, and DOT output. | `internal/graph/graph.go`, `internal/graph/graph_test.go` |
 | 8 | Builder 3 | Implemented formula engine with MAG40-validated counts, direct index generation, scoring, and tiered search. | `internal/formula/config.go`, `internal/formula/engine.go`, `internal/formula/modes.go`, `internal/formula/scoring.go`, `internal/formula/tiers.go`, `internal/formula/formula_test.go` |
