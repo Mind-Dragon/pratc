@@ -1,0 +1,67 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Logs / temp
+*.log
+tmp/
+temp/
+.tmp/
+
+# Go
+bin/
+dist/
+coverage.out
+*.test
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.venv/
+venv/
+
+# Node / web
+node_modules/
+.next/
+.turbo/
+coverage/
+playwright-report/
+test-results/
+
+# Build artifacts
+build/
+out/
+*.sqlite
+*.sqlite3
+*.db
+
+# Docker
+.docker/
+
+# Sisyphus generated artifacts
+.sisyphus/evidence/
+.sisyphus/status/
+.sisyphus/output/
+.sisyphus/drafts/
+.sisyphus/notepads/
+
+# Keep source plans and reusable prompts versioned
+!.sisyphus/plans/
+!.sisyphus/plans/**
+!.sisyphus/prompts/
+!.sisyphus/prompts/**
