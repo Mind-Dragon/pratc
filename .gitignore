@@ -15,6 +15,7 @@ Thumbs.db
 
 # Logs / temp
 *.log
+.cache/
 tmp/
 temp/
 .tmp/
@@ -68,5 +69,7 @@ fixtures/manifest.json
 # Keep source plans and reusable prompts versioned
 !.sisyphus/plans/
 !.sisyphus/plans/**
+.sisyphus/plans/.DS_Store
+.sisyphus/plans/**/.DS_Store
 !.sisyphus/prompts/
 !.sisyphus/prompts/**
