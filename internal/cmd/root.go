@@ -401,6 +401,15 @@ type repoSyncAPI interface {
 }
 
 func getSyncStatus(repo string) map[string]any {
+	status := map[string]any{
+		"repo":             repo,
+		"last_sync":        time.Time{},
+		"pr_count":         0,
+		"status":           "never",
+		"in_progress":      false,
+		"progress_percent": 0,
+	}
+
 	dbPath := strings.TrimSpace(os.Getenv("PRATC_DB_PATH"))
 	if dbPath == "" {
 		home, _ := os.UserHomeDir()
@@ -408,20 +417,47 @@ func getSyncStatus(repo string) map[string]any {
 	}
 	store, err := cache.Open(dbPath)
 	if err != nil {
-		return map[string]any{"error": "cache unavailable", "repo": repo}
+		status["error"] = "cache unavailable"
+		return status
 	}
 	defer store.Close()
 
+	if prs, err := store.ListPRs(cache.PRFilter{Repo: repo}); err == nil {
+		status["pr_count"] = len(prs)
+	}
+
+	if job, ok, err := store.ResumeSyncJob(repo); err == nil && ok {
+		status["status"] = "in_progress"
+		status["in_progress"] = true
+		status["last_sync"] = job.LastSyncAt
+		if job.Progress.TotalPRs > 0 {
+			percent := (job.Progress.ProcessedPRs * 100) / job.Progress.TotalPRs
+			if percent < 0 {
+				percent = 0
+			}
+			if percent > 100 {
+				percent = 100
+			}
+			status["progress_percent"] = percent
+		}
+		return status
+	} else if err != nil {
+		status["error"] = err.Error()
+		return status
+	}
+
 	lastSync, err := store.LastSync(repo)
 	if err != nil {
-		return map[string]any{"repo": repo, "last_sync": nil, "error": err.Error()}
+		status["error"] = err.Error()
+		return status
 	}
-	prs, _ := store.ListPRs(cache.PRFilter{Repo: repo})
-	return map[string]any{
-		"repo":      repo,
-		"last_sync": lastSync,
-		"pr_count":  len(prs),
+	if !lastSync.IsZero() {
+		status["last_sync"] = lastSync
+		status["status"] = "completed"
+		status["progress_percent"] = 100
 	}
+
+	return status
 }
 
 func handleRepoAction(w http.ResponseWriter, r *http.Request, service app.Service, syncAPI repoSyncAPI) {
