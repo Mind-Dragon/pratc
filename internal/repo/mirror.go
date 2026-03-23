@@ -63,6 +63,66 @@ func MirrorPath(baseDir, repo string) (string, error) {
 	return filepath.Join(baseDir, owner, name+".git"), nil
 }
 
+func LegacyMirrorBaseDir(root string) string {
+	return filepath.Join(root, ".pratc", "repos")
+}
+
+func LegacyMirrorPath(root, repo string) (string, error) {
+	owner, name, err := parseRepo(repo)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(LegacyMirrorBaseDir(root), owner, name+".git"), nil
+}
+
+type LegacyMirrorMigrationPlan struct {
+	Source        string
+	Destination   string
+	ShouldMigrate bool
+}
+
+func PlanLegacyMirrorMigration(root, newBaseDir, repo string) (*LegacyMirrorMigrationPlan, error) {
+	source, err := LegacyMirrorPath(root, repo)
+	if err != nil {
+		return nil, err
+	}
+	destination, err := MirrorPath(newBaseDir, repo)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := os.Stat(source); errors.Is(err, os.ErrNotExist) {
+		return &LegacyMirrorMigrationPlan{Source: source, Destination: destination}, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("stat legacy mirror: %w", err)
+	}
+
+	if _, err := os.Stat(destination); err == nil {
+		return nil, fmt.Errorf("destination mirror already exists: %s", destination)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("stat destination mirror: %w", err)
+	}
+
+	return &LegacyMirrorMigrationPlan{Source: source, Destination: destination, ShouldMigrate: true}, nil
+}
+
+func MigrateLegacyMirror(root, newBaseDir, repo string) error {
+	plan, err := PlanLegacyMirrorMigration(root, newBaseDir, repo)
+	if err != nil {
+		return err
+	}
+	if !plan.ShouldMigrate {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(plan.Destination), 0o755); err != nil {
+		return fmt.Errorf("create destination parent: %w", err)
+	}
+	if err := os.Rename(plan.Source, plan.Destination); err != nil {
+		return fmt.Errorf("move legacy mirror: %w", err)
+	}
+	return nil
+}
+
 func OpenOrCreate(ctx context.Context, baseDir, repo, remoteURL string) (*Mirror, error) {
 	if strings.TrimSpace(remoteURL) == "" {
 		return nil, errors.New("remote URL is required")
