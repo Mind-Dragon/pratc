@@ -105,7 +105,7 @@ func TestPlanReturnsTargetedOrdering(t *testing.T) {
 	}
 
 	service := NewService(Config{Now: fixedNow})
-	response, err := service.Plan(context.Background(), manifest.Repo, 5, formula.ModeCombination, true)
+	response, err := service.Plan(context.Background(), manifest.Repo, 5, formula.ModeCombination)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
