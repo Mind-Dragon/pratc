@@ -1,0 +1,81 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "title": "Merge Plan Composition",
+  "width": 700,
+  "height": {"step": 25},
+  "transform": [
+    {
+      "calculate": "substring(datum.title, 0, 40) + (datum.title.length > 40 ? '...' : '')",
+      "as": "truncated_title"
+    }
+  ],
+  "layer": [
+    {
+      "mark": {
+        "type": "bar",
+        "cornerRadiusEnd": 3
+      },
+      "encoding": {
+        "y": {
+          "field": "truncated_title",
+          "type": "nominal",
+          "title": "PR Title",
+          "sort": {"field": "score", "order": "descending"},
+          "axis": {"labels": true, "ticks": false, "grid": true}
+        },
+        "x": {
+          "field": "score",
+          "type": "quantitative",
+          "title": "Priority Score",
+          "scale": {"domain": [0, 100]},
+          "axis": {"tickCount": 5}
+        },
+        "color": {
+          "field": "cluster_id",
+          "type": "nominal",
+          "title": "Cluster",
+          "scale": {"scheme": "category20"}
+        },
+        "tooltip": [
+          {"field": "pr_number", "type": "quantitative", "title": "PR #"},
+          {"field": "title", "type": "nominal", "title": "Title"},
+          {"field": "score", "type": "quantitative", "title": "Score", "format": ".1f"},
+          {"field": "cluster_id", "type": "nominal", "title": "Cluster"},
+          {"field": "rationale", "type": "nominal", "title": "Rationale"}
+        ]
+      }
+    },
+    {
+      "mark": {
+        "type": "point",
+        "shape": "diamond",
+        "size": 80,
+        "filled": true
+      },
+      "encoding": {
+        "y": {
+          "field": "truncated_title",
+          "type": "nominal",
+          "sort": {"field": "score", "order": "descending"}
+        },
+        "x": {
+          "field": "score",
+          "type": "quantitative"
+        },
+        "color": {
+          "field": "ci_status",
+          "type": "nominal",
+          "title": "CI Status",
+          "scale": {
+            "domain": ["success", "failure", "pending", "unknown"],
+            "range": ["#10b981", "#ef4444", "#f59e0b", "#6b7280"]
+          }
+        },
+        "tooltip": [
+          {"field": "pr_number", "type": "quantitative", "title": "PR #"},
+          {"field": "ci_status", "type": "nominal", "title": "CI Status"}
+        ]
+      }
+    }
+  ]
+}

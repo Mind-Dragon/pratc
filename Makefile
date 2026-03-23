@@ -1,4 +1,4 @@
-SHELL := /bin/zsh
+SHELL := /bin/bash
 PATH := /opt/homebrew/bin:$(PATH)
 
 GO ?= go
@@ -44,7 +44,7 @@ test-python:
 	@if [ -f ml-service/pyproject.toml ]; then \
 		mkdir -p $(UV_CACHE_DIR); \
 		cd ml-service; \
-		if UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run pytest -v; then \
+		if UV_CACHE_DIR=$(UV_CACHE_DIR) $(UV) run --extra dev pytest -v; then \
 			exit 0; \
 		elif [ -x .venv/bin/python ]; then \
 			echo "uv run failed; falling back to .venv/bin/python"; \
@@ -58,7 +58,13 @@ test-python:
 	fi
 
 test-web:
-	@if [ -f web/package.json ]; then cd web && $(BUN) run test; else echo "skipping web tests; web/package.json not present"; fi
+	@if [ -f web/package.json ]; then \
+		cd web; \
+		if [ ! -d node_modules ]; then $(BUN) install; fi; \
+		$(BUN) run test; \
+	else \
+		echo "skipping web tests; web/package.json not present"; \
+	fi
 
 lint:
 	@if [ -d internal ]; then mkdir -p $(GO_BUILD_CACHE) $(GO_MOD_CACHE) && $(GO_ENV) $(GO) vet ./...; else echo "skipping go vet"; fi

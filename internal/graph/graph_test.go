@@ -71,6 +71,26 @@ func TestTopologicalOrderDetectsDependencyCycles(t *testing.T) {
 	}
 }
 
+func TestBuildIncludesTelemetry(t *testing.T) {
+	prs := []types.PR{
+		fixturePR(500, "main", "feature-a", []string{"pkg/a.go"}, "mergeable"),
+		fixturePR(501, "feature-a", "feature-b", []string{"pkg/b.go"}, "mergeable"),
+		fixturePR(502, "main", "feature-c", []string{"pkg/a.go"}, "conflicting"),
+	}
+
+	graph := Build("acme/repo", prs)
+
+	if graph.Telemetry.GraphDeltaEdges != len(graph.Edges) {
+		t.Fatalf("graph_delta_edges = %d, want %d", graph.Telemetry.GraphDeltaEdges, len(graph.Edges))
+	}
+	if graph.Telemetry.PairwiseShards <= 0 {
+		t.Fatalf("pairwise_shards = %d, want > 0", graph.Telemetry.PairwiseShards)
+	}
+	if len(graph.Telemetry.StageLatenciesMS) == 0 {
+		t.Fatal("expected stage latency telemetry")
+	}
+}
+
 func TestDOTIncludesGraphDeclarationAndEdges(t *testing.T) {
 	prs := []types.PR{
 		fixturePR(400, "main", "feature-a", []string{"pkg/a.go"}, "mergeable"),

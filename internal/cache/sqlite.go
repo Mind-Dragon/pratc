@@ -413,6 +413,17 @@ func (s *Store) MarkSyncJobFailed(jobID string, message string) error {
 }
 
 func (s *Store) init(ctx context.Context) error {
+	const supportedSchemaVersion = 2
+
+	var currentVersion int
+	if err := s.db.QueryRowContext(ctx, `PRAGMA user_version;`).Scan(&currentVersion); err != nil {
+		return fmt.Errorf("query user_version: %w", err)
+	}
+
+	if currentVersion > supportedSchemaVersion {
+		return fmt.Errorf("unsupported database schema version %d: binary supports up to version %d", currentVersion, supportedSchemaVersion)
+	}
+
 	pragmas := []string{
 		`PRAGMA journal_mode=WAL;`,
 		`PRAGMA busy_timeout=5000;`,
@@ -433,6 +444,17 @@ func (s *Store) init(ctx context.Context) error {
 		`INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
 		 VALUES (1, 'baseline', '2026-03-12T00:00:00Z');`,
 		`PRAGMA user_version = 1;`,
+		`INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
+		 VALUES (2, 'audit_log', '2026-03-22T00:00:00Z');`,
+		`PRAGMA user_version = 2;`,
+		`CREATE TABLE IF NOT EXISTS audit_log (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			timestamp TEXT NOT NULL,
+			action TEXT NOT NULL,
+			repo TEXT NOT NULL DEFAULT '',
+			details TEXT NOT NULL DEFAULT ''
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp DESC);`,
 		`CREATE TABLE IF NOT EXISTS pull_requests (
 			id TEXT NOT NULL,
 			repo TEXT NOT NULL,

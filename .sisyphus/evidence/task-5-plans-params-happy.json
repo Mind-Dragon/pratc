@@ -1,0 +1,143 @@
+{
+  "test_suite": "TestHandlePlanValidParams",
+  "description": "Query parameter validation for /api/repos/:owner/:repo/plans endpoint - happy path scenarios",
+  "test_results": {
+    "total_tests": 13,
+    "passed": 13,
+    "failed": 0
+  },
+  "test_cases": [
+    {
+      "name": "default_params",
+      "query": "",
+      "expected_status": 200,
+      "actual_status": 200,
+      "result": "PASS",
+      "description": "All params omitted, using deterministic defaults (target=20, mode=combination)"
+    },
+    {
+      "name": "all_valid_params",
+      "query": "?target=10&cluster_id=feat-auth&exclude_conflicts=true&stale_score_threshold=0.5&candidate_pool_cap=100&score_min=50",
+      "expected_status": 200,
+      "actual_status": 200,
+      "result": "PASS",
+      "description": "All parameters provided with valid values"
+    },
+    {
+      "name": "cluster_id_only",
+      "query": "?cluster_id=feat-auth",
+      "expected_status": 200,
+      "actual_status": 200,
+      "result": "PASS",
+      "description": "String parameter cluster_id accepted"
+    },
+    {
+      "name": "exclude_conflicts_false",
+      "query": "?exclude_conflicts=false",
+      "expected_status": 200,
+      "actual_status": 200,
+      "result": "PASS",
+      "description": "Boolean parameter exclude_conflicts=false accepted"
+    },
+    {
+      "name": "exclude_conflicts_true",
+      "query": "?exclude_conflicts=true",
+      "expected_status": 200,
+      "actual_status": 200,
+      "result": "PASS",
+      "description": "Boolean parameter exclude_conflicts=true accepted"
+    },
+    {
+      "name": "stale_score_threshold_zero",
+      "query": "?stale_score_threshold=0",
+      "expected_status": 200,
+      "actual_status": 200,
+      "result": "PASS",
+      "description": "Float parameter stale_score_threshold at minimum boundary (0)"
+    },
+    {
+      "name": "stale_score_threshold_one",
+      "query": "?stale_score_threshold=1",
+      "expected_status": 200,
+      "actual_status": 200,
+      "result": "PASS",
+      "description": "Float parameter stale_score_threshold at maximum boundary (1)"
+    },
+    {
+      "name": "candidate_pool_cap_minimum",
+      "query": "?candidate_pool_cap=1",
+      "expected_status": 200,
+      "actual_status": 200,
+      "result": "PASS",
+      "description": "Integer parameter candidate_pool_cap at minimum boundary (1)"
+    },
+    {
+      "name": "candidate_pool_cap_maximum",
+      "query": "?candidate_pool_cap=500",
+      "expected_status": 200,
+      "actual_status": 200,
+      "result": "PASS",
+      "description": "Integer parameter candidate_pool_cap at maximum boundary (500)"
+    },
+    {
+      "name": "score_min_zero",
+      "query": "?score_min=0",
+      "expected_status": 200,
+      "actual_status": 200,
+      "result": "PASS",
+      "description": "Float parameter score_min at minimum boundary (0)"
+    },
+    {
+      "name": "score_min_maximum",
+      "query": "?score_min=100",
+      "expected_status": 200,
+      "actual_status": 200,
+      "result": "PASS",
+      "description": "Float parameter score_min at maximum boundary (100)"
+    },
+    {
+      "name": "mode_combination",
+      "query": "?mode=combination",
+      "expected_status": 200,
+      "actual_status": 200,
+      "result": "PASS",
+      "description": "Mode parameter set to combination"
+    },
+    {
+      "name": "mode_permutation",
+      "query": "?mode=permutation",
+      "expected_status": 200,
+      "actual_status": 200,
+      "result": "PASS",
+      "description": "Mode parameter set to permutation"
+    },
+    {
+      "name": "mode_with_replacement",
+      "query": "?mode=with_replacement",
+      "expected_status": 200,
+      "actual_status": 200,
+      "result": "PASS",
+      "description": "Mode parameter set to with_replacement"
+    }
+  ],
+  "parameter_defaults": {
+    "target": 20,
+    "mode": "combination",
+    "cluster_id": "",
+    "exclude_conflicts": false,
+    "stale_score_threshold": 0.0,
+    "candidate_pool_cap": 100,
+    "score_min": 0.0
+  },
+  "validation_rules": {
+    "target": "int > 0",
+    "mode": "enum: combination|permutation|with_replacement",
+    "cluster_id": "string (optional, no validation)",
+    "exclude_conflicts": "bool (true/false)",
+    "stale_score_threshold": "float 0..1",
+    "candidate_pool_cap": "int 1..500",
+    "score_min": "float 0..100"
+  },
+  "test_command": "go test -race -v ./internal/cmd/...",
+  "generated_at": "2026-03-22T00:00:00Z"
+}

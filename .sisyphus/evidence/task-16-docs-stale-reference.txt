@@ -1,0 +1,55 @@
+# Task 16 Evidence: Stale Reference Audit
+
+Generated: 2026-03-23
+
+## Summary
+Audit of stale "openrouter-light" references found in documentation files.
+
+## Files with Stale References
+
+### 1. AGENTS.md
+- **Location**: Line 147
+- **Content**: `- `openrouter-light``
+- **Status**: STALE - Listed in Done Criteria
+- **Action Required**: Update to `minimax-light`
+
+### 2. pratc.md (Plan file)
+- **Locations**: Multiple throughout file
+- **Key occurrences**:
+  - Line 98: `docker compose --profile openrouter-light up`
+  - Line 443: `openrouter-light` — hosted analysis path
+  - Line 684: `ML_BACKEND=local|openrouter`
+  - Line 694: `providers/ backend adapters (local/openrouter)`
+  - Line 726, 1196, 1226, 1231, 1263, 1265, 1270, 1602, 1673, 2621, 2624, 2631, 2635, 2686, 2713, 2720, 3114, 3124, 3131
+- **Status**: STALE - This is the plan file (read-only per AGENTS.md)
+- **Note**: Per AGENTS.md, the plan file is SACRED and READ-ONLY. Only the Orchestrator manages it.
+
+### 3. prATC _ App Architecture Plan.md
+- **Locations**: Lines 49, 404, 504
+- **Status**: STALE - Architecture documentation
+- **Action Required**: Update references to minimax-light
+
+### 4. plans/architecture-plan.md
+- **Locations**: Lines 33, 221
+- **Status**: STALE - Architecture plan
+- **Action Required**: Update references to minimax-light
+
+### 5. README.md
+- **Status**: UPDATED - Line 170 now notes: "The `minimax-light` profile replaces the previous `openrouter-light` naming."
+
+### 6. Fixtures (test data)
+- **Files**: fixtures/prs/pr-238.json, pr-315.json, pr-316.json, pr-287.json
+- **Status**: PRESERVED - These contain actual PR data from external repositories and should NOT be modified
+
+## Files Updated
+
+1. **README.md** - Updated with correct `minimax-light` profile name and note about the naming change
+
+## Files Requiring Orchestrator Attention
+
+Per AGENTS.md: "Only the Orchestrator manages the plan file"
+- pratc.md - Contains stale references but is the plan file
+
+## Recommendation
+
+The README.md is now the source of truth for v0.1 documentation. Other documentation files (AGENTS.md, architecture plans) should be updated by the Orchestrator or in separate tasks as they may represent historical/archival documentation.

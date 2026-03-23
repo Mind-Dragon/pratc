@@ -73,3 +73,4 @@ fixtures/manifest.json
 .sisyphus/plans/**/.DS_Store
 !.sisyphus/prompts/
 !.sisyphus/prompts/**
+.worktrees

@@ -1,0 +1,82 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "title": "Graph Delta Metrics",
+  "width": 600,
+  "height": 300,
+  "transform": [
+    {
+      "calculate": "datum.change_type === 'added' ? 1 : (datum.change_type === 'removed' ? -1 : 0)",
+      "as": "sign"
+    },
+    {
+      "window": [{"op": "sum", "field": "count", "as": "cumulative"}],
+      "sort": [{"field": "order", "order": "ascending"}]
+    }
+  ],
+  "layer": [
+    {
+      "mark": {"type": "bar", "strokeWidth": 1},
+      "encoding": {
+        "x": {
+          "field": "change_type",
+          "type": "nominal",
+          "title": "Change Type",
+          "sort": ["added", "updated", "removed"],
+          "axis": {"labelAngle": 0}
+        },
+        "y": {
+          "field": "count",
+          "type": "quantitative",
+          "title": "Count"
+        },
+        "xOffset": {
+          "field": "change_type",
+          "type": "nominal",
+          "bandPosition": 0.5
+        },
+        "color": {
+          "field": "change_type",
+          "type": "nominal",
+          "title": "Change Type",
+          "scale": {
+            "domain": ["added", "removed", "updated"],
+            "range": ["#10b981", "#ef4444", "#3b82f6"]
+          },
+          "legend": null
+        },
+        "tooltip": [
+          {"field": "change_type", "type": "nominal", "title": "Change"},
+          {"field": "count", "type": "quantitative", "title": "Count"},
+          {"field": "description", "type": "nominal", "title": "Description"}
+        ]
+      }
+    },
+    {
+      "mark": {
+        "type": "text",
+        "dy": -10,
+        "fontWeight": "bold"
+      },
+      "encoding": {
+        "x": {
+          "field": "change_type",
+          "type": "nominal",
+          "sort": ["added", "updated", "removed"]
+        },
+        "y": {
+          "field": "count",
+          "type": "quantitative"
+        },
+        "text": {"field": "count", "type": "quantitative"},
+        "color": {
+          "field": "change_type",
+          "type": "nominal",
+          "scale": {
+            "domain": ["added", "removed", "updated"],
+            "range": ["#10b981", "#ef4444", "#3b82f6"]
+          }
+        }
+      }
+    }
+  ]
+}

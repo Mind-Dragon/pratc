@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/router", () => ({
   useRouter: () => ({
-    pathname: "/triage"
+    pathname: "/inbox"
   })
 }));
 
@@ -22,7 +22,7 @@ describe("Navigation", () => {
   it("marks the current route active", () => {
     render(<Navigation />);
 
-    expect(screen.getByRole("link", { name: "Triage" }).className).toContain("nav-link--active");
+    expect(screen.getByRole("link", { name: "Inbox" }).className).toContain("nav-link--active");
     expect(screen.getByRole("link", { name: "Dashboard" }).className).not.toContain("nav-link--active");
   });
 });

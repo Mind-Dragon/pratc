@@ -1,0 +1,47 @@
+# Task 17 Evidence: Bot PRs Included with --include-bots
+
+## Test Evidence
+
+### Bot Filter When IncludeBots=true
+```
+=== RUN   TestApplyFilters_BotExclusion/bots_included_when_flag_is_true
+--- PASS: TestApplyFilters_BotExclusion/bots_included_when_flag_is_true (0.00s)
+PASS
+ok  	github.com/jeffersonnunn/pratc/internal/filter
+```
+
+When includeBots=true is passed to ApplyFilters:
+- Bot PRs are NOT rejected
+- Pool includes all PRs including bots
+
+## CLI Evidence
+
+### --include-bots Flag Behavior
+```
+$ ./bin/pratc plan --repo=opencode-ai/opencode --target=20 --include-bots --format=json | jq '.rejections[] | select(.reason == "bot pr")'
+(no output - bots are not rejected when --include-bots is set)
+```
+
+### Flag Wiring Verification
+The --include-bots flag is correctly wired through the call stack:
+1. CLI flag parsed in RegisterPlanCommand() -> includeBots bool
+2. Passed to app.NewService(app.Config{IncludeBots: includeBots})
+3. Service.Plan() passes includeBots to planner.New(planner.WithIncludeBots(s.includeBots))
+4. Planner passes includeBots to filter pipeline via WithIncludeBots()
+5. Filter.ApplyFilters(prs, includeBots) accepts bots when includeBots=true
+
+## Implementation Details
+
+When --include-bots is provided:
+- Config.IncludeBots = true
+- planner.WithIncludeBots(true) is called
+- Pipeline is created with includeBots=true
+- ApplyFilters(prs, true) skips the bot filter
+- Bot PRs remain in candidate pool and are eligible for selection
+
+When --include-bots is NOT provided (default):
+- Config.IncludeBots = false  
+- planner.WithIncludeBots(false) is called (default)
+- Pipeline is created with includeBots=false
+- ApplyFilters(prs, false) rejects PRs where IsBot=true
+- Bot PRs are excluded with rejection reason "bot pr"

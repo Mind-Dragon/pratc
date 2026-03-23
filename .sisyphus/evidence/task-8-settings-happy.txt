@@ -1,0 +1,87 @@
+Task 8: Settings API Export/Type Gaps - Happy Path Evidence
+=============================================================
+
+Date: 2026-03-22
+
+## Summary
+Fixed settings API exports and type gaps so settings page compiles cleanly.
+
+## Changes Made
+1. Added settings functions to `web/src/lib/api.ts`:
+   - `fetchSettings(repo)` - fetches settings map from API
+   - `postSetting(payload, options)` - posts setting with optional validation
+   - `deleteSetting(scope, repo, key)` - deletes a setting
+   - `exportSettingsYAML(scope, repo)` - exports settings as YAML
+   - `importSettingsYAML(scope, repo, content)` - imports settings from YAML
+
+2. Added settings types to `web/src/lib/api.ts`:
+   - `SettingsMap` - key-value record type for settings
+   - `PostSettingPayload` - payload structure for posting settings
+   - `PostSettingOptions` - options including validateOnly
+   - `PostSettingResponse` - response with updated/valid flags
+   - `DeleteSettingResponse` - response with deleted flag
+   - `ImportSettingsResponse` - response with imported flag
+
+3. Moved test file from `web/src/pages/settings.test.tsx` to 
+   `web/src/__tests__/pages/settings.test.tsx` to fix Next.js build issue
+   (test files in pages directory were being picked up as pages).
+
+4. Added comprehensive API tests in `web/src/__tests__/lib/api.test.ts`
+   covering all settings functions with success and error scenarios.
+
+## Build Output
+```
+$ bun run build
+   ▲ Next.js 15.2.2
+
+   Linting and checking validity of types ...
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Collecting page data ...
+   Generating static pages (0/2) ...
+ ✓ Generating static pages (2/2)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (pages)                                Size  First Load JS
+┌ ƒ /                                     1.39 kB          96 kB
+├   /_app                                     0 B        92.5 kB
+├ ○ /404                                    190 B        92.7 kB
+├ ƒ /graph                                  959 B        95.6 kB
+├ ƒ /plan                                 1.09 kB          95.7 kB
+├ ƒ /settings                             3.42 kB        98.1 kB
+└ ƒ /triage                                1.4 kB          96 kB
++ First Load JS shared by all             94.2 kB
+  ├ chunks/framework-b8ed9b642a1d405a.js  57.5 kB
+  ├ chunks/main-10ebce917856f9f4.js       33.9 kB
+  └ other shared chunks (total)           2.79 kB
+```
+
+## Test Output
+```
+$ bun run test
+ RUN  v3.0.8 /home/agent/pratc/.worktrees/v0.1-remediation/web
+
+ ✓ src/__tests__/lib/api.test.ts (12 tests) 18ms
+ ✓ src/components/Layout.test.tsx (1 test) 96ms
+ ✓ src/components/Navigation.test.tsx (1 test) 123ms
+ ✓ src/components/SyncStatusPanel.test.tsx (15 tests) 406ms
+ ✓ src/__tests__/pages/settings.test.tsx (9 tests) 1222ms
+
+ Test Files  5 passed (5)
+      Tests  38 passed (38)
+```
+
+## Commit
+```
+[v0.1-remediation de01ac7] fix(web): align settings api exports and compile contracts
+ 3 files changed, 300 insertions(+), 3 deletions(-)
+ create mode 100644 web/src/__tests__/lib/api.test.ts
+ rename web/src/{ => __tests__}/pages/settings.test.tsx (98%)
+```
+
+## Verification
+- [x] `bun run build` exits with code 0
+- [x] `bun run test` passes all 38 tests
+- [x] No TypeScript errors in modified files
+- [x] Settings page imports resolve correctly

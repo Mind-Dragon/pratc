@@ -190,6 +190,290 @@ func TestRateLimitExceededReturnsDescriptiveError(t *testing.T) {
 	}
 }
 
+func TestRateLimitRetryCeilingEnforced(t *testing.T) {
+	t.Parallel()
+
+	var callCount int
+	var mu sync.Mutex
+
+	client := NewClient(Config{
+		BaseURL: "https://example.test",
+		HTTPClient: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			mu.Lock()
+			callCount++
+			mu.Unlock()
+			// Always return 403 to trigger retries
+			return &http.Response{
+				StatusCode: http.StatusForbidden,
+				Header: http.Header{
+					"Retry-After": []string{"1"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"message":"rate limited"}`)),
+			}, nil
+		}),
+		MaxSecondaryRetries: 3,
+		Sleep: func(time.Duration) {
+			// Skip actual sleep in tests
+		},
+	})
+
+	_, err := client.FetchPullRequests(context.Background(), "owner/repo", PullRequestListOptions{})
+	if err == nil {
+		t.Fatal("expected error after max retries")
+	}
+
+	mu.Lock()
+	actualCalls := callCount
+	mu.Unlock()
+
+	// Should be called maxSecondaryRetries + 1 times (initial + retries)
+	expectedCalls := 4 // 0, 1, 2, 3 attempts
+	if actualCalls != expectedCalls {
+		t.Fatalf("expected %d calls (initial + %d retries), got %d", expectedCalls, 3, actualCalls)
+	}
+}
+
+func TestRateLimitExponentialBackoffWithJitter(t *testing.T) {
+	t.Parallel()
+
+	var sleepDurations []time.Duration
+	var mu sync.Mutex
+	var callCount int
+
+	client := NewClient(Config{
+		BaseURL: "https://example.test",
+		HTTPClient: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			mu.Lock()
+			callCount++
+			attempt := callCount
+			mu.Unlock()
+
+			// Return 403 for first 3 attempts, success on 4th
+			if attempt < 4 {
+				return &http.Response{
+					StatusCode: http.StatusForbidden,
+					Header: http.Header{
+						"Retry-After": []string{fmt.Sprintf("%d", attempt)}, // 1s, 2s, 3s
+					},
+					Body: io.NopCloser(strings.NewReader(`{"message":"rate limited"}`)),
+				}, nil
+			}
+			return jsonResponse(t, http.StatusOK, map[string]string{"Content-Type": "application/json"}, map[string]any{
+				"data": map[string]any{
+					"repository": map[string]any{
+						"pullRequests": map[string]any{
+							"pageInfo": map[string]any{"hasNextPage": false, "endCursor": nil},
+							"nodes":    []map[string]any{},
+						},
+					},
+				},
+			})
+		}),
+		MaxSecondaryRetries: 5,
+		Sleep: func(d time.Duration) {
+			mu.Lock()
+			sleepDurations = append(sleepDurations, d)
+			mu.Unlock()
+		},
+	})
+
+	_, err := client.FetchPullRequests(context.Background(), "owner/repo", PullRequestListOptions{})
+	if err != nil {
+		t.Fatalf("expected success after retries, got %v", err)
+	}
+
+	mu.Lock()
+	copies := make([]time.Duration, len(sleepDurations))
+	copy(copies, sleepDurations)
+	mu.Unlock()
+
+	if len(copies) != 3 {
+		t.Fatalf("expected 3 sleep calls (after attempts 0, 1, 2), got %d", len(copies))
+	}
+
+	// Verify exponential backoff: each sleep should be >= previous (with some variance for jitter)
+	// The Retry-After header specifies 1s, 2s, 3s respectively
+	// With jitter, actual sleep = baseDelay + random jitter
+	for i := 1; i < len(copies); i++ {
+		if copies[i] < copies[i-1] {
+			t.Errorf("expected non-decreasing backoff durations, got %v then %v", copies[i-1], copies[i])
+		}
+	}
+
+	// First sleep should be at least 1 second (from Retry-After: 1)
+	if copies[0] < 1*time.Second {
+		t.Errorf("expected first backoff >= 1s, got %v", copies[0])
+	}
+}
+
+func TestReserveBudgetPauseBehavior(t *testing.T) {
+	t.Parallel()
+
+	var sleepDurations []time.Duration
+	var mu sync.Mutex
+	futureReset := time.Now().Add(5 * time.Second).Unix()
+
+	client := NewClient(Config{
+		BaseURL: "https://example.test",
+		HTTPClient: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			return jsonResponse(t, http.StatusOK, map[string]string{
+				"Content-Type":          "application/json",
+				"X-RateLimit-Remaining": "5", // Below default reserve of 200
+				"X-RateLimit-Reset":     fmt.Sprintf("%d", futureReset),
+			}, map[string]any{
+				"data": map[string]any{
+					"repository": map[string]any{
+						"pullRequests": map[string]any{
+							"pageInfo": map[string]any{"hasNextPage": false, "endCursor": nil},
+							"nodes":    []map[string]any{},
+						},
+					},
+				},
+			})
+		}),
+		ReserveRequests: 100, // remaining (5) < reserve (100), should trigger pause
+		Sleep: func(d time.Duration) {
+			mu.Lock()
+			sleepDurations = append(sleepDurations, d)
+			mu.Unlock()
+		},
+	})
+
+	_, err := client.FetchPullRequests(context.Background(), "owner/repo", PullRequestListOptions{})
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+
+	mu.Lock()
+	copies := make([]time.Duration, len(sleepDurations))
+	copy(copies, sleepDurations)
+	mu.Unlock()
+
+	if len(copies) == 0 {
+		t.Fatal("expected at least one pause for reserve budget, got none")
+	}
+
+	// Should have slept until reset (approximately 5 seconds)
+	// Allow some tolerance for test execution time
+	if copies[0] < 4*time.Second {
+		t.Errorf("expected pause until reset (~5s), got %v", copies[0])
+	}
+}
+
+func TestRateLimitDeterministicTerminalError(t *testing.T) {
+	t.Parallel()
+
+	var callCount int
+	var mu sync.Mutex
+
+	client := NewClient(Config{
+		BaseURL: "https://example.test",
+		HTTPClient: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			mu.Lock()
+			callCount++
+			mu.Unlock()
+			return &http.Response{
+				StatusCode: http.StatusForbidden,
+				Header: http.Header{
+					"Retry-After": []string{"2"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"message":"secondary rate limit exceeded"}`)),
+			}, nil
+		}),
+		MaxSecondaryRetries: 2,
+		Sleep: func(time.Duration) {
+			// Skip actual sleep
+		},
+	})
+
+	_, err := client.FetchPullRequests(context.Background(), "owner/repo", PullRequestListOptions{})
+
+	// Verify error is returned and is descriptive
+	if err == nil {
+		t.Fatal("expected terminal error after max retries")
+	}
+
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "rate limit") {
+		t.Fatalf("expected 'rate limit' in error message, got %q", errMsg)
+	}
+	if !strings.Contains(errMsg, "retry after") {
+		t.Fatalf("expected 'retry after' in error message, got %q", errMsg)
+	}
+
+	// Verify exact number of calls
+	mu.Lock()
+	actualCalls := callCount
+	mu.Unlock()
+
+	expectedCalls := 3 // 0, 1, 2 attempts (maxSecondaryRetries + 1)
+	if actualCalls != expectedCalls {
+		t.Fatalf("expected exactly %d calls, got %d", expectedCalls, actualCalls)
+	}
+}
+
+func TestRateLimitJitterVariance(t *testing.T) {
+	t.Parallel()
+
+	var sleepDurations []time.Duration
+	var mu sync.Mutex
+	attempts := 0
+
+	// Test that jitter introduces variance by using a fixed base delay
+	client := NewClient(Config{
+		BaseURL: "https://example.test",
+		HTTPClient: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			attempts++
+			if attempts < 3 {
+				return &http.Response{
+					StatusCode: http.StatusForbidden,
+					Header: http.Header{
+						"Retry-After": []string{"2"}, // Fixed 2 second base
+					},
+					Body: io.NopCloser(strings.NewReader(`{"message":"rate limited"}`)),
+				}, nil
+			}
+			return jsonResponse(t, http.StatusOK, map[string]string{"Content-Type": "application/json"}, map[string]any{
+				"data": map[string]any{
+					"repository": map[string]any{
+						"pullRequests": map[string]any{
+							"pageInfo": map[string]any{"hasNextPage": false, "endCursor": nil},
+							"nodes":    []map[string]any{},
+						},
+					},
+				},
+			})
+		}),
+		MaxSecondaryRetries: 5,
+		Sleep: func(d time.Duration) {
+			mu.Lock()
+			sleepDurations = append(sleepDurations, d)
+			mu.Unlock()
+		},
+	})
+
+	_, err := client.FetchPullRequests(context.Background(), "owner/repo", PullRequestListOptions{})
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+
+	mu.Lock()
+	copies := make([]time.Duration, len(sleepDurations))
+	copy(copies, sleepDurations)
+	mu.Unlock()
+
+	if len(copies) < 2 {
+		t.Fatalf("expected at least 2 sleep calls, got %d", len(copies))
+	}
+
+	// All sleeps should be >= base delay (2s) due to jitter adding positive variance
+	for i, d := range copies {
+		if d < 2*time.Second {
+			t.Errorf("sleep[%d] should be >= 2s (base delay), got %v", i, d)
+		}
+	}
+}
+
 func TestFetchPullRequestFiles(t *testing.T) {
 	t.Parallel()
 

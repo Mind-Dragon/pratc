@@ -42,8 +42,9 @@ type TierResult struct {
 }
 
 type SearchResult struct {
-	Tiers []TierResult
-	Best  CandidateResult
+	Tiers     []TierResult
+	Best      CandidateResult
+	Telemetry types.OperationTelemetry
 }
 
 func filterPoolForTier(name string, pool []types.PR) []types.PR {

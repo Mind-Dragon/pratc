@@ -2,7 +2,7 @@ services:
   pratc-cli:
     profiles:
       - local-ml
-      - openrouter-light
+      - minimax-light
     build:
       context: .
       dockerfile: Dockerfile.cli
@@ -24,7 +24,7 @@ services:
   pratc-web:
     profiles:
       - local-ml
-      - openrouter-light
+      - minimax-light
     build:
       context: .
       dockerfile: Dockerfile.web

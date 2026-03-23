@@ -1,0 +1,24 @@
+Scenario: Failure path malformed pagination flag
+Tool: Bash
+Steps: Run `pratc audit --limit=-1`
+Expected: Exit code 2 with flag validation error
+Evidence:
+
+Command: PRATC_DB_PATH=~/.pratc/pratc.db ./bin/pratc audit --limit=-1
+Exit Code: 2
+Output:
+Error: invalid argument: limit must be >= 0
+Usage:
+  pratc audit [flags]
+
+Flags:
+      --format string   Output format: json (default "json")
+  -h, --help            help for audit
+      --limit int       Maximum number of entries to return (0 = all) (default 20)
+
+invalid argument: limit must be >= 0
+
+Notes:
+- Command exits with code 2 (invalid argument)
+- Error message contains "invalid argument" which triggers flag validation error detection
+- Usage help is displayed showing the correct flag format

@@ -1,32 +1,20 @@
 task id: 3
-title: GitHub API client + SQLite cache (TDD)
-status: code_complete
-owner: Builder 2
-branch/worktree: current branch
+title: Add No-Progress Tracking Snapshot
+status: done
+owner: codex-overseer
+branch/worktree: feat/openfang-status-activity-b1
 dependencies:
   - 1
 changed files:
-  - internal/cache/models.go
-  - internal/cache/sqlite.go
-  - internal/cache/sqlite_test.go
-  - internal/github/client.go
-  - internal/github/queries.go
-  - internal/github/client_test.go
-  - go.mod
-  - go.sum
+  - scripts/openfang-status.sh
 evidence paths:
-  - .sisyphus/evidence/task-3-cache-tests.txt
-  - .sisyphus/evidence/task-3-rate-limit-tests.txt
+  - .sisyphus/evidence/task-3-progress-reset.txt
+  - .sisyphus/evidence/task-3-progress-corruption.txt
 tests run:
-  - go test -race -v ./internal/cache/...
-  - go test -race -v ./internal/github/...
+  - seeded snapshot mismatch + render + inspect
+  - corrupted snapshot + render + inspect
 merge commit:
 residual risks:
-  - Not yet merged by coordinator; full mainline verification still pending
-  - GraphQL query uses client-side updated-at filtering until server-side search integration is added
-
+  - Progress tracking is local to host filesystem and not shared across machines.
 notes:
-  - Critical path: T0 → T1 → T3 → T13 → T14 → T18 → T19 → T20
-  - Task 3 is the foundational block for CLI commands
-  - Started implementation planning on 2026-03-12 after coordinator assignment confirmation
-  - Completed implementation and package-level validation on 2026-03-12
+  - Added `/home/agent/.openfang/status-progress.json` state tracking and safe recovery logic.

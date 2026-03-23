@@ -4,7 +4,9 @@ import { useRouter } from "next/router";
 
 const navItems = [
   { href: "/", label: "Dashboard" },
-  { href: "/triage", label: "Triage" }
+  { href: "/inbox", label: "Inbox" },
+  { href: "/graph", label: "Graph" },
+  { href: "/plan", label: "Plan" }
 ];
 
 export default function Navigation() {

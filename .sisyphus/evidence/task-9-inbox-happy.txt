@@ -1,0 +1,41 @@
+# Task 9 Evidence: /inbox Route - Happy Path
+
+## Summary
+Added canonical `/inbox` route that renders the existing triage experience.
+
+## Verification Commands
+
+### 1. Build verification - both routes present
+```
+$ bun run build
+...
+├ ƒ /inbox                                1.47 kB        96.1 kB
+└ ƒ /triage                               1.46 kB        96.1 kB
+...
+```
+
+### 2. Test verification - all tests pass
+```
+$ bun run test
+...
+ ✓ src/components/Navigation.test.tsx (1 test) 86ms
+ Test Files  5 passed (5)
+      Tests  38 passed (38)
+...
+```
+
+## Files Changed
+- web/src/components/TriageView.tsx (new) - Extracted shared triage component
+- web/src/pages/inbox.tsx (new) - New /inbox route using TriageView
+- web/src/pages/triage.tsx (modified) - Now uses shared TriageView
+- web/src/components/Navigation.tsx (modified) - Added Inbox link
+- web/src/components/Navigation.test.tsx (modified) - Updated test for Inbox
+
+## Commit
+9040d72 feat(web): add /inbox route with /triage compatibility
+
+## Notes
+- `/inbox` is now the canonical route for the triage inbox
+- `/triage` remains functional using the same TriageView component
+- Navigation shows "Inbox" instead of "Triage"
+- All 38 tests pass

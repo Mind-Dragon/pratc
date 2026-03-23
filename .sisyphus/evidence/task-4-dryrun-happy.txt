@@ -1,0 +1,40 @@
+# Task 4: Dry-Run Default Semantics - Evidence
+
+## Implementation Summary
+- Added `--dry-run` flag to plan command with default `true`
+- Added `DryRun` field to `PlanResponse` type
+- Wired dry-run through service.Plan() method
+- Added audit logging for plan action intents
+
+## Test Results
+
+### CLI Tests
+```
+$ ./bin/pratc plan --repo=opencode-ai/opencode --target=5 --dry-run --format=json
+```
+Output includes `"dry_run": true` in JSON response.
+
+### Go Tests
+```
+go test -race -v ./internal/cmd/... 
+PASS - TestPlanDryRunAPIQueryDefaultsTrue
+PASS - TestPlanDryRunAPIQueryExplicitFalse
+PASS - TestPlanResponseIncludesDryRunField
+PASS - TestHandleSettingsGet
+PASS - TestHandleSettingsPostValidateOnly
+PASS - TestHandleSettingsPostPersists
+PASS - TestHandleExportAndImportSettings
+PASS - TestHandleRepoActionStartsSyncJob
+PASS - TestHandleRepoActionStreamsSyncEvents
+PASS - TestParseRepoActionPathSupportsNestedActions
+```
+
+## Verification
+- [x] `--dry-run` flag is present with default `true`
+- [x] Plan response includes `dry_run` field
+- [x] CLI outputs valid JSON with dry_run indication
+- [x] All tests pass
+
+## Commit
+Message: `feat(safety): enforce dry-run defaults for v0.1 action flows`
+Files: `internal/types/models.go`, `internal/cmd/root.go`, `internal/app/service.go`, `internal/cache/audit_store.go`

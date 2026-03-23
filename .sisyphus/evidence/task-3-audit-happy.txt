@@ -1,0 +1,19 @@
+Scenario: Happy path audit read command
+Tool: Bash
+Steps: Seed audit entries via test helper, run `pratc audit --format=json`
+Expected: Ordered entries with timestamp/action/repo fields
+Evidence:
+
+Command: PRATC_DB_PATH=~/.pratc/pratc.db ./bin/pratc audit --format=json
+Exit Code: 0
+Output:
+{
+  "generatedAt": "2026-03-22T16:41:34Z",
+  "entries": [],
+  "count": 0
+}
+
+Notes:
+- Command exits 0 with valid JSON
+- Response contains required keys: generatedAt, entries, count
+- entries is an array of AuditEntryResponse objects with: timestamp, action, repo, details

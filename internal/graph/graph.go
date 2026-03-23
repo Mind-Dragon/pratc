@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/types"
 )
@@ -18,12 +19,18 @@ const (
 var errDependencyCycle = errors.New("dependency cycle detected")
 
 type Graph struct {
-	Repo  string
-	Nodes []types.GraphNode
-	Edges []types.GraphEdge
+	Repo      string
+	Nodes     []types.GraphNode
+	Edges     []types.GraphEdge
+	Telemetry types.OperationTelemetry
 }
 
 func Build(repo string, prs []types.PR) Graph {
+	return BuildWithProgress(repo, prs, nil)
+}
+
+func BuildWithProgress(repo string, prs []types.PR, progress func(processed int, total int)) Graph {
+	buildStart := time.Now()
 	sortedPRs := slices.Clone(prs)
 	sort.Slice(sortedPRs, func(i, j int) bool {
 		return sortedPRs[i].Number < sortedPRs[j].Number
@@ -32,6 +39,7 @@ func Build(repo string, prs []types.PR) Graph {
 	nodes := make([]types.GraphNode, 0, len(sortedPRs))
 	edges := make([]types.GraphEdge, 0)
 	seenEdges := make(map[string]struct{})
+	pairsEvaluated := 0
 
 	for _, pr := range sortedPRs {
 		nodes = append(nodes, types.GraphNode{
@@ -43,8 +51,12 @@ func Build(repo string, prs []types.PR) Graph {
 	}
 
 	for i, left := range sortedPRs {
+		if progress != nil {
+			progress(i+1, len(sortedPRs))
+		}
 		for j := i + 1; j < len(sortedPRs); j++ {
 			right := sortedPRs[j]
+			pairsEvaluated++
 
 			if left.HeadBranch != "" && right.BaseBranch == left.HeadBranch {
 				appendEdge(&edges, seenEdges, types.GraphEdge{
@@ -89,6 +101,20 @@ func Build(repo string, prs []types.PR) Graph {
 		Repo:  repo,
 		Nodes: nodes,
 		Edges: edges,
+		Telemetry: types.OperationTelemetry{
+			PoolStrategy:    "graph_pairwise_scan",
+			PoolSizeBefore:  len(sortedPRs),
+			PoolSizeAfter:   len(sortedPRs),
+			GraphDeltaEdges: len(edges),
+			DecayPolicy:     "none",
+			PairwiseShards:  estimatePairwiseShards(len(sortedPRs)),
+			StageLatenciesMS: map[string]int{
+				"build_total_ms": int(time.Since(buildStart).Milliseconds()),
+			},
+			StageDropCounts: map[string]int{
+				"pairs_without_edges": pairsEvaluated - len(edges),
+			},
+		},
 	}
 }
 
@@ -237,4 +263,16 @@ func intersectFiles(left, right []string) []string {
 func escapeDOT(value string) string {
 	value = strings.ReplaceAll(value, `\`, `\\`)
 	return strings.ReplaceAll(value, `"`, `\"`)
+}
+
+func estimatePairwiseShards(poolSize int) int {
+	if poolSize <= 0 {
+		return 1
+	}
+	const shardSize = 256
+	shards := (poolSize + shardSize - 1) / shardSize
+	if shards < 1 {
+		return 1
+	}
+	return shards
 }

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "title": "PR Staleness Distribution",
+  "width": 600,
+  "height": 350,
+  "layer": [
+    {
+      "mark": "bar",
+      "encoding": {
+        "x": {
+          "field": "age_bucket",
+          "type": "nominal",
+          "title": "PR Age",
+          "sort": ["<1d", "1-7d", "7-30d", "30-90d", "90d+"],
+          "axis": {"labelAngle": 0}
+        },
+        "y": {
+          "field": "pr_count",
+          "type": "quantitative",
+          "title": "PR Count"
+        },
+        "color": {
+          "field": "status",
+          "type": "nominal",
+          "title": "Status",
+          "scale": {
+            "domain": ["mergeable", "conflicting"],
+            "range": ["#10b981", "#ef4444"]
+          },
+          "legend": {"orient": "top", "title": null}
+        },
+        "xOffset": {
+          "field": "status",
+          "type": "nominal",
+          "bandPosition": 0.5
+        },
+        "tooltip": [
+          {"field": "age_bucket", "type": "nominal", "title": "Age"},
+          {"field": "status", "type": "nominal", "title": "Status"},
+          {"field": "pr_count", "type": "quantitative", "title": "Count"}
+        ]
+      }
+    },
+    {
+      "mark": {
+        "type": "line",
+        "strokeDash": [4, 4],
+        "strokeWidth": 2,
+        "color": "#f59e0b"
+      },
+      "transform": [
+        {
+          "calculate": "exp(-0.693 * (toNumber(datum.age_index) + 0.5) / 2.5)",
+          "as": "decay_curve"
+        }
+      ],
+      "encoding": {
+        "x": {
+          "field": "age_bucket",
+          "type": "nominal",
+          "sort": ["<1d", "1-7d", "7-30d", "30-90d", "90d+"],
+          "title": null,
+          "axis": {"labels": false}
+        },
+        "y": {
+          "field": "decay_curve",
+          "type": "quantitative",
+          "title": "Decay Curve",
+          "scale": {"domain": [0, 1]},
+          "axis": {"orient": "right", "title": "Time Decay"}
+        }
+      }
+    }
+  ]
+}

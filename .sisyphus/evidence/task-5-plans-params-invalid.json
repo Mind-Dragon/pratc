@@ -1,0 +1,208 @@
+{
+  "test_suite": "TestHandlePlanInvalidParams",
+  "description": "Query parameter validation for /api/repos/:owner/:repo/plans endpoint - invalid parameter scenarios",
+  "test_results": {
+    "total_tests": 17,
+    "passed": 17,
+    "failed": 0
+  },
+  "test_cases": [
+    {
+      "name": "invalid_target_negative",
+      "query": "?target=-5",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "target",
+      "description": "Negative target value rejected"
+    },
+    {
+      "name": "invalid_target_zero",
+      "query": "?target=0",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "target",
+      "description": "Zero target value rejected"
+    },
+    {
+      "name": "invalid_target_non_numeric",
+      "query": "?target=abc",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "target",
+      "description": "Non-numeric target value rejected"
+    },
+    {
+      "name": "invalid_exclude_conflicts",
+      "query": "?exclude_conflicts=yes",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "exclude_conflicts",
+      "description": "Invalid boolean value (yes) rejected"
+    },
+    {
+      "name": "invalid_exclude_conflicts_non_boolean",
+      "query": "?exclude_conflicts=123",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "exclude_conflicts",
+      "description": "Non-boolean exclude_conflicts rejected"
+    },
+    {
+      "name": "invalid_stale_score_threshold_negative",
+      "query": "?stale_score_threshold=-0.5",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "stale_score_threshold",
+      "description": "Negative stale_score_threshold rejected"
+    },
+    {
+      "name": "invalid_stale_score_threshold_above_one",
+      "query": "?stale_score_threshold=1.5",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "stale_score_threshold",
+      "description": "stale_score_threshold > 1 rejected"
+    },
+    {
+      "name": "invalid_stale_score_threshold_non_numeric",
+      "query": "?stale_score_threshold=high",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "stale_score_threshold",
+      "description": "Non-numeric stale_score_threshold rejected"
+    },
+    {
+      "name": "invalid_candidate_pool_cap_zero",
+      "query": "?candidate_pool_cap=0",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "candidate_pool_cap",
+      "description": "Zero candidate_pool_cap rejected"
+    },
+    {
+      "name": "invalid_candidate_pool_cap_above_500",
+      "query": "?candidate_pool_cap=501",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "candidate_pool_cap",
+      "description": "candidate_pool_cap > 500 rejected"
+    },
+    {
+      "name": "invalid_candidate_pool_cap_negative",
+      "query": "?candidate_pool_cap=-10",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "candidate_pool_cap",
+      "description": "Negative candidate_pool_cap rejected"
+    },
+    {
+      "name": "invalid_candidate_pool_cap_non_numeric",
+      "query": "?candidate_pool_cap=many",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "candidate_pool_cap",
+      "description": "Non-numeric candidate_pool_cap rejected"
+    },
+    {
+      "name": "invalid_score_min_negative",
+      "query": "?score_min=-10",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "score_min",
+      "description": "Negative score_min rejected"
+    },
+    {
+      "name": "invalid_score_min_above_100",
+      "query": "?score_min=101",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "score_min",
+      "description": "score_min > 100 rejected"
+    },
+    {
+      "name": "invalid_score_min_non_numeric",
+      "query": "?score_min=high",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "score_min",
+      "description": "Non-numeric score_min rejected"
+    },
+    {
+      "name": "invalid_mode",
+      "query": "?mode=invalid",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "mode",
+      "description": "Invalid mode value rejected"
+    },
+    {
+      "name": "multiple_invalid_params",
+      "query": "?target=-1&stale_score_threshold=2&candidate_pool_cap=1000",
+      "expected_status": 400,
+      "actual_status": 400,
+      "result": "PASS",
+      "error_contains": "target",
+      "description": "Multiple invalid params return combined error"
+    }
+  ],
+  "error_response_format": {
+    "content_type": "application/json",
+    "structure": {
+      "error": "string - field-specific error messages joined by '; '"
+    },
+    "example": "{\"error\": \"target must be a positive integer; stale_score_threshold must be between 0 and 1\"}"
+  },
+  "validation_summary": {
+    "target": {
+      "rule": "int > 0",
+      "error_message": "target must be a positive integer"
+    },
+    "exclude_conflicts": {
+      "rule": "bool (true/false)",
+      "error_message": "exclude_conflicts must be a boolean (true/false)"
+    },
+    "stale_score_threshold": {
+      "rule": "float 0..1",
+      "error_messages": [
+        "stale_score_threshold must be a number",
+        "stale_score_threshold must be between 0 and 1"
+      ]
+    },
+    "candidate_pool_cap": {
+      "rule": "int 1..500",
+      "error_messages": [
+        "candidate_pool_cap must be an integer",
+        "candidate_pool_cap must be between 1 and 500"
+      ]
+    },
+    "score_min": {
+      "rule": "float 0..100",
+      "error_messages": [
+        "score_min must be a number",
+        "score_min must be between 0 and 100"
+      ]
+    },
+    "mode": {
+      "rule": "enum: combination|permutation|with_replacement",
+      "error_message": "invalid mode"
+    }
+  },
+  "test_command": "go test -race -v ./internal/cmd/...",
+  "generated_at": "2026-03-22T00:00:00Z"
+}

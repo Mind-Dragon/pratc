@@ -1,0 +1,36 @@
+{
+  "timestamp": "2026-03-22T20:58:20Z",
+  "hostname": "heimdall2",
+  "repository": "opencode-ai/opencode",
+  "fixture_repository": "opencode-ai/opencode",
+  "target_prs": 20,
+  "go_version": "go1.26.1-X:nodwarf5",
+  "benchmark_type": "slo_warm_cache",
+  "commands": {
+    "analyze": {
+      "duration_seconds": 0.150,
+      "slo_threshold_seconds": 300,
+      "exit_code": 0,
+      "status": "PASS"
+    },
+    "cluster": {
+      "duration_seconds": 0.059,
+      "slo_threshold_seconds": 180,
+      "exit_code": 0,
+      "status": "PASS"
+    },
+    "graph": {
+      "duration_seconds": 0.031,
+      "slo_threshold_seconds": 120,
+      "exit_code": 0,
+      "status": "PASS"
+    },
+    "plan": {
+      "duration_seconds": 0.016,
+      "slo_threshold_seconds": 90,
+      "exit_code": 0,
+      "status": "PASS"
+    }
+  },
+  "overall_status": "PASS"
+}

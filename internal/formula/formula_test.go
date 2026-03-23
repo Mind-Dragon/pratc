@@ -220,6 +220,39 @@ func TestSearchRejectsNonPreFilteredInput(t *testing.T) {
 	}
 }
 
+func TestSearchIncludesTelemetry(t *testing.T) {
+	engine := NewEngine(Config{
+		Mode:               ModeCombination,
+		MaxPoolSize:        10,
+		RequirePreFiltered: true,
+		Tiers:              []TierConfig{{Name: TierQuick, MaxCandidates: 2}},
+	})
+
+	pool := fixturePool("A", "B", "C")
+	result, err := engine.Search(SearchInput{
+		Pool:        pool,
+		Target:      2,
+		PreFiltered: true,
+		Now:         time.Date(2026, 3, 12, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+
+	if result.Telemetry.PoolSizeBefore != len(pool) {
+		t.Fatalf("pool_size_before = %d, want %d", result.Telemetry.PoolSizeBefore, len(pool))
+	}
+	if result.Telemetry.PoolSizeAfter <= 0 {
+		t.Fatalf("pool_size_after = %d, want > 0", result.Telemetry.PoolSizeAfter)
+	}
+	if result.Telemetry.PairwiseShards <= 0 {
+		t.Fatalf("pairwise_shards = %d, want > 0", result.Telemetry.PairwiseShards)
+	}
+	if len(result.Telemetry.StageLatenciesMS) == 0 {
+		t.Fatal("expected stage latency telemetry")
+	}
+}
+
 func TestSearchReturnsBestCandidate(t *testing.T) {
 	engine := NewEngine(Config{
 		Mode:               ModeCombination,

@@ -5,6 +5,8 @@ import (
 	"math/big"
 	"strconv"
 	"time"
+
+	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
 var (
@@ -38,6 +40,16 @@ func (e Engine) Search(input SearchInput) (SearchResult, error) {
 	}
 
 	result := SearchResult{Tiers: make([]TierResult, 0, len(e.config.Tiers))}
+	result.Telemetry = types.OperationTelemetry{
+		PoolStrategy:     "formula_tier_search",
+		PoolSizeBefore:   len(input.Pool),
+		PoolSizeAfter:    len(input.Pool),
+		DecayPolicy:      "none",
+		PairwiseShards:   estimatePairwiseShards(len(input.Pool)),
+		StageLatenciesMS: map[string]int{},
+		StageDropCounts:  map[string]int{},
+	}
+	searchStart := time.Now()
 	bestSet := false
 
 	for _, tier := range e.config.Tiers {
@@ -46,11 +58,13 @@ func (e Engine) Search(input SearchInput) (SearchResult, error) {
 			tierMode = e.config.Mode
 		}
 
+		tierStart := time.Now()
 		pool := filterPoolForTier(tier.Name, input.Pool)
 		tierResult := TierResult{
 			Name:     tier.Name,
 			PoolSize: len(pool),
 		}
+		result.Telemetry.StageDropCounts["tier_"+tier.Name] = len(input.Pool) - len(pool)
 
 		pickCount := input.Target
 		if e.config.PickCount > 0 {
@@ -61,12 +75,14 @@ func (e Engine) Search(input SearchInput) (SearchResult, error) {
 		}
 
 		if len(pool) == 0 || pickCount == 0 {
+			result.Telemetry.StageLatenciesMS["tier_"+tier.Name+"_ms"] = int(time.Since(tierStart).Milliseconds())
 			result.Tiers = append(result.Tiers, tierResult)
 			continue
 		}
 
 		total := Count(tierMode, len(pool), pickCount)
 		if total.Sign() == 0 {
+			result.Telemetry.StageLatenciesMS["tier_"+tier.Name+"_ms"] = int(time.Since(tierStart).Milliseconds())
 			result.Tiers = append(result.Tiers, tierResult)
 			continue
 		}
@@ -104,13 +120,16 @@ func (e Engine) Search(input SearchInput) (SearchResult, error) {
 			}
 		}
 
+		result.Telemetry.StageLatenciesMS["tier_"+tier.Name+"_ms"] = int(time.Since(tierStart).Milliseconds())
 		result.Tiers = append(result.Tiers, tierResult)
 	}
 
+	result.Telemetry.StageLatenciesMS["search_total_ms"] = int(time.Since(searchStart).Milliseconds())
 	if !bestSet {
 		return SearchResult{}, ErrNoCandidates
 	}
 
+	result.Telemetry.PoolSizeAfter = len(result.Best.Selected)
 	return result, nil
 }
 
@@ -121,4 +140,16 @@ func minBigInt(value *big.Int, max int) int {
 	}
 
 	return max
+}
+
+func estimatePairwiseShards(poolSize int) int {
+	if poolSize <= 0 {
+		return 1
+	}
+	const shardSize = 256
+	shards := (poolSize + shardSize - 1) / shardSize
+	if shards < 1 {
+		return 1
+	}
+	return shards
 }

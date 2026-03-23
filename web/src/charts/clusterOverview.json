@@ -1,0 +1,51 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "title": "PR Cluster Overview",
+  "width": 600,
+  "height": 400,
+  "layer": [
+    {
+      "mark": {
+        "type": "circle",
+        "opacity": 0.7,
+        "stroke": "#1a1a2e",
+        "strokeWidth": 1
+      },
+      "encoding": {
+        "x": {
+          "field": "size",
+          "type": "quantitative",
+          "title": "Cluster Size (PR count)",
+          "scale": {"zero": true}
+        },
+        "y": {
+          "field": "average_priority",
+          "type": "quantitative",
+          "title": "Average Priority Score",
+          "scale": {"zero": true}
+        },
+        "size": {
+          "field": "total_lines",
+          "type": "quantitative",
+          "title": "Total Lines Changed",
+          "scale": {"range": [100, 2000]}
+        },
+        "color": {
+          "field": "ci_pass_rate",
+          "type": "quantitative",
+          "title": "CI Pass Rate",
+          "scale": {
+            "scheme": "viridis",
+            "domain": [0, 1]
+          }
+        },
+        "tooltip": [
+          {"field": "cluster_id", "type": "nominal", "title": "Cluster ID"},
+          {"field": "size", "type": "quantitative", "title": "PR Count"},
+          {"field": "average_priority", "type": "quantitative", "title": "Avg Priority Score", "format": ".2f"},
+          {"field": "ci_pass_rate", "type": "quantitative", "title": "CI Pass Rate", "format": ".1%"}
+        ]
+      }
+    }
+  ]
+}

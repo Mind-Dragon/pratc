@@ -8,14 +8,18 @@
     "test": "vitest run --environment jsdom"
   },
   "dependencies": {
+    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-virtual": "^3.13.23",
     "next": "15.2.2",
     "react": "19.0.0",
-    "react-dom": "19.0.0"
+    "react-dom": "19.0.0",
+    "react-force-graph-2d": "^1.29.1"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "6.6.3",
     "@testing-library/react": "16.2.0",
     "@testing-library/user-event": "14.6.1",
+    "@types/d3": "^7.4.3",
     "@types/node": "22.13.10",
     "@types/react": "19.0.12",
     "@types/react-dom": "19.0.4",

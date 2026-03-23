@@ -1,0 +1,11 @@
+$ vitest run --environment jsdom src/__tests__/pages/graph.test.tsx
+
+ RUN  v3.0.8 /home/agent/pratc/.worktrees/v0.1-remediation/web
+
+ ✓ src/__tests__/pages/graph.test.tsx (10 tests) 205ms
+
+ Test Files  1 passed (1)
+      Tests  10 passed (10)
+   Start at  21:44:45
+   Duration  1.25s (transform 109ms, setup 0ms, collect 236ms, tests 205ms, environment 388ms, prepare 105ms)
+

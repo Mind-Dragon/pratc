@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"database/sql"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -8,6 +9,11 @@ import (
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/types"
+	_ "modernc.org/sqlite"
+)
+
+const (
+	supportedSchemaVersion = 2
 )
 
 func TestCacheUpsertAndQuery(t *testing.T) {
@@ -275,4 +281,445 @@ func mustParseTime(t *testing.T, value string) time.Time {
 		t.Fatalf("parse time %q: %v", value, err)
 	}
 	return parsed
+}
+
+func TestMigrationFreshInstall(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "fresh.db")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("open fresh store: %v", err)
+	}
+	defer store.Close()
+
+	var userVersion int
+	if err := store.db.QueryRow(`PRAGMA user_version;`).Scan(&userVersion); err != nil {
+		t.Fatalf("query user_version: %v", err)
+	}
+	if userVersion != supportedSchemaVersion {
+		t.Fatalf("expected user_version %d, got %d", supportedSchemaVersion, userVersion)
+	}
+
+	var version int
+	var name string
+	var appliedAt string
+	if err := store.db.QueryRow(`SELECT version, name, applied_at FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &name, &appliedAt); err != nil {
+		t.Fatalf("query schema_migrations: %v", err)
+	}
+	if version != 2 || name != "audit_log" {
+		t.Fatalf("expected version=2 name=audit_log, got version=%d name=%s", version, name)
+	}
+
+	requiredTables := []string{
+		"schema_migrations",
+		"pull_requests",
+		"pr_files",
+		"pr_reviews",
+		"ci_status",
+		"sync_jobs",
+		"sync_progress",
+		"merged_pr_index",
+		"audit_log",
+	}
+
+	for _, table := range requiredTables {
+		var exists string
+		if err := store.db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&exists); err != nil {
+			t.Fatalf("check table %s exists: %v", table, err)
+		}
+	}
+
+	pr := samplePR(1)
+	if err := store.UpsertPR(pr); err != nil {
+		t.Fatalf("upsert pr on fresh db: %v", err)
+	}
+
+	prs, err := store.ListPRs(PRFilter{Repo: "owner/repo"})
+	if err != nil {
+		t.Fatalf("list prs on fresh db: %v", err)
+	}
+	if len(prs) != 1 {
+		t.Fatalf("expected 1 pr on fresh db, got %d", len(prs))
+	}
+}
+
+func TestMigrationUpgradeFromNminus1(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "nminus1.db")
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open sqlite for n-1 setup: %v", err)
+	}
+
+	_, err = db.Exec(`
+		CREATE TABLE pull_requests (
+			id TEXT NOT NULL,
+			repo TEXT NOT NULL,
+			number INTEGER NOT NULL,
+			title TEXT NOT NULL,
+			body TEXT NOT NULL,
+			url TEXT NOT NULL,
+			author TEXT NOT NULL,
+			labels_json TEXT NOT NULL,
+			files_changed_json TEXT NOT NULL,
+			review_status TEXT NOT NULL,
+			ci_status TEXT NOT NULL,
+			mergeable TEXT NOT NULL,
+			base_branch TEXT NOT NULL,
+			head_branch TEXT NOT NULL,
+			cluster_id TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			is_draft INTEGER NOT NULL,
+			is_bot INTEGER NOT NULL,
+			additions INTEGER NOT NULL,
+			deletions INTEGER NOT NULL,
+			changed_files_count INTEGER NOT NULL,
+			PRIMARY KEY (repo, number)
+		)
+	`)
+	if err != nil {
+		db.Close()
+		t.Fatalf("create pre-migration schema: %v", err)
+	}
+	db.Close()
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("open store for n-1 upgrade: %v", err)
+	}
+	defer store.Close()
+
+	var userVersion int
+	if err := store.db.QueryRow(`PRAGMA user_version;`).Scan(&userVersion); err != nil {
+		t.Fatalf("query user_version after upgrade: %v", err)
+	}
+	if userVersion != supportedSchemaVersion {
+		t.Fatalf("expected user_version %d after n-1 upgrade, got %d", supportedSchemaVersion, userVersion)
+	}
+
+	var version int
+	var name string
+	if err := store.db.QueryRow(`SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &name); err != nil {
+		t.Fatalf("query schema_migrations after upgrade: %v", err)
+	}
+	if version != supportedSchemaVersion || name != "audit_log" {
+		t.Fatalf("expected migration version=%d name=audit_log, got version=%d name=%s", supportedSchemaVersion, version, name)
+	}
+
+	requiredTables := []string{
+		"schema_migrations",
+		"pull_requests",
+		"pr_files",
+		"pr_reviews",
+		"ci_status",
+		"sync_jobs",
+		"sync_progress",
+		"merged_pr_index",
+		"audit_log",
+	}
+
+	for _, table := range requiredTables {
+		var exists string
+		if err := store.db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&exists); err != nil {
+			t.Fatalf("check table %s exists after upgrade: %v", table, err)
+		}
+	}
+
+	pr := samplePR(42)
+	if err := store.UpsertPR(pr); err != nil {
+		t.Fatalf("upsert pr after n-1 upgrade: %v", err)
+	}
+
+	prs, err := store.ListPRs(PRFilter{Repo: "owner/repo"})
+	if err != nil {
+		t.Fatalf("list prs after n-1 upgrade: %v", err)
+	}
+	if len(prs) != 1 {
+		t.Fatalf("expected 1 pr after n-1 upgrade, got %d", len(prs))
+	}
+}
+
+func TestMigrationUpgradeFromNminus2(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "nminus2.db")
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open sqlite for n-2 setup: %v", err)
+	}
+
+	_, err = db.Exec(`
+		CREATE TABLE sync_progress (
+			repo TEXT PRIMARY KEY,
+			cursor TEXT NOT NULL DEFAULT '',
+			processed_prs INTEGER NOT NULL DEFAULT 0,
+			total_prs INTEGER NOT NULL DEFAULT 0,
+			last_sync_at TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		db.Close()
+		t.Fatalf("create n-2 schema: %v", err)
+	}
+
+	_, err = db.Exec(`INSERT INTO sync_progress (repo, cursor, processed_prs, total_prs, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		"test/repo", "cursor-123", 50, 100, "2026-03-12T10:00:00Z")
+	if err != nil {
+		db.Close()
+		t.Fatalf("insert n-2 test data: %v", err)
+	}
+
+	db.Close()
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("open store for n-2 upgrade: %v", err)
+	}
+	defer store.Close()
+
+	var userVersion int
+	if err := store.db.QueryRow(`PRAGMA user_version;`).Scan(&userVersion); err != nil {
+		t.Fatalf("query user_version after n-2 upgrade: %v", err)
+	}
+	if userVersion != supportedSchemaVersion {
+		t.Fatalf("expected user_version %d after n-2 upgrade, got %d", supportedSchemaVersion, userVersion)
+	}
+
+	var repo string
+	var cursor string
+	var processed int
+	if err := store.db.QueryRow(`SELECT repo, cursor, processed_prs FROM sync_progress WHERE repo = ?`, "test/repo").Scan(&repo, &cursor, &processed); err != nil {
+		t.Fatalf("query persisted sync data after n-2 upgrade: %v", err)
+	}
+	if cursor != "cursor-123" || processed != 50 {
+		t.Fatalf("sync data not preserved through upgrade: cursor=%s processed=%d", cursor, processed)
+	}
+
+	requiredTables := []string{
+		"schema_migrations",
+		"pull_requests",
+		"pr_files",
+		"pr_reviews",
+		"ci_status",
+		"sync_jobs",
+		"sync_progress",
+		"merged_pr_index",
+	}
+
+	for _, table := range requiredTables {
+		var exists string
+		if err := store.db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&exists); err != nil {
+			t.Fatalf("check table %s exists after n-2 upgrade: %v", table, err)
+		}
+	}
+
+	pr := samplePR(99)
+	if err := store.UpsertPR(pr); err != nil {
+		t.Fatalf("upsert pr after n-2 upgrade: %v", err)
+	}
+
+	prs, err := store.ListPRs(PRFilter{Repo: "owner/repo"})
+	if err != nil {
+		t.Fatalf("list prs after n-2 upgrade: %v", err)
+	}
+	if len(prs) != 1 {
+		t.Fatalf("expected 1 pr after n-2 upgrade, got %d", len(prs))
+	}
+}
+
+func TestMigrationFailFastOnFutureSchema(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "future.db")
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open sqlite for future setup: %v", err)
+	}
+
+	futureVersion := supportedSchemaVersion + 1
+	schema := []string{
+		`CREATE TABLE schema_migrations (
+			version INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			applied_at TEXT NOT NULL
+		)`,
+		`INSERT INTO schema_migrations (version, name, applied_at) VALUES (1, 'baseline', '2026-03-12T00:00:00Z')`,
+		fmt.Sprintf(`PRAGMA user_version = %d;`, futureVersion),
+		`CREATE TABLE pull_requests (
+			id TEXT NOT NULL,
+			repo TEXT NOT NULL,
+			number INTEGER NOT NULL,
+			title TEXT NOT NULL,
+			body TEXT NOT NULL,
+			url TEXT NOT NULL,
+			author TEXT NOT NULL,
+			labels_json TEXT NOT NULL,
+			files_changed_json TEXT NOT NULL,
+			review_status TEXT NOT NULL,
+			ci_status TEXT NOT NULL,
+			mergeable TEXT NOT NULL,
+			base_branch TEXT NOT NULL,
+			head_branch TEXT NOT NULL,
+			cluster_id TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			is_draft INTEGER NOT NULL,
+			is_bot INTEGER NOT NULL,
+			additions INTEGER NOT NULL,
+			deletions INTEGER NOT NULL,
+			changed_files_count INTEGER NOT NULL,
+			PRIMARY KEY (repo, number)
+		)`,
+	}
+
+	for _, stmt := range schema {
+		if _, err := db.Exec(stmt); err != nil {
+			db.Close()
+			t.Fatalf("create future schema: %v", err)
+		}
+	}
+	db.Close()
+
+	_, err = Open(path)
+	if err == nil {
+		t.Fatalf("expected error when opening future schema database, got nil")
+	}
+
+	errMsg := err.Error()
+	if !(contains(errMsg, "version") || contains(errMsg, "schema") || contains(errMsg, "unsupported") || contains(errMsg, "newer")) {
+		t.Fatalf("expected version incompatibility error, got: %v", err)
+	}
+
+	db2, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("verify db file integrity: %v", err)
+	}
+	defer db2.Close()
+
+	var actualVersion int
+	if err := db2.QueryRow(`PRAGMA user_version;`).Scan(&actualVersion); err != nil {
+		t.Fatalf("verify user_version preserved: %v", err)
+	}
+	if actualVersion != futureVersion {
+		t.Fatalf("expected user_version %d preserved, got %d", futureVersion, actualVersion)
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && findSubstring(s, substr))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+func TestMigrationIdempotency(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "idempotent.db")
+
+	store1, err := Open(path)
+	if err != nil {
+		t.Fatalf("open store1: %v", err)
+	}
+
+	pr := samplePR(1)
+	if err := store1.UpsertPR(pr); err != nil {
+		store1.Close()
+		t.Fatalf("upsert pr: %v", err)
+	}
+	store1.Close()
+
+	store2, err := Open(path)
+	if err != nil {
+		t.Fatalf("re-open store: %v", err)
+	}
+	defer store2.Close()
+
+	prs, err := store2.ListPRs(PRFilter{Repo: "owner/repo"})
+	if err != nil {
+		t.Fatalf("list prs after reopen: %v", err)
+	}
+	if len(prs) != 1 {
+		t.Fatalf("expected 1 pr after reopen, got %d", len(prs))
+	}
+
+	var count int
+	if err := store2.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
+		t.Fatalf("count migrations: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 migration records, got %d", count)
+	}
+
+	var userVersion int
+	if err := store2.db.QueryRow(`PRAGMA user_version;`).Scan(&userVersion); err != nil {
+		t.Fatalf("query user_version: %v", err)
+	}
+	if userVersion != supportedSchemaVersion {
+		t.Fatalf("expected user_version %d, got %d", supportedSchemaVersion, userVersion)
+	}
+}
+
+func TestMigrationSyncJobsPersistAcrossUpgrade(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "sync-persist.db")
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+
+	_, err = db.Exec(`
+		CREATE TABLE sync_jobs (
+			id TEXT PRIMARY KEY,
+			repo TEXT NOT NULL,
+			status TEXT NOT NULL,
+			error_message TEXT NOT NULL DEFAULT '',
+			last_sync_at TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		db.Close()
+		t.Fatalf("create sync_jobs: %v", err)
+	}
+
+	_, err = db.Exec(`
+		INSERT INTO sync_jobs (id, repo, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, "test-job-1", "test/repo", "in_progress", "2026-03-12T10:00:00Z", "2026-03-12T10:00:00Z")
+	if err != nil {
+		db.Close()
+		t.Fatalf("insert sync job: %v", err)
+	}
+	db.Close()
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("open store for upgrade: %v", err)
+	}
+	defer store.Close()
+
+	job, err := store.GetSyncJob("test-job-1")
+	if err != nil {
+		t.Fatalf("get sync job after upgrade: %v", err)
+	}
+	if job.Repo != "test/repo" {
+		t.Fatalf("expected repo test/repo, got %s", job.Repo)
+	}
 }

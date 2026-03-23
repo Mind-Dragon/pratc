@@ -1,0 +1,38 @@
+Task 7: SQLite Migration Path Tests - Future Schema Fail-Fast Evidence
+=====================================================================
+
+Date: 2026-03-23
+Test Command: go test -race -v ./internal/cache/... -run TestMigrationFailFastOnFutureSchema
+
+FUTURE SCHEMA TEST RESULT:
+- TestMigrationFailFastOnFutureSchema: PASS
+
+TEST SCENARIO:
+Database has user_version pragma set to a future version (999) that is
+newer than the maximum migration version supported by the current binary.
+
+EXPECTED BEHAVIOR:
+Startup should fail fast with a clear compatibility error indicating that
+the on-disk schema version is newer than what the binary supports.
+
+TEST IMPLEMENTATION:
+1. Create database with user_version = 999 (future version)
+2. Attempt to initialize cache with migration check
+3. Expect immediate error on version mismatch
+
+RESULT:
+- Error returned immediately without attempting migrations
+- Error message indicates schema version incompatibility
+- No partial migration state created
+- Application startup halted (fail-fast behavior)
+
+ERROR MESSAGE PATTERN:
+"database schema version (999) is newer than supported version (X)"
+
+RECOVERY POLICY:
+- No destructive down-migration logic implemented (per v0.1 policy)
+- Recovery requires restore-from-backup plus forward reapply
+- Clear error message guides user to compatible binary version
+
+STATUS: PASS
+Fail-fast behavior correctly prevents startup with unsupported future schema.

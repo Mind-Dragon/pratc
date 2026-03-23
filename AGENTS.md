@@ -144,7 +144,7 @@ Project is done only when all are true:
 - CLI commands above return expected structured outputs
 - Compose profiles both work:
   - `local-ml`
-  - `openrouter-light`
+  - `minimax-light`
 - Web + API are reachable and integrated
 - `make test` passes across Go/Python/Web
 - Formula engine values validated against MAG40 calculations

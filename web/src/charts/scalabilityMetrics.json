@@ -1,0 +1,94 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "title": "Scalability Metrics Dashboard",
+  "width": 900,
+  "height": 400,
+  "facet": {
+    "column": {
+      "field": "panel",
+      "type": "nominal",
+      "title": null,
+      "header": {"labelFontSize": 14, "labelFontWeight": "bold"},
+      "sort": ["pr_count", "throughput", "conflict_density", "pool_composition"]
+    }
+  },
+  "spec": {
+    "layer": []
+  },
+  "concat": [
+    {
+      "title": {"text": "PR Count Over Time", "fontSize": 14},
+      "width": 200,
+      "height": 150,
+      "layer": [
+        {
+          "mark": {"type": "line", "color": "#3b82f6", "strokeWidth": 2},
+          "encoding": {
+            "x": {"field": "timestamp", "type": "temporal", "title": "Time"},
+            "y": {"field": "total_prs", "type": "quantitative", "title": "Total PRs", "scale": {"zero": false}}
+          }
+        },
+        {
+          "mark": {"type": "point", "color": "#3b82f6", "size": 40},
+          "encoding": {
+            "x": {"field": "timestamp", "type": "temporal"},
+            "y": {"field": "total_prs", "type": "quantitative"}
+          }
+        }
+      ]
+    },
+    {
+      "title": {"text": "Sync Throughput", "fontSize": 14},
+      "width": 200,
+      "height": 150,
+      "mark": {"type": "bar", "color": "#10b981"},
+      "encoding": {
+        "x": {"field": "time_bucket", "type": "ordinal", "title": "Time Bucket", "axis": {"labelAngle": -45}},
+        "y": {"field": "prs_per_min", "type": "quantitative", "title": "PRs/min"},
+        "tooltip": [
+          {"field": "time_bucket", "type": "ordinal", "title": "Time"},
+          {"field": "prs_per_min", "type": "quantitative", "title": "PRs/min"}
+        ]
+      }
+    },
+    {
+      "title": {"text": "Conflict Density", "fontSize": 14},
+      "width": 200,
+      "height": 150,
+      "layer": [
+        {
+          "mark": {"type": "area", "color": "#f59e0b", "opacity": 0.6},
+          "encoding": {
+            "x": {"field": "time_bucket", "type": "ordinal", "title": "Time Bucket"},
+            "y": {"field": "conflict_ratio", "type": "quantitative", "title": "Conflicts/PR"}
+          }
+        },
+        {
+          "mark": {"type": "line", "color": "#d97706", "strokeWidth": 2},
+          "encoding": {
+            "x": {"field": "time_bucket", "type": "ordinal"},
+            "y": {"field": "conflict_ratio", "type": "quantitative"}
+          }
+        }
+      ]
+    },
+    {
+      "title": {"text": "Pool Composition", "fontSize": 14},
+      "width": 200,
+      "height": 150,
+      "layer": [
+        {
+          "mark": {"type": "arc", "innerRadius": 50},
+          "encoding": {
+            "theta": {"field": "count", "type": "quantitative"},
+            "color": {"field": "cluster_id", "type": "nominal", "title": "Cluster", "scale": {"scheme": "category20"}},
+            "tooltip": [
+              {"field": "cluster_id", "type": "nominal", "title": "Cluster"},
+              {"field": "count", "type": "quantitative", "title": "PRs"}
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

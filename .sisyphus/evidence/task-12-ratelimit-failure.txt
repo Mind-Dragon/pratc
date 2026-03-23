@@ -1,0 +1,23 @@
+# Task 12: Rate-Limit Failure Handling Evidence
+# Generated: 2026-03-22
+
+## Command
+$ go test -race -v ./internal/github/...
+
+## Pass Status
+PASS (all failure scenario tests)
+
+## Test Results
+=== RUN   TestRateLimitExceededReturnsDescriptiveError
+--- PASS: TestRateLimitExceededReturnsDescriptiveError (8.01s)
+
+=== RUN   TestRateLimitDeterministicTerminalError
+--- PASS: TestRateLimitDeterministicTerminalError (0.00s)
+
+## Notes
+- Rate limit exceeded returns descriptive error after max retries
+- Terminal error detection works deterministically
+- TestRateLimitExceededReturnsDescriptiveError took ~8s confirming retry logic with backoff
+- Descriptive error includes rate limit details and retry information
+- Deterministic terminal errors prevent infinite retry loops
+- Failure scenarios handled gracefully with proper error propagation

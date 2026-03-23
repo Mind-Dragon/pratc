@@ -1,0 +1,51 @@
+Task 11 - Graph Invalid Data Path Evidence
+==========================================
+
+Date: 2026-03-22
+Commit: 27cf63f
+
+Tests for error/fallback behavior in graph page:
+
+Test Results:
+-------------
+✓ renders disconnected panel when graph is null
+✓ renders invalid data panel for malformed graph (missing nodes)
+✓ renders invalid data panel for malformed graph (missing edges)
+✓ renders empty graph panel when nodes array is empty
+
+Fallback Behaviors Verified:
+----------------------------
+
+1. API Disconnected (null graph):
+   - Shows "Disconnected" header
+   - Shows "Unable to load graph payload." message
+   - Uses hero-panel styling consistent with design system
+
+2. Malformed Data (null nodes/edges):
+   - Shows "Invalid Graph Data" header
+   - Shows "The graph payload is malformed or unreadable." message
+   - Handles both missing nodes and missing edges cases
+
+3. Empty Graph (0 nodes):
+   - Shows "No Data to Display" header
+   - Shows "There are no pull requests with dependencies or conflicts to visualize."
+   - Still displays repo name in section heading
+   - Shows "No PR nodes available" count
+
+4. Valid Graph Data:
+   - Renders repo name in heading
+   - Displays "X nodes / Y edges" count
+   - Renders legend with CI status colors and edge types
+   - Graph canvas wrapper is present in DOM
+
+Test Output:
+------------
+$ vitest run --environment jsdom src/__tests__/pages/graph.test.tsx
+
+ RUN  v3.0.8 /home/agent/pratc/.worktrees/v0.1-remediation/web
+
+ ✓ src/__tests__/pages/graph.test.tsx (10 tests) 205ms
+
+ Test Files  1 passed (1)
+      Tests  10 passed (10)
+   Duration  1.25s

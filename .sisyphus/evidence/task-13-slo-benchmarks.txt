@@ -1,0 +1,48 @@
+================================================================================
+prATC v0.1 SLO Benchmark Evidence
+================================================================================
+Timestamp:  2026-03-22T20:58:20Z
+Hostname:   heimdall2
+Repository: opencode-ai/opencode
+Fixture:    opencode-ai/opencode
+Target PRs: 20
+Go Version: go1.26.1-X:nodwarf5
+
+--------------------------------------------------------------------------------
+BENCHMARK RESULTS (Warm-Cache)
+--------------------------------------------------------------------------------
+
+Command: analyze
+  Duration:  0.150s
+  SLO Limit: 300s
+  Exit Code: 0
+  Status:    PASS
+
+Command: cluster
+  Duration:  0.059s
+  SLO Limit: 180s
+  Exit Code: 0
+  Status:    PASS
+
+Command: graph
+  Duration:  0.031s
+  SLO Limit: 120s
+  Exit Code: 0
+  Status:    PASS
+
+Command: plan
+  Duration:  0.016s
+  SLO Limit: 90s
+  Exit Code: 0
+  Status:    PASS
+
+--------------------------------------------------------------------------------
+SUMMARY
+--------------------------------------------------------------------------------
+  analyze: PASS (0.150s)
+  cluster: PASS (0.059s)
+  graph: PASS (0.031s)
+  plan: PASS (0.016s)
+
+OVERALL: PASS - All commands within SLO thresholds
+=================================================================================

@@ -1,0 +1,54 @@
+Task 18: Minimax 2.7 Provider Integration - Missing API Key Evidence
+=====================================================================
+
+Test Command: ML_BACKEND=minimax echo '{"action": "cluster", ...}' | uv run python -m pratc_ml.cli
+Date: Sun Mar 22 2026
+Worktree: /home/agent/pratc/.worktrees/v0.1-remediation
+
+BEHAVIOR: When ML_BACKEND=minimax is set without MINIMAX_API_KEY, the service:
+1. Raises BackendConfigError during config.validate() call
+2. CLI catches the error and returns structured JSON error response
+3. Exits with code 1 (clean exit with clear error message)
+
+=== ERROR OUTPUT ===
+Command:
+  export ML_BACKEND=minimax MINIMAX_API_KEY=""
+  echo '{"action": "cluster", "repo": "test", "pullRequests": [{"number": 1, "title": "test"}]}' | uv run python -m pratc_ml.cli
+
+Response:
+  {"error": "configuration_error", "message": "MINIMAX_API_KEY environment variable is required when ML_BACKEND=minimax. Set MINIMAX_API_KEY to your Minimax API key.", "status": "configuration_error"}
+
+Exit Code: 1
+
+=== VALIDATION LOGIC ===
+ProviderConfig.validate() checks:
+- If backend == "minimax" and minimax_api_key is None/empty:
+  → Raise BackendConfigError with clear message
+- If backend == "voyage" and voyage_api_key is None/empty:
+  → Raise BackendConfigError with clear message  
+- If backend == "local":
+  → No validation required (passes silently)
+
+=== TEST COVERAGE ===
+Test file: ml-service/tests/test_overlap.py
+
+test_provider_config_validate_minimax_missing_key:
+  - Sets ML_BACKEND=minimax, unsets MINIMAX_API_KEY
+  - Asserts BackendConfigError is raised
+  - Asserts error message contains "MINIMAX_API_KEY" and "ML_BACKEND=minimax"
+
+test_provider_config_validate_voyage_missing_key:
+  - Sets ML_BACKEND=voyage, unsets VOYAGE_API_KEY
+  - Asserts BackendConfigError is raised
+  - Asserts error message contains "VOYAGE_API_KEY" and "ML_BACKEND=voyage"
+
+test_provider_config_validate_local_no_key_required:
+  - Sets ML_BACKEND=local, unsets all API keys
+  - Asserts validate() passes without raising
+
+=== BACKWARD COMPATIBILITY ===
+- local backend: Still works without any API key (10/10 tests pass)
+- voyage backend: Still works with VOYAGE_API_KEY set (10/10 tests pass)
+- minimax backend: Works with MINIMAX_API_KEY set, fails clearly without it
+
+CONCLUSION: Missing API key now produces deterministic error with clear message and clean exit

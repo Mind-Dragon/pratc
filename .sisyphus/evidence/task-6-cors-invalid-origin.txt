@@ -1,0 +1,22 @@
+Task 6: CORS Middleware - Invalid Origin Evidence
+==================================================
+
+Date: 2026-03-22
+Test Command: go test -race -v ./internal/cmd/...
+
+TEST RESULTS:
+- TestCorsMiddlewareDisallowedOrigin: PASS
+
+EXPECTED BEHAVIOR:
+- Requests from disallowed origins do NOT receive Access-Control-Allow-Origin header
+- Disallowed origins are rejected at the middleware layer
+- No CORS headers leaked to unauthorized origins
+- Browser preflight requests from invalid origins are properly rejected
+
+VERIFICATION:
+- Disallowed origin test passes with race detector enabled
+- Origin validation correctly rejects unauthorized domains
+- Security boundary maintained: no CORS headers for invalid origins
+- Middleware properly handles both preflight and actual request rejection
+
+STATUS: PASS

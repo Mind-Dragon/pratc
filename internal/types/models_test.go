@@ -286,7 +286,7 @@ func TestSchemaFieldSetsStayStable(t *testing.T) {
 	t.Parallel()
 
 	got := reflect.ValueOf(sampleAnalysisResponse())
-	if got.NumField() != 9 {
+	if got.NumField() != 16 {
 		t.Fatalf("unexpected analysis response field count: %d", got.NumField())
 	}
 }

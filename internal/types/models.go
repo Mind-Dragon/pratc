@@ -140,11 +140,17 @@ type SemanticAnalysisRequest struct {
 }
 
 type ClusterResponse struct {
-	Repo        string      `json:"repo"`
-	GeneratedAt string      `json:"generatedAt"`
-	Model       string      `json:"model"`
-	Thresholds  Thresholds  `json:"thresholds"`
-	Clusters    []PRCluster `json:"clusters"`
+	Repo                    string      `json:"repo"`
+	GeneratedAt             string      `json:"generatedAt"`
+	AnalysisTruncated       bool        `json:"analysis_truncated,omitempty"`
+	TruncationReason        string      `json:"truncation_reason,omitempty"`
+	MaxPRsApplied           int         `json:"max_prs_applied,omitempty"`
+	PRWindow                *PRWindow   `json:"pr_window,omitempty"`
+	PrecisionMode           string      `json:"precision_mode,omitempty"`
+	DeepCandidateSubsetSize int         `json:"deep_candidate_subset_size,omitempty"`
+	Model                   string      `json:"model"`
+	Thresholds              Thresholds  `json:"thresholds"`
+	Clusters                []PRCluster `json:"clusters"`
 }
 
 type DuplicateResponse struct {
@@ -160,35 +166,66 @@ type SemanticConflictResponse struct {
 	Conflicts   []ConflictPair `json:"conflicts"`
 }
 
+type PRWindow struct {
+	BeginningPRNumber int `json:"beginning_pr_number,omitempty"`
+	EndingPRNumber    int `json:"ending_pr_number,omitempty"`
+}
+
+type OperationTelemetry struct {
+	PoolStrategy     string         `json:"pool_strategy,omitempty"`
+	PoolSizeBefore   int            `json:"pool_size_before,omitempty"`
+	PoolSizeAfter    int            `json:"pool_size_after,omitempty"`
+	GraphDeltaEdges  int            `json:"graph_delta_edges,omitempty"`
+	DecayPolicy      string         `json:"decay_policy,omitempty"`
+	PairwiseShards   int            `json:"pairwise_shards,omitempty"`
+	StageLatenciesMS map[string]int `json:"stage_latencies_ms,omitempty"`
+	StageDropCounts  map[string]int `json:"stage_drop_counts,omitempty"`
+}
+
 type AnalysisResponse struct {
-	Repo             string            `json:"repo"`
-	GeneratedAt      string            `json:"generatedAt"`
-	Counts           Counts            `json:"counts"`
-	PRs              []PR              `json:"prs"`
-	Clusters         []PRCluster       `json:"clusters"`
-	Duplicates       []DuplicateGroup  `json:"duplicates"`
-	Overlaps         []DuplicateGroup  `json:"overlaps"`
-	Conflicts        []ConflictPair    `json:"conflicts"`
-	StalenessSignals []StalenessReport `json:"stalenessSignals"`
+	Repo                    string              `json:"repo"`
+	GeneratedAt             string              `json:"generatedAt"`
+	AnalysisTruncated       bool                `json:"analysis_truncated,omitempty"`
+	TruncationReason        string              `json:"truncation_reason,omitempty"`
+	MaxPRsApplied           int                 `json:"max_prs_applied,omitempty"`
+	PRWindow                *PRWindow           `json:"pr_window,omitempty"`
+	PrecisionMode           string              `json:"precision_mode,omitempty"`
+	DeepCandidateSubsetSize int                 `json:"deep_candidate_subset_size,omitempty"`
+	Counts                  Counts              `json:"counts"`
+	PRs                     []PR                `json:"prs"`
+	Clusters                []PRCluster         `json:"clusters"`
+	Duplicates              []DuplicateGroup    `json:"duplicates"`
+	Overlaps                []DuplicateGroup    `json:"overlaps"`
+	Conflicts               []ConflictPair      `json:"conflicts"`
+	StalenessSignals        []StalenessReport   `json:"stalenessSignals"`
+	Telemetry               *OperationTelemetry `json:"telemetry,omitempty"`
 }
 
 type GraphResponse struct {
-	Repo        string      `json:"repo"`
-	GeneratedAt string      `json:"generatedAt"`
-	Nodes       []GraphNode `json:"nodes"`
-	Edges       []GraphEdge `json:"edges"`
-	DOT         string      `json:"dot"`
+	Repo        string              `json:"repo"`
+	GeneratedAt string              `json:"generatedAt"`
+	Nodes       []GraphNode         `json:"nodes"`
+	Edges       []GraphEdge         `json:"edges"`
+	DOT         string              `json:"dot"`
+	Telemetry   *OperationTelemetry `json:"telemetry,omitempty"`
 }
 
 type PlanResponse struct {
-	Repo              string               `json:"repo"`
-	GeneratedAt       string               `json:"generatedAt"`
-	Target            int                  `json:"target"`
-	CandidatePoolSize int                  `json:"candidatePoolSize"`
-	Strategy          string               `json:"strategy"`
-	Selected          []MergePlanCandidate `json:"selected"`
-	Ordering          []MergePlanCandidate `json:"ordering"`
-	Rejections        []PlanRejection      `json:"rejections"`
+	Repo                    string               `json:"repo"`
+	GeneratedAt             string               `json:"generatedAt"`
+	AnalysisTruncated       bool                 `json:"analysis_truncated,omitempty"`
+	TruncationReason        string               `json:"truncation_reason,omitempty"`
+	MaxPRsApplied           int                  `json:"max_prs_applied,omitempty"`
+	PRWindow                *PRWindow            `json:"pr_window,omitempty"`
+	PrecisionMode           string               `json:"precision_mode,omitempty"`
+	DeepCandidateSubsetSize int                  `json:"deep_candidate_subset_size,omitempty"`
+	Target                  int                  `json:"target"`
+	CandidatePoolSize       int                  `json:"candidatePoolSize"`
+	Strategy                string               `json:"strategy"`
+	Selected                []MergePlanCandidate `json:"selected"`
+	Ordering                []MergePlanCandidate `json:"ordering"`
+	Rejections              []PlanRejection      `json:"rejections"`
+	Telemetry               *OperationTelemetry  `json:"telemetry,omitempty"`
 }
 
 type HealthResponse struct {
