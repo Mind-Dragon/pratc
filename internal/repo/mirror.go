@@ -10,13 +10,17 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/jeffersonnunn/pratc/internal/cache"
 )
 
 var repoPartPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 type Mirror struct {
 	gitDir string
+	repo   string
 	runner commandRunner
+	cache  *cache.Store
 }
 
 type commandRunner interface {
@@ -40,8 +44,19 @@ func (g gitRunner) Run(ctx context.Context, args ...string) ([]byte, error) {
 func NewMirror(gitDir string) *Mirror {
 	return &Mirror{
 		gitDir: gitDir,
+		repo:   repoFromGitDir(gitDir),
 		runner: gitRunner{gitDir: gitDir},
 	}
+}
+
+func NewMirrorWithCache(gitDir string, cacheStore *cache.Store) *Mirror {
+	m := NewMirror(gitDir)
+	m.cache = cacheStore
+	return m
+}
+
+func (m *Mirror) SetPRFilesCache(cacheStore *cache.Store) {
+	m.cache = cacheStore
 }
 
 func DefaultBaseDir() (string, error) {
@@ -145,7 +160,7 @@ func OpenOrCreate(ctx context.Context, baseDir, repo, remoteURL string) (*Mirror
 		return nil, fmt.Errorf("stat mirror path: %w", err)
 	}
 
-	m := &Mirror{gitDir: gitDir, runner: gitRunner{gitDir: gitDir}}
+	m := &Mirror{gitDir: gitDir, repo: repo, runner: gitRunner{gitDir: gitDir}}
 	if _, err := m.runner.Run(ctx, "remote", "remove", "origin"); err != nil {
 		_ = err
 	}
@@ -230,6 +245,12 @@ func (m *Mirror) Drift(ctx context.Context, remoteByPR map[int]string) (map[int]
 }
 
 func (m *Mirror) GetChangedFiles(ctx context.Context, prNumber int, baseBranch string) ([]string, error) {
+	if m.cache != nil && m.repo != "" {
+		if files, found, err := m.cache.GetPRFiles(m.repo, prNumber); err == nil && found {
+			return files, nil
+		}
+	}
+
 	if baseBranch == "" {
 		baseBranch = "main"
 	}
@@ -256,6 +277,10 @@ func (m *Mirror) GetChangedFiles(ctx context.Context, prNumber int, baseBranch s
 		if file != "" {
 			result = append(result, file)
 		}
+	}
+
+	if m.cache != nil && m.repo != "" {
+		_ = m.cache.UpsertPRFiles(m.repo, prNumber, result)
 	}
 	return result, nil
 }
@@ -320,4 +345,21 @@ func parseRepo(repo string) (string, string, error) {
 		return "", "", fmt.Errorf("invalid repo %q, path traversal detected", repo)
 	}
 	return owner, name, nil
+}
+
+func repoFromGitDir(gitDir string) string {
+	name := filepath.Base(filepath.Clean(gitDir))
+	if !strings.HasSuffix(name, ".git") {
+		return ""
+	}
+	parent := filepath.Base(filepath.Dir(filepath.Clean(gitDir)))
+	owner := strings.TrimSpace(parent)
+	repo := strings.TrimSuffix(name, ".git")
+	if owner == "" || repo == "" {
+		return ""
+	}
+	if !repoPartPattern.MatchString(owner) || !repoPartPattern.MatchString(repo) {
+		return ""
+	}
+	return owner + "/" + repo
 }
