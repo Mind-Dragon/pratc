@@ -6,14 +6,17 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/formula"
 	gh "github.com/jeffersonnunn/pratc/internal/github"
 	"github.com/jeffersonnunn/pratc/internal/graph"
 	"github.com/jeffersonnunn/pratc/internal/ml"
+	"github.com/jeffersonnunn/pratc/internal/repo"
 	"github.com/jeffersonnunn/pratc/internal/testutil"
 	"github.com/jeffersonnunn/pratc/internal/types"
 )
@@ -27,6 +30,7 @@ const (
 type Config struct {
 	Now                     func() time.Time
 	AllowLive               bool
+	UseCacheFirst           bool
 	Token                   string
 	MaxPRs                  int
 	BeginningPRNumber       int
@@ -38,6 +42,7 @@ type Config struct {
 type Service struct {
 	now                     func() time.Time
 	allowLive               bool
+	useCacheFirst           bool
 	token                   string
 	maxPRs                  int
 	beginningPRNumber       int
@@ -45,6 +50,9 @@ type Service struct {
 	precisionMode           string
 	deepCandidateSubsetSize int
 	mlBridge                *ml.Bridge
+	cacheStore              *cache.Store
+	mirrorBaseDir           string
+	mirrorAvailable         bool
 }
 
 const (
@@ -81,9 +89,29 @@ func NewService(cfg Config) Service {
 		deepCandidateSubsetSize = 64
 	}
 
+	useCacheFirst := cfg.UseCacheFirst
+
+	var cacheStore *cache.Store
+	if useCacheFirst {
+		dbPath := os.Getenv("PRATC_DB_PATH")
+		if dbPath == "" {
+			home, err := os.UserHomeDir()
+			if err == nil {
+				dbPath = filepath.Join(home, ".pratc", "pratc.db")
+			}
+		}
+		if dbPath != "" {
+			cacheStore, _ = cache.Open(dbPath)
+		}
+	}
+
+	mirrorBaseDir, mirrorErr := repo.DefaultBaseDir()
+	mirrorAvailable := mirrorErr == nil && mirrorBaseDir != ""
+
 	return Service{
 		now:                     now,
 		allowLive:               allowLive,
+		useCacheFirst:           useCacheFirst,
 		token:                   token,
 		maxPRs:                  maxPRs,
 		beginningPRNumber:       cfg.BeginningPRNumber,
@@ -91,6 +119,9 @@ func NewService(cfg Config) Service {
 		precisionMode:           normalizePrecisionMode(cfg.PrecisionMode),
 		deepCandidateSubsetSize: deepCandidateSubsetSize,
 		mlBridge:                ml.NewBridge(ml.Config{}),
+		cacheStore:              cacheStore,
+		mirrorBaseDir:           mirrorBaseDir,
+		mirrorAvailable:         mirrorAvailable,
 	}
 }
 
@@ -459,6 +490,17 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 		return nil, "", truncationMeta{}, fmt.Errorf("missing auth for live repo %q: unlock psst GITHUB_PAT or export GH_TOKEN from `gh auth token`", targetRepo)
 	}
 
+	// Try cache first if enabled
+	if s.useCacheFirst && s.cacheStore != nil {
+		if cachedPRs, ok := s.tryLoadFromCache(targetRepo); ok && len(cachedPRs) > 0 {
+			filtered, meta := s.applyIntakeControls(cachedPRs)
+			meta.LiveSource = false
+			writeLivePhaseStatus(os.Stderr, "cache loaded, starting analysis", len(filtered))
+			filtered = s.enrichDeepPrecisionFiles(ctx, targetRepo, filtered)
+			return filtered, targetRepo, meta, nil
+		}
+	}
+
 	if s.allowLive && s.token != "" {
 		livePRs, liveErr := s.fetchLivePRs(ctx, targetRepo)
 		if liveErr == nil && len(livePRs) > 0 {
@@ -497,24 +539,87 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 	return controlled, targetRepo, meta, nil
 }
 
+func (s Service) tryLoadFromCache(repo string) ([]types.PR, bool) {
+	if s.cacheStore == nil {
+		return nil, false
+	}
+	prs, err := s.cacheStore.ListPRs(cache.PRFilter{Repo: repo})
+	if err != nil || len(prs) == 0 {
+		return nil, false
+	}
+	return prs, true
+}
+
 func (s Service) fetchLivePRs(ctx context.Context, repo string) ([]types.PR, error) {
 	client := gh.NewClient(gh.Config{
 		Token:           s.token,
-		ReserveRequests: 1,
+		ReserveRequests: 200,
 	})
 	prs, err := client.FetchPullRequests(ctx, repo, gh.PullRequestListOptions{PerPage: 100, Progress: newLiveProgressReporter(os.Stderr, 100)})
 	if err != nil {
 		return nil, err
 	}
 
+	s.enrichPRsWithFilesFromMirrorOrGraphQL(ctx, repo, prs)
+
+	return prs, nil
+}
+
+func (s Service) enrichPRsWithFilesFromMirrorOrGraphQL(ctx context.Context, repo string, prs []types.PR) {
+	if s.mirrorAvailable {
+		s.enrichFromMirror(ctx, repo, prs)
+	} else {
+		s.enrichFromGraphQL(ctx, repo, prs)
+	}
+}
+
+func (s Service) enrichFromMirror(ctx context.Context, repoID string, prs []types.PR) {
+	if s.mirrorBaseDir == "" {
+		s.enrichFromGraphQL(ctx, repoID, prs)
+		return
+	}
+
+	mirrorPath, err := repo.MirrorPath(s.mirrorBaseDir, repoID)
+	if err != nil {
+		s.enrichFromGraphQL(ctx, repoID, prs)
+		return
+	}
+
+	mirror := repo.NewMirror(mirrorPath)
+	prNumbers := make([]int, len(prs))
+	for i, pr := range prs {
+		prNumbers[i] = pr.Number
+	}
+
+	prFilesList, err := mirror.GetChangedFilesBatch(ctx, prNumbers, "main", 10)
+	if err != nil {
+		s.enrichFromGraphQL(ctx, repoID, prs)
+		return
+	}
+
+	prFilesMap := make(map[int][]string)
+	for _, pf := range prFilesList {
+		prFilesMap[pf.PRNumber] = pf.Files
+	}
+
 	for i := range prs {
-		files, fileErr := client.FetchPullRequestFiles(ctx, repo, prs[i].Number)
+		if files, ok := prFilesMap[prs[i].Number]; ok {
+			prs[i].FilesChanged = files
+		}
+	}
+}
+
+func (s Service) enrichFromGraphQL(ctx context.Context, repoID string, prs []types.PR) {
+	client := gh.NewClient(gh.Config{
+		Token:           s.token,
+		ReserveRequests: 200,
+	})
+	for i := range prs {
+		files, fileErr := client.FetchPullRequestFiles(ctx, repoID, prs[i].Number)
 		if fileErr == nil {
 			prs[i].FilesChanged = files
 		}
 	}
-
-	return prs, nil
 }
 
 func newLiveProgressReporter(w io.Writer, step int) func(processed int, total int) {
@@ -617,7 +722,7 @@ func (s Service) enrichDeepPrecisionFiles(ctx context.Context, repo string, prs 
 		return candidates[i].pr.ChangedFilesCount > candidates[j].pr.ChangedFilesCount
 	})
 	limit := min(len(candidates), s.deepCandidateSubsetSize)
-	client := gh.NewClient(gh.Config{Token: s.token, ReserveRequests: 1})
+	client := gh.NewClient(gh.Config{Token: s.token, ReserveRequests: 200})
 	for i := 0; i < limit; i++ {
 		files, err := client.FetchPullRequestFiles(ctx, repo, candidates[i].pr.Number)
 		if err != nil {

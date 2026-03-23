@@ -101,7 +101,7 @@ func (p *Planner) Plan(ctx context.Context, repo string, prs []types.PR, target 
 			Selected:          nil,
 			Ordering:          nil,
 			Rejections:        rejections,
-			Telemetry: types.OperationTelemetry{
+			Telemetry: &types.OperationTelemetry{
 				PoolSizeBefore:   len(prs),
 				PoolSizeAfter:    0,
 				PoolStrategy:     "formula+graph",
@@ -187,7 +187,7 @@ func (p *Planner) Plan(ctx context.Context, repo string, prs []types.PR, target 
 		Selected:          selected,
 		Ordering:          ordering,
 		Rejections:        rejections,
-		Telemetry: types.OperationTelemetry{
+		Telemetry: &types.OperationTelemetry{
 			PoolSizeBefore:   len(prs),
 			PoolSizeAfter:    len(pool),
 			PoolStrategy:     "formula+graph",

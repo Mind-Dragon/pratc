@@ -232,3 +232,16 @@ type HealthResponse struct {
 	Status  string `json:"status"`
 	Version string `json:"version"`
 }
+
+type AuditEntryResponse struct {
+	Timestamp string `json:"timestamp"`
+	Action    string `json:"action"`
+	Repo      string `json:"repo"`
+	Details   string `json:"details"`
+}
+
+type AuditResponse struct {
+	GeneratedAt string               `json:"generatedAt"`
+	Entries     []AuditEntryResponse `json:"entries"`
+	Count       int                  `json:"count"`
+}

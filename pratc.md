@@ -95,7 +95,7 @@ Build prATC v0.1 — a self-hostable, repo-agnostic CLI + web dashboard that app
 - [ ] `pratc serve --port=8080` launches the Go API on localhost:8080
 - [ ] Web dashboard is reachable on localhost:3000 via `bun run dev` or either Docker profile
 - [ ] `docker compose --profile local-ml up` starts full local stack (`pratc-cli` API + local ML runtime + `pratc-web` dashboard)
-- [ ] `docker compose --profile openrouter-light up` starts lighter hosted-AI stack (`pratc-cli` API + `pratc-web` dashboard, no local model download required)
+- [ ] `docker compose --profile minimax-light up` starts lighter hosted-AI stack (`pratc-cli` API + `pratc-web` dashboard, no local model download required)
 - [ ] All tests pass: `make test` (go test + pytest + vitest)
 - [ ] Formula engine produces correct values validated against MAG40 hand-calculations
 
@@ -440,7 +440,7 @@ Max Concurrent: 6 (Wave 2)
   - Docker Compose skeleton with 2 services: `pratc-cli`, `pratc-web` — placeholder configs, health check stubs
   - Define 2 runtime profiles from the start:
     - `local-ml` — default self-hosted local model path
-    - `openrouter-light` — hosted analysis path with lighter container/runtime requirements
+    - `minimax-light` — hosted analysis path with lighter container/runtime requirements
   - `go mod init github.com/jeffersonnunn/pratc`
   - Verify: `make build` succeeds (even if binaries do nothing yet)
 
@@ -2621,18 +2621,18 @@ Max Concurrent: 6 (Wave 2)
       - Environment: `HF_HOME=/app/models`, `GITHUB_PAT` passed through at runtime when needed, `ML_BACKEND=local|openrouter`, `OPENROUTER_API_KEY` optional when hosted mode enabled
       - Compose profiles:
         - `local-ml`: `ML_BACKEND=local`, model cache volume enabled, local embeddings/runtime enabled
-        - `openrouter-light`: `ML_BACKEND=openrouter`, skip local model prefetch, require `OPENROUTER_API_KEY`, `OPENROUTER_EMBED_MODEL`, `OPENROUTER_REASON_MODEL`
+        - `minimax-light`: `ML_BACKEND=openrouter`, skip local model prefetch, require `OPENROUTER_API_KEY`, `OPENROUTER_EMBED_MODEL`, `OPENROUTER_REASON_MODEL`
     - **pratc-web** (Next.js): Builds from `Dockerfile.web`
       - Runs on port 3000
       - Health check: `curl -f http://localhost:3000`
       - Environment: `NEXT_PUBLIC_API_URL=http://pratc-cli:8080`
       - Depends on: pratc-cli
   - Create 2 Dockerfiles:
-    - `Dockerfile.cli`: Multi-stage Go build + Python 3.11 runtime image with `uv sync` for `ml-service/` dependencies, supporting both `local-ml` and `openrouter-light` profiles
+    - `Dockerfile.cli`: Multi-stage Go build + Python 3.11 runtime image with `uv sync` for `ml-service/` dependencies, supporting both `local-ml` and `minimax-light` profiles
     - `Dockerfile.web`: Node 20 slim, bun install, next build + start
   - Add explicit profile notes in Docker comments/docs:
     - `local-ml`: `sentence-transformers` pulls torch; expect larger images/longer builds, pin CPU-only wheels where possible, and cache `HF_HOME` via `./models`
-    - `openrouter-light`: skip local model downloads and rely on provider credentials/config instead
+    - `minimax-light`: skip local model downloads and rely on provider credentials/config instead
   - Create `Makefile` targets:
     - `make docker-build` — builds both images
     - `make docker-up` — docker compose up -d
@@ -2683,7 +2683,7 @@ Max Concurrent: 6 (Wave 2)
   **Acceptance Criteria**:
   - [ ] `docker compose build` → both images build successfully
   - [ ] `docker compose --profile local-ml up -d` → both services start and pass health checks within 60s
-  - [ ] `docker compose --profile openrouter-light up -d` → both services start and pass health checks within 60s
+  - [ ] `docker compose --profile minimax-light up -d` → both services start and pass health checks within 60s
   - [ ] `curl http://localhost:8080/api/health` → 200 OK from Go CLI
   - [ ] `curl http://localhost:3000` → 200 OK from web dashboard
   - [ ] `docker compose down` → clean shutdown, no orphan containers
@@ -2710,14 +2710,14 @@ Max Concurrent: 6 (Wave 2)
     Tool: Bash
     Preconditions: Docker Desktop running, `OPENROUTER_API_KEY` available
     Steps:
-      1. Run `docker compose --profile openrouter-light up -d`
+      1. Run `docker compose --profile minimax-light up -d`
       2. Run `docker compose ps` — assert both services show healthy/running
       3. Run `curl -s http://localhost:8080/api/health` — confirm running
       4. Assert startup did not require local model download or populated `./models`
       5. Run `docker compose down`
     Expected Result: Hosted profile boots in lighter mode using provider credentials only
     Failure Indicators: startup blocked on local model fetch, missing provider config handling, unhealthy services
-    Evidence: .sisyphus/evidence/task-25-openrouter-light.txt
+    Evidence: .sisyphus/evidence/task-25-minimax-light.txt
 
   Scenario: Data persistence survives restart
     Tool: Bash
@@ -3111,7 +3111,7 @@ Max Concurrent: 6 (Wave 2)
       2. `psst set GITHUB_PAT` (preferred) or `export GITHUB_PAT=<your-token>`
       3. Choose a runtime profile:
          - `docker compose --profile local-ml up` → fully local/self-hosted ML path
-         - `docker compose --profile openrouter-light up` → lighter hosted-analysis path (requires OpenRouter env vars)
+         - `docker compose --profile minimax-light up` → lighter hosted-analysis path (requires OpenRouter env vars)
     - **CLI usage**:
       - `pratc analyze --repo=owner/repo` — full analysis with clustering + duplicates + conflicts
       - `pratc cluster --repo=owner/repo` — NLP clustering only
@@ -3128,7 +3128,7 @@ Max Concurrent: 6 (Wave 2)
       - `make deps` → install all dependencies
       - `make test` → run all test suites
       - `make dev` → start all services in dev mode
-      - Docker runtime profiles: `local-ml` and `openrouter-light`
+      - Docker runtime profiles: `local-ml` and `minimax-light`
     - **How it works** (brief):
       - Formula engine: explains P(n,k)/C(n,k)/n^k modes
       - Clustering: configurable local embeddings/HDBSCAN or hosted embeddings + GPT-5.4 reasoning

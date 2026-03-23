@@ -3,6 +3,7 @@
 Thumbs.db
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 *~
@@ -25,6 +26,7 @@ bin/
 dist/
 coverage.out
 *.test
+/pratc
 
 # Python
 __pycache__/
@@ -59,18 +61,20 @@ fixtures/manifest.json
 # Docker
 .docker/
 
-# Sisyphus generated artifacts
+# Sisyphus
 .sisyphus/evidence/
 .sisyphus/status/
 .sisyphus/output/
 .sisyphus/drafts/
 .sisyphus/notepads/
+.sisyphus/plans/
 
-# Keep source plans and reusable prompts versioned
-!.sisyphus/plans/
-!.sisyphus/plans/**
-.sisyphus/plans/.DS_Store
-.sisyphus/plans/**/.DS_Store
+# Keep reusable prompts versioned
 !.sisyphus/prompts/
 !.sisyphus/prompts/**
-.worktrees
+
+# Archives (plans, historical artifacts)
+.archives/
+
+# Worktrees
+.worktrees/

@@ -1,214 +1,158 @@
-# AGENTS.md — prATC Execution Guide
+# AGENTS.md — prATC Knowledge Base
 
-## Mission
-Build **prATC (PR Air Traffic Control)**: a self-hostable, repo-agnostic system for large-scale PR triage and merge planning.
+**Generated:** 2026-03-23 | **Commit:** a9864d3 | **Branch:** main
 
-Deliverables:
-- Go CLI: `pratc` with `analyze`, `cluster`, `graph`, `plan`, `serve`
-- Python ML service: clustering, duplicate detection, overlap heuristics
-- TypeScript web dashboard: ATC view + Outlook-style triage inbox
-- Docker Compose stack for self-hosting
-- SQLite cache + incremental GitHub sync
-- Formula engine: `P(n,k)`, `C(n,k)`, `n^k`
-- Dependency graph engine: topo sort + DOT output
+## Overview
+prATC (PR Air Traffic Control) — self-hostable, repo-agnostic system for large-scale PR triage and merge planning. Go CLI + Python ML service + TypeScript dashboard.
+
+## Structure
+```
+pratc/
+├── cmd/pratc/          # CLI entrypoints (init() → RegisterXCommand)
+├── internal/           # Go backend (see internal/AGENTS.md)
+│   ├── cmd/            # HTTP server + API routes + settings (see internal/cmd/AGENTS.md)
+│   ├── app/            # Service facade (Analyze/Cluster/Graph/Plan)
+│   ├── planning/       # Pool selector, hierarchy, pairwise, time decay (see internal/planning/AGENTS.md)
+│   ├── planner/        # Core planner with functional options
+│   ├── formula/        # Combinatorial engine P/C/n^k (see internal/formula/AGENTS.md)
+│   ├── filter/         # Pre-filter pipeline + scoring (see internal/filter/AGENTS.md)
+│   ├── cache/          # SQLite + migrations (see internal/cache/AGENTS.md)
+│   ├── graph/          # Dependency/conflict graph + DOT + incremental
+│   ├── github/         # GraphQL client + rate limiting
+│   ├── ml/             # Go→Python bridge (stdin/stdout JSON)
+│   ├── types/          # Shared type definitions (PR, responses, telemetry)
+│   ├── settings/       # Settings store (global/repo scope, YAML import/export)
+│   ├── sync/           # Background sync worker + mirror
+│   ├── analysis/       # Bot detection
+│   ├── audit/          # Audit log (memory + SQLite)
+│   ├── repo/           # Git mirror management
+│   ├── report/         # PDF report generation
+│   └── testutil/       # Fixture loading helpers
+├── ml-service/         # Python ML service (see ml-service/AGENTS.md)
+│   └── src/pratc_ml/   # Clustering, duplicates, overlap, providers
+├── web/                # Next.js dashboard (see web/AGENTS.md)
+│   └── src/            # Pages, components, lib, types, styles
+├── fixtures/           # Test data (~5,500 PR snapshot)
+├── contracts/          # API contract definitions
+└── scripts/            # Development scripts
+```
+
+## Where To Look
+| Task | Location | Notes |
+|------|----------|-------|
+| CLI command wiring | `cmd/pratc/*.go` | `init()` → `cmd.RegisterXCommand()` |
+| HTTP API routes | `internal/cmd/root.go` | All routes registered via `RegisterServeCommand` |
+| Core business logic | `internal/app/service.go` | Service methods: Analyze, Cluster, Graph, Plan |
+| PR type definitions | `internal/types/models.go` | All domain types + response/request structs |
+| Pre-filter pipeline | `internal/filter/pipeline.go` | Draft → conflict → CI → bot filtering |
+| Combinatorial engine | `internal/formula/modes.go` | `Count()` + `GenerateByIndex()` with math/big |
+| Pool selection | `internal/planning/pool.go` | Priority weights, time decay, cluster coherence |
+| Dependency graph | `internal/graph/graph.go` | `Build()` + `TopologicalOrder()` + `DOT()` |
+| SQLite + migrations | `internal/cache/sqlite.go` | Forward-only, `schema_migrations` table |
+| ML bridge | `internal/ml/bridge.go` | JSON stdin/stdout to Python subprocess |
+| Settings CRUD | `internal/settings/store.go` | Global/repo scope, YAML import/export |
+| GitHub GraphQL client | `internal/github/client.go` | Rate limiting + retry (missing jitter) |
+| Fixture loader | `internal/testutil/fixture_loader.go` | JSON fixture files in `fixtures/` |
+
+## Cross-Cutting Patterns
+
+### Type Consistency
+Go, Python, and TypeScript share **identical** type definitions with `snake_case` JSON keys.
+- Go: `internal/types/models.go`
+- Python: `ml-service/src/pratc_ml/models.py` (Pydantic with bootstrap fallback)
+- TypeScript: `web/src/types/api.ts`
+
+### API Contracts
+All responses include `repo` + `generatedAt` + operation-specific payload.
+Error format: `{"error": "...", "message": "...", "status": "..."}`
+
+### Configuration Flow
+`env vars → Go (root.go) → Go app (service.go) → Python ML (via stdin JSON) → React (NEXT_PUBLIC_*)`
+
+### Go↔Python IPC
+JSON over stdin/stdout via `exec.CommandContext` (`internal/ml/bridge.go`). Actions: `health`, `cluster`, `duplicates`, `overlap`.
+
+### Shared Thresholds
+`duplicateThreshold = 0.90`, `overlapThreshold = 0.70` — defined in `internal/app/service.go`, mirrored in Python defaults, documented in AGENTS.md.
+
+## Commands
+```bash
+make verify-env    # Check toolchain (go, python3.11+, uv, node, bun, docker)
+make build         # Compile Go binary to ./bin/pratc
+make test          # Run all tests (go + python + web)
+make test-go       # go test -race -v ./...
+make test-python   # uv run pytest -v (in ml-service/)
+make test-web      # bun run test (vitest, in web/)
+make lint          # go vet ./... (only — no golangci-lint yet)
+make docker-up     # docker-compose --profile local-ml up --build -d
+make docker-down   # docker-compose down --remove-orphans
+```
+
+## Anti-Patterns (This Project)
+- Never read raw secret values; use `psst SECRET_NAME -- <command>`
+- Never run combinatorial planning on raw PR universe; always pre-filter first
+- Never store GitHub PAT in SQLite or config files; only runtime env
+- Never commit GITHUB_PAT, OPENROUTER_API_KEY, or other secrets
+- Never leave `main` red; post-merge verification is mandatory
+- Never self-expand task scope without coordinator approval
+- v0.1 scope: no GitHub App/OAuth/webhooks, no ML feedback loops, no gRPC, no auto PR actions
+
+## Go Conventions (All internal/ packages)
+- Error wrapping: `fmt.Errorf("context: %w", err)` — never bare `err`
+- Interfaces: small (1-3 methods), defined at consumption point
+- Constructors: `New()` + functional options (`WithX()`) for configurable types
+- Tests: table-driven with `t.Run` subtests, no testify/assert
+- `init()`: only in `cmd/pratc/` for cobra registration, never in `internal/`
+- Sorting: stable + deterministic (PR number tiebreaker everywhere)
 
 ## Scope Guardrails
-Must have:
-- Rate-limit-aware GitHub client
-- In-process background sync with persisted progress/resume
-- Pre-filter pipeline before combinatorial planning: cluster -> CI -> conflict -> score
-- Branch-aware analysis universes
-- Dry-run default for all actions + audit logging
+Must have: rate-limit-aware GitHub client, pre-filter pipeline, dry-run default, audit logging.
+Must not have in v0.1: GitHub App/OAuth/webhooks, ML feedback loops, multi-repo UI, gRPC, auto PR actions, Nx/Turborepo.
 
-Must not have in v0.1:
-- GitHub App/OAuth/webhooks
-- ML feedback loops
-- Multi-repo aggregate UI
-- gRPC
-- Automatic PR action execution
-- Nx/Turborepo or JS monorepo tooling
+---
 
-## Stack
-- Go 1.23+
-- Python 3.11+ with `uv`
-- Node 20+ + `bun`
-- Docker + Compose
-- `psst` for secrets
+# Normative Contracts (v1.1)
 
-Secrets rule:
-- Never read raw secret values.
-- Always execute secret-dependent commands as:
-  - `psst SECRET_NAME -- <command>`
+## CLI Output Contracts
+- `analyze --format=json` → exit `0`, keys: `repo`, `generatedAt`, `counts`, `clusters`, `duplicates`, `overlaps`, `conflicts`, `stalenessSignals`
+- `cluster --format=json` → exit `0`, keys: `repo`, `generatedAt`, `model`, `thresholds`, `clusters`
+- `graph --format=dot` → exit `0`, non-empty DOT with `digraph`
+- `plan --target=N --format=json` → exit `0`, keys: `repo`, `generatedAt`, `target`, `candidatePoolSize`, `strategy`, `selected`, `ordering`, `rejections`
+- `serve` → exit `0` on shutdown, `/healthz` returns `200` with `{"status":"...", "version":"..."}`
+- Exit codes: `2` = invalid args, `1` = runtime failure
+- Runtime SLOs (5.5k PRs, warm cache): analyze ≤300s, cluster ≤180s, graph ≤120s, plan ≤90s
 
-## Build and Test Contract
-- TDD required: tests fail first, then implementation.
-- Primary test commands:
-  - `go test -race -v ./...`
-  - `uv run pytest -v`
-  - `bun run test` (vitest)
-- Unified checks:
-  - `make verify-env`
-  - `make build`
-  - `make test`
+## SQLite Migration Policy
+- `schema_migrations` table: `version INTEGER PRIMARY KEY`, `name TEXT`, `applied_at TEXT`
+- Forward-only, idempotent migrations. No destructive down-migrations.
+- `user_version` pragma must match latest migration. Fail fast if DB is newer than binary.
+- Required tables: `pull_requests`, `pr_files`, `pr_reviews`, `ci_status`, `sync_jobs`, `sync_progress`, `merged_pr_index`
+- Test: verify upgrade path from N-2, N-1, and fresh DB to N
 
-## Command Behavior Targets
-- `pratc analyze --repo=owner/repo`: categories, clusters, duplicates, conflicts
-- `pratc cluster --repo=owner/repo`: cluster assignments + similarity
-- `pratc graph --repo=owner/repo`: dependency/conflict DOT graph
-- `pratc plan --repo=owner/repo --target=20`: ranked merge plan
-- `pratc serve --port=8080`: API server mode
+## GitHub Rate-Limit Policy
+- Reserve ≥200 requests/hour; pause when crossed
+- Primary GraphQL with REST fallback (REST not yet implemented)
+- 403 secondary-rate-limit: exponential backoff + jitter, 2s→60s, max 8 retries (jitter missing)
+- 5xx/network: exponential backoff + jitter, 1s→30s, max 6 retries (not differentiated yet)
+- Rate limit exhaustion: persist cursor, sleep until reset +15s, resume
 
-## UI Targets
-- Dashboard runs at `localhost:3000`
-- API runs at `localhost:8080`
-- Include:
-  - ATC overview
-  - Outlook-style sequential triage
-  - Interactive dependency graph
-  - Merge plan panel
+## Performance SLOs (5.5k PR Scale)
+- Cold sync ≤20min, warm refresh ≤3min, plan ≤90s
+- API p95: /analyze ≤5s, /cluster ≤3s, /graph ≤2s, /plan ≤2s
+- Memory ceiling: ≤2.5 GB RSS for CLI analyze
 
-## Execution Order (Critical Path)
-0 -> 1 -> 3 -> 13 -> 14 -> 18 -> 19 -> 20 -> Final verification
+## Telemetry Contract (not yet implemented — `internal/telemetry/` is empty)
+- Sync: `sync_jobs_started_total`, `sync_jobs_completed_total`, `sync_jobs_failed_total`, `sync_job_duration_seconds`
+- API: `api_requests_total`, `api_errors_total`, `api_request_duration_seconds` (route+status labels)
+- Rate-limit: `github_rate_remaining`, `github_rate_reset_epoch`, `github_secondary_limit_events_total`
+- All logs: `timestamp`, `level`, `component`, `repo`, `job_id`, `correlation_id`
 
-Parallel waves:
-- Wave 0: toolchain/bootstrap
-- Wave 1: scaffolding/foundations
-- Wave 2: formula/graph/ML/filter engines
-- Wave 3: CLI integration commands
-- Wave 4: dashboard implementation
-- Wave 5: docker/polish/edge cases/docs
-- Final: compliance, quality, QA, scope-fidelity audits
+## Worktree & Mainline Safety
+- Work not merged to `main` is incomplete. Post-merge: run `make build && make test` on `main`.
+- Merge reports: branch name, commit hash, test commands, pass/fail status.
 
 ## Agent Operating Model
-- `.sisyphus/plans/pratc.md` is the source-of-truth execution plan. Agents may summarize it, but must not silently diverge from its task graph, acceptance criteria, or scope guardrails.
-- `AGENTS.md` is the execution contract. When the plan and implementation workflow are in tension, agents must follow `AGENTS.md` for safety, testing, merge discipline, and reporting.
-- Use a coordinator -> worker -> integrator model.
-- Coordinator responsibilities:
-  - read the current plan in `.sisyphus/plans/`
-  - dispatch only dependency-ready tasks
-  - assign one owner per task
-  - track task state under `.sisyphus/` artifacts
-  - block out-of-order work that violates the dependency graph
-- Worker responsibilities:
-  - own exactly one task or one tightly-coupled task bundle
-  - work in an isolated worktree or feature branch
-  - modify only the files required for that task
-  - add or update tests before implementation where applicable
-  - produce evidence under `.sisyphus/evidence/`
-- Integrator responsibilities:
-  - merge completed work into `main`
-  - run required post-merge verification on `main`
-  - fix forward immediately if `main` fails
-  - publish merge/test status back into `.sisyphus/` artifacts
-- Review/QA agent responsibilities:
-  - verify plan compliance
-  - verify regression risk and test coverage
-  - verify evidence files match the claimed outcomes
-
-### Task Dispatch Rules
-- One worktree per task by default. Only bundle tasks when they share a tight dependency and overlapping file ownership is unavoidable.
-- Every dispatched task must include:
-  - task id and exact title from the plan
-  - dependencies already satisfied
-  - owned files or subsystem boundaries
-  - acceptance criteria copied from the plan
-  - required tests and evidence artifacts
-  - merge-to-`main` and test-on-`main` completion rule
-- Workers must not self-expand scope to adjacent tasks without explicit coordinator approval.
-- If a task reveals a plan defect, the agent must record it explicitly and either patch the plan or escalate before continuing.
-
-### State and Artifact Layout
-- Store plan files under `.sisyphus/plans/`.
-- Store QA logs, screenshots, command outputs, and validation artifacts under `.sisyphus/evidence/`.
-- Store task state snapshots under `.sisyphus/status/`.
-- Store reusable worker prompts under `.sisyphus/prompts/`.
-- Minimum task state values: `todo`, `in_progress`, `blocked`, `done`, `merged`, `verified`.
-
-### Definition of Task Completion
-- A worker task is complete only when:
-  - code and tests are implemented
-  - evidence artifacts are written
-  - the branch/worktree is merged to `main`
-  - verification passes on `main`
-- Returning "implemented" without merge and post-merge verification is incomplete work.
-
-## Data and Model Policy
-- Never run combinatorial planning on full raw PR universe.
-- Always reduce candidate set first.
-- Duplicate thresholds:
-  - `> 0.90` similarity => duplicate
-  - `0.70 - 0.90` => overlapping
-
-## Done Criteria
-Project is done only when all are true:
-- CLI commands above return expected structured outputs
-- Compose profiles both work:
-  - `local-ml`
-  - `minimax-light`
-- Web + API are reachable and integrated
-- `make test` passes across Go/Python/Web
-- Formula engine values validated against MAG40 calculations
-
-## Execution v1.1 (Normative Contracts)
-
-### CLI Output Contracts
-- `pratc analyze --repo=owner/repo --format=json` must return exit code `0` and valid JSON containing keys: `repo`, `generatedAt`, `counts`, `clusters`, `duplicates`, `overlaps`, `conflicts`, `stalenessSignals`.
-- `pratc cluster --repo=owner/repo --format=json` must return exit code `0` and keys: `repo`, `generatedAt`, `model`, `thresholds`, `clusters`.
-- `pratc graph --repo=owner/repo --format=dot` must return exit code `0`, non-empty DOT text, and include at least one `digraph` declaration.
-- `pratc plan --repo=owner/repo --target=N --format=json` must return exit code `0` and keys: `repo`, `generatedAt`, `target`, `candidatePoolSize`, `strategy`, `selected`, `ordering`, `rejections`.
-- `pratc serve --port=8080` must return exit code `0` on healthy shutdown and expose `/healthz` returning HTTP `200` with JSON keys `status` and `version`.
-- All CLI commands must return exit code `2` for invalid args and exit code `1` for runtime failures.
-- Maximum runtime SLOs on fixture dataset (`~5,500` open PRs): `analyze <= 300s`, `cluster <= 180s`, `graph <= 120s`, `plan <= 90s` after cache warmup.
-- Duplicate classification thresholds are fixed for v0.1: `similarity > 0.90 => duplicate`, `0.70 <= similarity <= 0.90 => overlapping`.
-
-### SQLite Schema and Migration Policy
-- Database must include a `schema_migrations` table with columns: `version INTEGER PRIMARY KEY`, `name TEXT`, `applied_at TEXT`.
-- Every migration must be forward-only and idempotent when re-run in a no-op context.
-- Required baseline tables: `pull_requests`, `pr_files`, `pr_reviews`, `ci_status`, `sync_jobs`, `sync_progress`, `merged_pr_index`.
-- `user_version` pragma must match latest applied migration version.
-- Startup behavior: fail fast if DB version is newer than binary-supported version.
-- Rollback policy: no destructive down-migrations in production; recovery is restore-from-backup plus forward reapply.
-- Test policy: fixture-based migration tests must verify upgrade path from `N-2`, `N-1`, and fresh DB to `N`.
-
-### GitHub Rate-Limit and Retry Policy
-- Request budgeting must keep a reserve of `>= 200` requests per hour; background sync pauses when reserve is crossed.
-- Primary GraphQL path with REST fallback for unsupported fields or GraphQL transient failures.
-- On `403` secondary-rate-limit responses: backoff with exponential delay and jitter, starting at `2s`, capped at `60s`, max `8` retries.
-- On network/5xx errors: retry with exponential backoff and jitter, starting at `1s`, capped at `30s`, max `6` retries.
-- On primary rate limit exhaustion: persist cursor/progress, sleep until reset plus `15s` safety margin, then resume.
-- All retries must be logged with reason, attempt, wait duration, and request correlation id.
-
-### Performance SLOs for 5.5k PR Scale
-- Initial incremental sync (cold cache) target: `<= 20 min` for one repository with `~5,500` open PRs.
-- Incremental refresh (warm cache, <5% changed PRs) target: `<= 3 min`.
-- Planner candidate generation and ordering target: `<= 90s` for `target=20`.
-- API p95 latency targets on warm cache: `/analyze <= 5s`, `/cluster <= 3s`, `/graph <= 2s`, `/plan <= 2s`.
-- Memory ceiling for CLI analyze run on fixture scale: `<= 2.5 GB RSS`.
-
-### Minimum Telemetry Contract
-- Sync job metrics: `sync_jobs_started_total`, `sync_jobs_completed_total`, `sync_jobs_failed_total`, `sync_job_duration_seconds`.
-- API reliability metrics: `api_requests_total`, `api_errors_total`, `api_request_duration_seconds`, with route and status labels.
-- Rate-limit metrics: `github_rate_remaining`, `github_rate_reset_epoch`, `github_secondary_limit_events_total`.
-- Queue/progress metrics: `sync_queue_depth`, `sync_cursor_age_seconds`, `sync_staleness_seconds`.
-- Planner trace log per run must include: pool size, filter drop counts by stage, chosen strategy, final ordering rationale.
-- All structured logs must include `timestamp`, `level`, `component`, `repo`, `job_id` (if present), and `correlation_id`.
-
-### Worktree Integration and Mainline Safety Policy
-- Any work completed in a worktree/feature branch is not done until it is merged into `main`.
-- After merging to `main`, agents must run the full verification gate on `main` before declaring success:
-  - `make build`
-  - `make test`
-  - ecosystem checks as applicable (`go test -race -v ./...`, `uv run pytest -v`, `bun run test`)
-- If post-merge tests fail, agents must immediately fix forward on `main` and re-run the full verification gate.
-- Agents must not leave `main` red. Task completion requires a passing test state on `main`.
-- Merge reports must include:
-  - merged branch/worktree name
-  - merge commit/hash
-  - test commands executed
-  - final pass/fail status
-
-## Agent Working Rules
-- Keep changes small, atomic, and test-backed.
-- Preserve v0.1 scope; defer v0.2+ items explicitly.
-- Prefer deterministic, inspectable outputs (JSON, DOT, logs).
-- Record QA evidence under `.sisyphus/evidence/task-*-*.txt|md|png`.
+- `.sisyphus/plans/` = source-of-truth plan. `AGENTS.md` = execution contract. Tension → follow `AGENTS.md`.
+- Coordinator → worker → integrator model. One worktree per task.
+- Task completion: code + tests + evidence + merge to main + passing verification.
+- Evidence under `.sisyphus/evidence/task-*-*.txt|md|png`. Status under `.sisyphus/status/`.

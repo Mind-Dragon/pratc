@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 var repoPartPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
@@ -36,12 +37,22 @@ func (g gitRunner) Run(ctx context.Context, args ...string) ([]byte, error) {
 	return out, nil
 }
 
+func NewMirror(gitDir string) *Mirror {
+	return &Mirror{
+		gitDir: gitDir,
+		runner: gitRunner{gitDir: gitDir},
+	}
+}
+
 func DefaultBaseDir() (string, error) {
+	if cacheDir := os.Getenv("PRATC_CACHE_DIR"); cacheDir != "" {
+		return filepath.Join(cacheDir, "repos"), nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	return filepath.Join(home, ".pratc", "repos"), nil
+	return filepath.Join(home, ".cache", "pratc", "repos"), nil
 }
 
 func MirrorPath(baseDir, repo string) (string, error) {
@@ -93,14 +104,31 @@ func BuildRefspecs(openPRs []int) []string {
 }
 
 func (m *Mirror) FetchAll(ctx context.Context, openPRs []int, progress func(done, total int)) error {
+	return m.FetchAllBatched(ctx, openPRs, 100, progress)
+}
+
+func (m *Mirror) FetchAllBatched(ctx context.Context, openPRs []int, maxRefsPerFetch int, progress func(done, total int)) error {
 	refspecs := BuildRefspecs(openPRs)
 	total := len(refspecs)
-	for i, refspec := range refspecs {
-		if _, err := m.runner.Run(ctx, "fetch", "--prune", "--filter=blob:none", "origin", refspec); err != nil {
+
+	for i := 0; i < len(refspecs); i += maxRefsPerFetch {
+		end := i + maxRefsPerFetch
+		if end > len(refspecs) {
+			end = len(refspecs)
+		}
+		batch := refspecs[i:end]
+
+		args := []string{"fetch", "--prune", "--filter=blob:none", "origin"}
+		for _, refspec := range batch {
+			args = append(args, refspec)
+		}
+
+		if _, err := m.runner.Run(ctx, args...); err != nil {
 			return err
 		}
+
 		if progress != nil {
-			progress(i+1, total)
+			progress(end, total)
 		}
 	}
 	return nil
@@ -139,6 +167,80 @@ func (m *Mirror) Drift(ctx context.Context, remoteByPR map[int]string) (map[int]
 		}
 	}
 	return drift, nil
+}
+
+func (m *Mirror) GetChangedFiles(ctx context.Context, prNumber int, baseBranch string) ([]string, error) {
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+	prRef := fmt.Sprintf("refs/pull/%d/head", prNumber)
+	baseRef := fmt.Sprintf("refs/heads/%s", baseBranch)
+
+	out, err := m.runner.Run(ctx, "merge-base", baseRef, prRef)
+	if err != nil {
+		return nil, fmt.Errorf("git merge-base: %w", err)
+	}
+	mergeBase := strings.TrimSpace(string(out))
+	if mergeBase == "" {
+		return nil, fmt.Errorf("empty merge-base for PR %d", prNumber)
+	}
+
+	diffOut, err := m.runner.Run(ctx, "diff", "--name-only", mergeBase, prRef)
+	if err != nil {
+		return nil, fmt.Errorf("git diff: %w", err)
+	}
+
+	files := strings.Split(strings.TrimSpace(string(diffOut)), "\n")
+	var result []string
+	for _, file := range files {
+		if file != "" {
+			result = append(result, file)
+		}
+	}
+	return result, nil
+}
+
+type PRFiles struct {
+	PRNumber int
+	Files    []string
+	Err      error
+}
+
+func (m *Mirror) GetChangedFilesBatch(ctx context.Context, prNumbers []int, baseBranch string, workers int) ([]PRFiles, error) {
+	if workers <= 0 {
+		workers = 10
+	}
+
+	jobs := make(chan int, len(prNumbers))
+	results := make(chan PRFiles, len(prNumbers))
+
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for prNumber := range jobs {
+				files, err := m.GetChangedFiles(ctx, prNumber, baseBranch)
+				results <- PRFiles{PRNumber: prNumber, Files: files, Err: err}
+			}
+		}()
+	}
+
+	for _, n := range prNumbers {
+		jobs <- n
+	}
+	close(jobs)
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	var prFilesList []PRFiles
+	for result := range results {
+		prFilesList = append(prFilesList, result)
+	}
+	return prFilesList, nil
 }
 
 func parseRepo(repo string) (string, string, error) {

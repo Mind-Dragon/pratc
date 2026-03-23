@@ -46,7 +46,7 @@ prATC is an AI-powered, self-hostable, and repo-agnostic platform designed to ma
 
   * **local-ml**: All ML/AI is local (sentence-transformers, HDBSCAN).
 
-  * **openrouter-light**: Hosted embeddings/reasoning via OpenRouter; minimal local ML dependencies.
+  * **minimax-light**: Hosted embeddings/reasoning via Minimax; minimal local ML dependencies.
 
 ---
 
@@ -501,7 +501,7 @@ POST /api/repos/:owner/:repo/actions
 
   * **local-ml**: ML runs fully local w/model volume
 
-  * **openrouter-light**: ML offloaded to OpenRouter—no model download, requires relevant API keys
+  * **minimax-light**: ML offloaded to Minimax—no model download, requires relevant API keys
 
 ### CI/CD Pipeline
 

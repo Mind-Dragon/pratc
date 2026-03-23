@@ -1,6 +1,9 @@
 package github
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 func buildPullRequestsQuery(owner string, repo string, opts PullRequestListOptions) (string, map[string]any) {
 	variables := map[string]any{
@@ -8,17 +11,28 @@ func buildPullRequestsQuery(owner string, repo string, opts PullRequestListOptio
 		"repo":    repo,
 		"perPage": normalizePageSize(opts.PerPage),
 	}
-	if opts.Cursor != "" {
+	useCursor := opts.Cursor != ""
+	useUpdatedSince := !opts.UpdatedSince.IsZero()
+	if useCursor {
 		variables["cursor"] = opts.Cursor
 	}
-	if !opts.UpdatedSince.IsZero() {
+	if useUpdatedSince {
 		variables["updatedSince"] = opts.UpdatedSince.UTC().Format(time.RFC3339)
 	}
 
-	return `
-query PullRequests($owner: String!, $repo: String!, $perPage: Int!, $cursor: String, $updatedSince: DateTime) {
+	varDecl := "$owner: String!, $repo: String!, $perPage: Int!"
+	afterClause := ""
+	if useCursor {
+		varDecl += ", $cursor: String"
+		afterClause = ", after: $cursor"
+	}
+	if useUpdatedSince {
+		varDecl += ", $updatedSince: DateTime"
+	}
+
+	query := fmt.Sprintf(`query PullRequests(%s) {
   repository(owner: $owner, name: $repo) {
-    pullRequests(first: $perPage, after: $cursor, states: OPEN, orderBy: {field: UPDATED_AT, direction: ASC}) {
+    pullRequests(first: $perPage%s, states: OPEN, orderBy: {field: UPDATED_AT, direction: ASC}) {
       pageInfo { hasNextPage endCursor }
       nodes {
         id
@@ -42,8 +56,9 @@ query PullRequests($owner: String!, $repo: String!, $perPage: Int!, $cursor: Str
       }
     }
   }
-}
-`, variables
+	}`, varDecl, afterClause)
+
+	return query, variables
 }
 
 func buildFilesQuery(owner string, repo string, number int) (string, map[string]any) {

@@ -1,0 +1,18 @@
+{
+  "active_plan": "/home/agent/pratc/.sisyphus/plans/batch-remediation.md",
+  "started_at": "2026-03-23T02:21:08.800Z",
+  "session_ids": [
+    "ses_2e7df2954ffeOUkLdOp3iZuBmE",
+    "ses_2e77d23d4ffeVV5Z4si5IUYizx",
+    "ses_2e7614939ffeO344J4ljXErCr5",
+    "ses_2e7453f8cffeB2oJD0ki9f8Hfn",
+    "ses_2e70d8fa9ffeVsDh0y1u17Qasl",
+    "ses_2e6f15894ffeK7PkXy08SbTKHr",
+    "ses_2e6d53666ffegapBlxVbH744jx",
+    "ses_2e6b8a669ffe9htAgwEvVztl7O",
+    "ses_2e543d99bffeItaKJ6ZWUqbMsn",
+    "ses_2e4f502dcffe5o5E5D1TMw56Xy"
+  ],
+  "plan_name": "batch-remediation",
+  "worktree_path": null
+}

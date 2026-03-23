@@ -30,7 +30,7 @@ User (browser) → [Next.js (3000)] → REST → [Go HTTP API (8080)] → [SQLit
 ### Docker Compose Profiles
 
 - **local-ml**: All ML/AI is local (sentence-transformers, HDBSCAN)
-- **openrouter-light**: Hosted embeddings/reasoning via OpenRouter; minimal local ML dependencies
+- **minimax-light**: Hosted embeddings/reasoning via Minimax; minimal local ML dependencies
 
 ---
 
@@ -218,7 +218,7 @@ POST /api/repos/:owner/:repo/actions
 |---------|---------|------|
 | GitHub GraphQL/REST API | Primary PR data source | Required |
 | Python ML (sentence-transformers + HDBSCAN) | Local PR clustering & deduplication | local-ml profile |
-| OpenRouter API | Hosted embeddings + GPT reasoning | openrouter-light profile |
+| Minimax API | Hosted embeddings + reasoning | minimax-light profile |
 | Weave CLI | Semantic conflict detection (tree-sitter) | Optional |
 
 ---

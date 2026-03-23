@@ -17,6 +17,7 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/audit"
 	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/formula"
+	"github.com/jeffersonnunn/pratc/internal/repo"
 	"github.com/jeffersonnunn/pratc/internal/settings"
 	prsync "github.com/jeffersonnunn/pratc/internal/sync"
 	"github.com/spf13/cobra"
@@ -65,15 +66,53 @@ func isInvalidArgumentError(err error) bool {
 	return false
 }
 
+func checkHasSyncData(repo string) (bool, error) {
+	dbPath := strings.TrimSpace(os.Getenv("PRATC_DB_PATH"))
+	if dbPath == "" {
+		home, _ := os.UserHomeDir()
+		dbPath = filepath.Join(home, ".pratc", "pratc.db")
+	}
+	store, err := cache.Open(dbPath)
+	if err != nil {
+		return false, nil
+	}
+	defer store.Close()
+	prs, err := store.ListPRs(cache.PRFilter{Repo: repo})
+	if err != nil || len(prs) == 0 {
+		return false, nil
+	}
+	return true, nil
+}
+
 func RegisterAnalyzeCommand() {
 	var repo string
 	var format string
+	var useCacheFirst bool
+	var forceLive bool
 
 	command := &cobra.Command{
 		Use:   "analyze",
 		Short: "Analyze pull requests for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			service := app.NewService(app.Config{})
+			cfg := app.Config{UseCacheFirst: useCacheFirst}
+			service := app.NewService(cfg)
+
+			if !forceLive && useCacheFirst {
+				if hasSync, _ := checkHasSyncData(repo); !hasSync {
+					warning := `⚠️  No recent sync data found for %s
+   Starting background sync job...
+   Run 'pratc sync --repo=%s --watch' to monitor progress.
+
+`
+					fmt.Fprintf(os.Stderr, warning, repo, repo)
+
+					go func() {
+						manager := prsync.NewManager(nil)
+						_ = manager.Start(repo)
+					}()
+				}
+			}
+
 			response, err := service.Analyze(cmd.Context(), repo)
 			if err != nil {
 				return err
@@ -89,6 +128,8 @@ func RegisterAnalyzeCommand() {
 	}
 	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
 	command.Flags().StringVar(&format, "format", "json", "Output format: json")
+	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
+	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
@@ -173,8 +214,8 @@ func RegisterPlanCommand() {
 				dryRun = true
 			}
 
-			service := app.NewService(app.Config{IncludeBots: includeBots})
-			response, err := service.Plan(cmd.Context(), repo, target, selectedMode, dryRun)
+			service := app.NewService(app.Config{})
+			response, err := service.Plan(cmd.Context(), repo, target, selectedMode)
 			if err != nil {
 				return err
 			}
@@ -359,6 +400,30 @@ type repoSyncAPI interface {
 	Stream(repo string, w http.ResponseWriter, r *http.Request)
 }
 
+func getSyncStatus(repo string) map[string]any {
+	dbPath := strings.TrimSpace(os.Getenv("PRATC_DB_PATH"))
+	if dbPath == "" {
+		home, _ := os.UserHomeDir()
+		dbPath = filepath.Join(home, ".pratc", "pratc.db")
+	}
+	store, err := cache.Open(dbPath)
+	if err != nil {
+		return map[string]any{"error": "cache unavailable", "repo": repo}
+	}
+	defer store.Close()
+
+	lastSync, err := store.LastSync(repo)
+	if err != nil {
+		return map[string]any{"repo": repo, "last_sync": nil, "error": err.Error()}
+	}
+	prs, _ := store.ListPRs(cache.PRFilter{Repo: repo})
+	return map[string]any{
+		"repo":      repo,
+		"last_sync": lastSync,
+		"pr_count":  len(prs),
+	}
+}
+
 func handleRepoAction(w http.ResponseWriter, r *http.Request, service app.Service, syncAPI repoSyncAPI) {
 	repo, action, ok := parseRepoActionPath(r.URL.Path)
 	if !ok {
@@ -395,6 +460,9 @@ func handleRepoAction(w http.ResponseWriter, r *http.Request, service app.Servic
 			return
 		}
 		syncAPI.Stream(repo, w, r)
+	case "sync/status":
+		syncStatus := getSyncStatus(repo)
+		writeHTTPJSON(w, http.StatusOK, syncStatus)
 	default:
 		writeHTTPError(w, http.StatusNotFound, "route not found")
 	}
@@ -674,12 +742,7 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 		return
 	}
 
-	dryRun := true
-	if raw := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("dry_run"))); raw == "false" {
-		dryRun = false
-	}
-
-	response, err := service.Plan(r.Context(), repo, target, mode, dryRun)
+	response, err := service.Plan(r.Context(), repo, target, mode)
 	if err != nil {
 		writeHTTPError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -746,4 +809,118 @@ func writeHTTPJSON(w http.ResponseWriter, status int, payload any) {
 
 func writeHTTPError(w http.ResponseWriter, status int, message string) {
 	writeHTTPJSON(w, status, map[string]string{"error": message})
+}
+
+func RegisterMirrorCommand() {
+	baseDir, err := repo.DefaultBaseDir()
+	if err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, "failed to resolve mirror base directory:", err)
+		return
+	}
+
+	mirrorCmd := &cobra.Command{
+		Use:   "mirror",
+		Short: "Manage git mirrors",
+		Long:  "List, inspect, and clean up git mirrors used for PR analysis",
+	}
+
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all synced repos",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			entries, err := os.ReadDir(baseDir)
+			if err != nil {
+				if os.IsNotExist(err) {
+					_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No mirrors found (directory does not exist)")
+					return nil
+				}
+				return fmt.Errorf("read mirror directory: %w", err)
+			}
+			if len(entries) == 0 {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No mirrors found")
+				return nil
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-40s %s\n", "REPO", "PATH")
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), strings.Repeat("-", 80))
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					continue
+				}
+				owner := entry.Name()
+				ownerPath := filepath.Join(baseDir, owner)
+				subEntries, err := os.ReadDir(ownerPath)
+				if err != nil {
+					continue
+				}
+				for _, sub := range subEntries {
+					if !sub.IsDir() {
+						continue
+					}
+					repoName := sub.Name()
+					fullRepo := owner + "/" + repoName
+					repoPath := filepath.Join(ownerPath, repoName)
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-40s %s\n", fullRepo, repoPath)
+				}
+			}
+			return nil
+		},
+	}
+
+	infoCmd := &cobra.Command{
+		Use:   "info [owner/repo]",
+		Short: "Show detailed stats for a mirror",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repoIdentifier := args[0]
+			repoPath, err := repo.MirrorPath(baseDir, repoIdentifier)
+			if err != nil {
+				return fmt.Errorf("invalid repo format: %w", err)
+			}
+			info, err := os.Stat(repoPath)
+			if err != nil {
+				if os.IsNotExist(err) {
+					return fmt.Errorf("mirror not found for %s", repoIdentifier)
+				}
+				return fmt.Errorf("stat mirror path: %w", err)
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Repository: %s\n", repoIdentifier)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Path: %s\n", repoPath)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Exists: %v\n", info.IsDir())
+			if info.IsDir() {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Last modified: %s\n", info.ModTime().Format(time.RFC3339))
+			}
+			return nil
+		},
+	}
+
+	pruneCmd := &cobra.Command{
+		Use:   "prune",
+		Short: "Remove mirrors for repos no longer tracked (dry-run)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			confirm, _ := cmd.Flags().GetBool("yes")
+			if !confirm {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Prune would remove the following mirrors (use --yes to confirm):")
+			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "(prune not yet implemented - this is a dry-run)")
+			return nil
+		},
+	}
+	pruneCmd.Flags().Bool("yes", false, "Skip confirmation prompt")
+
+	cleanCmd := &cobra.Command{
+		Use:   "clean",
+		Short: "Remove ALL mirrors (nuclear option)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			confirm, _ := cmd.Flags().GetBool("yes")
+			if !confirm {
+				return fmt.Errorf("refusing to clean all mirrors without --yes flag")
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Clean not yet implemented - would remove all mirrors in %s\n", baseDir)
+			return nil
+		},
+	}
+	cleanCmd.Flags().Bool("yes", false, "Skip confirmation prompt")
+
+	mirrorCmd.AddCommand(listCmd, infoCmd, pruneCmd, cleanCmd)
+	rootCmd.AddCommand(mirrorCmd)
 }
