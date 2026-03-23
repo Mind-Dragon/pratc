@@ -194,6 +194,27 @@ func (s *Store) LastSync(repo string) (time.Time, error) {
 	return parsed, nil
 }
 
+func (s *Store) ListAllRepos() ([]string, error) {
+	rows, err := s.db.Query(`SELECT DISTINCT repo FROM pull_requests ORDER BY repo`)
+	if err != nil {
+		return nil, fmt.Errorf("query repos: %w", err)
+	}
+	defer rows.Close()
+
+	var repos []string
+	for rows.Next() {
+		var repo string
+		if err := rows.Scan(&repo); err != nil {
+			return nil, fmt.Errorf("scan repo: %w", err)
+		}
+		repos = append(repos, repo)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate repos: %w", err)
+	}
+	return repos, nil
+}
+
 func (s *Store) UpsertMergedPR(pr MergedPR) error {
 	filesJSON, err := json.Marshal(pr.FilesTouched)
 	if err != nil {

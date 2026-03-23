@@ -895,17 +895,80 @@ func RegisterMirrorCommand() {
 
 	pruneCmd := &cobra.Command{
 		Use:   "prune",
-		Short: "Remove mirrors for repos no longer tracked (dry-run)",
+		Short: "Remove mirrors for repos no longer tracked",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			confirm, _ := cmd.Flags().GetBool("yes")
-			if !confirm {
-				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Prune would remove the following mirrors (use --yes to confirm):")
+			dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+			dbPath := os.Getenv("PRATC_DB_PATH")
+			if dbPath == "" {
+				home, _ := os.UserHomeDir()
+				dbPath = filepath.Join(home, ".pratc", "pratc.db")
 			}
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "(prune not yet implemented - this is a dry-run)")
+
+			store, err := cache.Open(dbPath)
+			if err != nil {
+				return fmt.Errorf("open cache: %w", err)
+			}
+			defer store.Close()
+
+			cachedRepos, err := store.ListAllRepos()
+			if err != nil {
+				return fmt.Errorf("list cached repos: %w", err)
+			}
+
+			entries, err := os.ReadDir(baseDir)
+			if err != nil {
+				if os.IsNotExist(err) {
+					_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No mirrors found")
+					return nil
+				}
+				return fmt.Errorf("read mirror directory: %w", err)
+			}
+
+			var toRemove []string
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					continue
+				}
+				owner := entry.Name()
+				ownerPath := filepath.Join(baseDir, owner)
+				subEntries, _ := os.ReadDir(ownerPath)
+				for _, sub := range subEntries {
+					if !sub.IsDir() {
+						continue
+					}
+					repoName := sub.Name()
+					fullRepo := owner + "/" + repoName
+					if !isRepoInList(fullRepo, cachedRepos) {
+						toRemove = append(toRemove, filepath.Join(ownerPath, repoName))
+					}
+				}
+			}
+
+			if len(toRemove) == 0 {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No unused mirrors found")
+				return nil
+			}
+
+			if dryRun {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "The following mirrors would be removed (use without --dry-run to confirm):")
+				for _, path := range toRemove {
+					_, _ = fmt.Fprintln(cmd.OutOrStdout(), path)
+				}
+				return nil
+			}
+
+			for _, path := range toRemove {
+				if err := os.RemoveAll(path); err != nil {
+					_, _ = fmt.Fprintf(cmd.OutOrStderr(), "Failed to remove %s: %v\n", path, err)
+				} else {
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed: %s\n", path)
+				}
+			}
 			return nil
 		},
 	}
-	pruneCmd.Flags().Bool("yes", false, "Skip confirmation prompt")
+	pruneCmd.Flags().Bool("dry-run", false, "Show what would be removed without deleting")
 
 	cleanCmd := &cobra.Command{
 		Use:   "clean",
@@ -915,7 +978,24 @@ func RegisterMirrorCommand() {
 			if !confirm {
 				return fmt.Errorf("refusing to clean all mirrors without --yes flag")
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Clean not yet implemented - would remove all mirrors in %s\n", baseDir)
+			entries, err := os.ReadDir(baseDir)
+			if err != nil {
+				if os.IsNotExist(err) {
+					_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No mirrors to clean")
+					return nil
+				}
+				return fmt.Errorf("read mirror directory: %w", err)
+			}
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					continue
+				}
+				path := filepath.Join(baseDir, entry.Name())
+				if err := os.RemoveAll(path); err != nil {
+					_, _ = fmt.Fprintf(cmd.OutOrStderr(), "Failed to remove %s: %v\n", path, err)
+				}
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "All mirrors removed from %s\n", baseDir)
 			return nil
 		},
 	}
@@ -923,4 +1003,13 @@ func RegisterMirrorCommand() {
 
 	mirrorCmd.AddCommand(listCmd, infoCmd, pruneCmd, cleanCmd)
 	rootCmd.AddCommand(mirrorCmd)
+}
+
+func isRepoInList(repo string, list []string) bool {
+	for _, r := range list {
+		if r == repo {
+			return true
+		}
+	}
+	return false
 }

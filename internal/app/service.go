@@ -51,6 +51,7 @@ type Service struct {
 	deepCandidateSubsetSize int
 	mlBridge                *ml.Bridge
 	cacheStore              *cache.Store
+	cacheTTL                time.Duration
 	mirrorBaseDir           string
 	mirrorAvailable         bool
 }
@@ -108,6 +109,13 @@ func NewService(cfg Config) Service {
 	mirrorBaseDir, mirrorErr := repo.DefaultBaseDir()
 	mirrorAvailable := mirrorErr == nil && mirrorBaseDir != ""
 
+	cacheTTL := time.Hour
+	if ttlStr := os.Getenv("PRATC_CACHE_TTL"); ttlStr != "" {
+		if parsed, err := time.ParseDuration(ttlStr); err == nil {
+			cacheTTL = parsed
+		}
+	}
+
 	return Service{
 		now:                     now,
 		allowLive:               allowLive,
@@ -120,6 +128,7 @@ func NewService(cfg Config) Service {
 		deepCandidateSubsetSize: deepCandidateSubsetSize,
 		mlBridge:                ml.NewBridge(ml.Config{}),
 		cacheStore:              cacheStore,
+		cacheTTL:                cacheTTL,
 		mirrorBaseDir:           mirrorBaseDir,
 		mirrorAvailable:         mirrorAvailable,
 	}
@@ -541,6 +550,10 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 
 func (s Service) tryLoadFromCache(repo string) ([]types.PR, bool) {
 	if s.cacheStore == nil {
+		return nil, false
+	}
+	lastSync, err := s.cacheStore.LastSync(repo)
+	if err != nil || s.now().Sub(lastSync) > s.cacheTTL {
 		return nil, false
 	}
 	prs, err := s.cacheStore.ListPRs(cache.PRFilter{Repo: repo})
