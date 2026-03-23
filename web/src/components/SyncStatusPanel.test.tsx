@@ -301,4 +301,92 @@ describe("SyncStatusPanel", () => {
     expect(errorLabels.length).toBeGreaterThan(0);
     expect(screen.getByText("5")).toBeTruthy();
   });
+
+  it("fetches sync status endpoint on mount", async () => {
+    MOCK_FETCH.mockImplementation(async (url: string) => {
+      if (url.includes("/sync/status")) {
+        return {
+          ok: true,
+          json: async () => ({
+            repo: "opencode-ai/opencode",
+            last_sync: "2026-03-23T10:30:00Z",
+            pr_count: 1234,
+            status: "complete",
+            in_progress: false,
+            progress_percent: 100,
+          }),
+        };
+      }
+      if (url.includes("/stats")) {
+        return { ok: true, json: async () => ({ cache_size: 100 }) };
+      }
+      return { ok: true };
+    });
+
+    render(<SyncStatusPanel />);
+
+    expect(MOCK_FETCH).toHaveBeenCalledWith(
+      expect.stringContaining("/sync/status"),
+    );
+  });
+
+  it("displays last_sync and pr_count from sync status endpoint", async () => {
+    MOCK_FETCH.mockImplementation(async (url: string) => {
+      if (url.includes("/sync/status")) {
+        return {
+          ok: true,
+          json: async () => ({
+            repo: "opencode-ai/opencode",
+            last_sync: "10:30 AM",
+            pr_count: 5432,
+            status: "complete",
+            in_progress: false,
+            progress_percent: 100,
+          }),
+        };
+      }
+      if (url.includes("/stats")) {
+        return { ok: true, json: async () => ({ cache_size: 100 }) };
+      }
+      return { ok: true };
+    });
+
+    render(<SyncStatusPanel />);
+
+    expect(await screen.findByText(/Last sync: 10:30 AM/)).toBeTruthy();
+    expect(screen.getByText(/PRs synced: 5,432/)).toBeTruthy();
+  });
+
+  it("handles sync status endpoint failure gracefully", async () => {
+    MOCK_FETCH.mockImplementation(async (url: string) => {
+      if (url.includes("/sync/status")) {
+        return { ok: false, status: 500 };
+      }
+      if (url.includes("/stats")) {
+        return { ok: true, json: async () => ({ cache_size: 100 }) };
+      }
+      return { ok: true };
+    });
+
+    render(<SyncStatusPanel />);
+
+    expect(await screen.findByText(/Last sync: Never/)).toBeTruthy();
+    expect(screen.getByText(/PRs synced: 0/)).toBeTruthy();
+  });
+
+  it("does not crash when sync status endpoint throws", async () => {
+    MOCK_FETCH.mockImplementation(async (url: string) => {
+      if (url.includes("/sync/status")) {
+        throw new Error("Network error");
+      }
+      if (url.includes("/stats")) {
+        return { ok: true, json: async () => ({ cache_size: 100 }) };
+      }
+      return { ok: true };
+    });
+
+    render(<SyncStatusPanel />);
+
+    expect(await screen.findByText(/Idle/)).toBeTruthy();
+  });
 });

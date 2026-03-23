@@ -20,6 +20,15 @@ interface RepoStats {
   total_prs?: number;
 }
 
+interface SyncStatusResponse {
+  repo: string;
+  last_sync: string | null;
+  pr_count: number;
+  status: string;
+  in_progress: boolean;
+  progress_percent: number;
+}
+
 interface ScalabilityMetrics {
   totalPRs: number | null;
   syncDuration: number | null;
@@ -67,6 +76,7 @@ export default function SyncStatusPanel() {
   const [repo] = useState(DEFAULT_REPO);
   const eventSourceRef = useRef<EventSource | null>(null);
   const statusRef = useRef<SyncStatus>(status);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   statusRef.current = status;
 
@@ -153,6 +163,25 @@ export default function SyncStatusPanel() {
     }
   }, [repo]);
 
+  const fetchSyncStatus = useCallback(async () => {
+    try {
+      const response = await fetch(`${apiBaseUrl()}${repoPath(repo)}/sync/status`);
+      if (response.ok) {
+        const data = (await response.json()) as SyncStatusResponse;
+        if (data.last_sync) {
+          setLastSyncAt(data.last_sync);
+        }
+        if (data.pr_count !== undefined && data.pr_count > 0) {
+          setLastSyncedCount(data.pr_count);
+        }
+        if (data.in_progress && statusRef.current !== "syncing") {
+          setStatus("syncing");
+        }
+      }
+    } catch {
+    }
+  }, [repo]);
+
   const startSync = useCallback(async () => {
     setStatus("syncing");
     setPhase(null);
@@ -178,12 +207,18 @@ export default function SyncStatusPanel() {
 
   useEffect(() => {
     fetchStats();
+    fetchSyncStatus();
     connectSSE();
+    pollingRef.current = setInterval(fetchSyncStatus, 30000);
     return () => {
       eventSourceRef.current?.close();
       eventSourceRef.current = null;
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
     };
-  }, [connectSSE, fetchStats]);
+  }, [connectSSE, fetchStats, fetchSyncStatus]);
 
   const pct = progress ? Math.round((progress.processed / progress.total) * 100) : 0;
   const eta = progress?.eta_seconds
