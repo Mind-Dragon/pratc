@@ -1001,8 +1001,44 @@ func RegisterMirrorCommand() {
 	}
 	cleanCmd.Flags().Bool("yes", false, "Skip confirmation prompt")
 
-	mirrorCmd.AddCommand(listCmd, infoCmd, pruneCmd, cleanCmd)
+	migrateCmd := &cobra.Command{
+		Use:   "migrate [owner/repo]",
+		Short: "Migrate a legacy mirror into the current location",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runMirrorMigrate(cmd, args[0], baseDir)
+		},
+	}
+
+	mirrorCmd.AddCommand(listCmd, infoCmd, pruneCmd, cleanCmd, migrateCmd)
 	rootCmd.AddCommand(mirrorCmd)
+}
+
+func runMirrorMigrate(cmd *cobra.Command, repoIdentifier, baseDir string) error {
+	root, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("resolve current working directory: %w", err)
+	}
+
+	plan, err := repo.PlanLegacyMirrorMigration(root, baseDir, repoIdentifier)
+	if err != nil {
+		if strings.Contains(err.Error(), "destination mirror already exists") {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Destination mirror already exists for %s\n", repoIdentifier)
+		}
+		return err
+	}
+
+	if !plan.ShouldMigrate {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "No legacy mirror found for %s\n", repoIdentifier)
+		return nil
+	}
+
+	if err := repo.MigrateLegacyMirror(root, baseDir, repoIdentifier); err != nil {
+		return fmt.Errorf("migrate legacy mirror: %w", err)
+	}
+
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Migrated legacy mirror for %s: %s -> %s\n", repoIdentifier, plan.Source, plan.Destination)
+	return nil
 }
 
 func isRepoInList(repo string, list []string) bool {
