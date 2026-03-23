@@ -272,6 +272,77 @@ func (s *Store) ListMergedPRs(repo string) ([]MergedPR, error) {
 	return prs, nil
 }
 
+func (s *Store) UpsertPRFiles(repo string, prNumber int, files []string) (err error) {
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("begin pr files transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.Exec(`DELETE FROM pr_files WHERE repo = ? AND pr_number = ?`, repo, prNumber); err != nil {
+		return fmt.Errorf("replace pr files: %w", err)
+	}
+
+	seen := make(map[string]struct{}, len(files))
+	for _, path := range files {
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+
+		if _, err = tx.Exec(`INSERT INTO pr_files (repo, pr_number, path) VALUES (?, ?, ?)`, repo, prNumber, path); err != nil {
+			return fmt.Errorf("insert pr file %q: %w", path, err)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("commit pr files transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Store) GetPRFiles(repo string, prNumber int) ([]string, bool, error) {
+	rows, err := s.db.Query(`
+		SELECT path
+		FROM pr_files
+		WHERE repo = ? AND pr_number = ?
+		ORDER BY path ASC
+	`, repo, prNumber)
+	if err != nil {
+		return nil, false, fmt.Errorf("query pr files: %w", err)
+	}
+	defer rows.Close()
+
+	var files []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, false, fmt.Errorf("scan pr file: %w", err)
+		}
+		files = append(files, path)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate pr files: %w", err)
+	}
+	if len(files) == 0 {
+		return nil, false, nil
+	}
+
+	return files, true, nil
+}
+
+func (s *Store) ClearPRFiles(repo string, prNumber int) error {
+	if _, err := s.db.Exec(`DELETE FROM pr_files WHERE repo = ? AND pr_number = ?`, repo, prNumber); err != nil {
+		return fmt.Errorf("clear pr files: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) CreateSyncJob(repo string) (SyncJob, error) {
 	now := s.now().UTC()
 	job := SyncJob{

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -121,6 +122,61 @@ func TestCacheMergedPRRoundTrip(t *testing.T) {
 	}
 	if got[0].Number != merged.Number || len(got[0].FilesTouched) != 2 {
 		t.Fatalf("unexpected merged pr: %+v", got[0])
+	}
+}
+
+func TestCachePRFilesRoundTripAndReplace(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+
+	if _, found, err := store.GetPRFiles("owner/repo", 42); err != nil {
+		t.Fatalf("get missing pr files: %v", err)
+	} else if found {
+		t.Fatal("expected missing pr files to be unfound")
+	}
+
+	wantFirst := []string{"z.go", "a.go", "internal/cache/sqlite.go"}
+	if err := store.UpsertPRFiles("owner/repo", 42, wantFirst); err != nil {
+		t.Fatalf("upsert first file set: %v", err)
+	}
+
+	got, found, err := store.GetPRFiles("owner/repo", 42)
+	if err != nil {
+		t.Fatalf("get first file set: %v", err)
+	}
+	if !found {
+		t.Fatal("expected file set to be found")
+	}
+	wantSortedFirst := []string{"a.go", "internal/cache/sqlite.go", "z.go"}
+	if !reflect.DeepEqual(got, wantSortedFirst) {
+		t.Fatalf("expected sorted files %v, got %v", wantSortedFirst, got)
+	}
+
+	wantSecond := []string{"b.go"}
+	if err := store.UpsertPRFiles("owner/repo", 42, wantSecond); err != nil {
+		t.Fatalf("replace file set: %v", err)
+	}
+
+	got, found, err = store.GetPRFiles("owner/repo", 42)
+	if err != nil {
+		t.Fatalf("get replaced file set: %v", err)
+	}
+	if !found {
+		t.Fatal("expected replaced file set to be found")
+	}
+	if !reflect.DeepEqual(got, wantSecond) {
+		t.Fatalf("expected replaced files %v, got %v", wantSecond, got)
+	}
+
+	if err := store.ClearPRFiles("owner/repo", 42); err != nil {
+		t.Fatalf("clear pr files: %v", err)
+	}
+
+	if _, found, err := store.GetPRFiles("owner/repo", 42); err != nil {
+		t.Fatalf("get cleared pr files: %v", err)
+	} else if found {
+		t.Fatal("expected cleared pr files to be unfound")
 	}
 }
 
