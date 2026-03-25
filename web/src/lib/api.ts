@@ -1,4 +1,10 @@
-import type { AnalysisResponse, ClusterResponse, GraphResponse, PlanResponse } from "../types/api";
+import type {
+  AnalysisResponse,
+  ClusterResponse,
+  GraphResponse,
+  OmniPlanResponse,
+  PlanResponse,
+} from "../types/api";
 
 const DEFAULT_REPO = "opencode-ai/opencode";
 
@@ -72,6 +78,22 @@ export async function fetchGraph(repo: string = DEFAULT_REPO): Promise<GraphResp
 
 export async function fetchPlan(repo: string = DEFAULT_REPO, target = 20): Promise<PlanResponse | null> {
   return fetchJSON<PlanResponse | null>(`${repoPath(repo)}/plan?target=${target}`, null);
+}
+
+export async function fetchOmniPlan(
+  repo: string,
+  selector: string,
+  options?: { stageSize?: number; target?: number }
+): Promise<OmniPlanResponse | null> {
+  const [owner, name] = repo.split("/");
+  const params = new URLSearchParams({ selector });
+  if (options?.stageSize) params.set("stage_size", String(options.stageSize));
+  if (options?.target) params.set("target", String(options.target));
+
+  return fetchJSON<OmniPlanResponse | null>(
+    `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/plan/omni?${params}`,
+    null
+  );
 }
 
 export async function fetchSettings(repo: string = DEFAULT_REPO): Promise<SettingsMap | null> {

@@ -16,6 +16,7 @@ import (
 	gh "github.com/jeffersonnunn/pratc/internal/github"
 	"github.com/jeffersonnunn/pratc/internal/graph"
 	"github.com/jeffersonnunn/pratc/internal/ml"
+	"github.com/jeffersonnunn/pratc/internal/planning"
 	"github.com/jeffersonnunn/pratc/internal/repo"
 	"github.com/jeffersonnunn/pratc/internal/testutil"
 	"github.com/jeffersonnunn/pratc/internal/types"
@@ -56,6 +57,14 @@ type Service struct {
 	mirrorAvailable         bool
 }
 
+type OmniBatchResult struct {
+	Selector   string
+	StageCount int
+	Stages     []StageResult
+	Selected   []int
+	Ordering   []int
+}
+
 const (
 	precisionModeFast = "fast"
 	precisionModeDeep = "deep"
@@ -76,9 +85,6 @@ func NewService(cfg Config) Service {
 	}
 
 	allowLive := cfg.AllowLive
-	if !allowLive && token != "" {
-		allowLive = true
-	}
 
 	maxPRs := cfg.MaxPRs
 	if maxPRs <= 0 {
@@ -141,6 +147,56 @@ func normalizePrecisionMode(raw string) string {
 	default:
 		return precisionModeFast
 	}
+}
+
+func (s *Service) ProcessOmniBatch(selector string, stageSize int, target int) (*OmniBatchResult, error) {
+	expr, err := planning.Parse(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.cacheStore == nil {
+		return nil, fmt.Errorf("cache unavailable")
+	}
+
+	repos, err := s.cacheStore.ListAllRepos()
+	if err != nil {
+		return nil, fmt.Errorf("cache: %w", err)
+	}
+
+	availableIDs := make([]int, 0)
+	for _, repoName := range repos {
+		prs, err := s.cacheStore.ListPRs(cache.PRFilter{Repo: repoName})
+		if err != nil {
+			return nil, fmt.Errorf("cache: %w", err)
+		}
+		for _, pr := range prs {
+			availableIDs = append(availableIDs, pr.Number)
+		}
+	}
+
+	bp := NewBatchProcessor(StageConfig{StageSize: stageSize})
+	stages := bp.Process(expr, availableIDs)
+
+	var allSelected []int
+	for _, stage := range stages {
+		allSelected = append(allSelected, stage.OutputIDs...)
+	}
+
+	if target < 0 {
+		target = 0
+	}
+	if len(allSelected) > target {
+		allSelected = allSelected[:target]
+	}
+
+	return &OmniBatchResult{
+		Selector:   selector,
+		StageCount: len(stages),
+		Stages:     stages,
+		Selected:   allSelected,
+		Ordering:   allSelected,
+	}, nil
 }
 
 type truncationMeta struct {
@@ -508,6 +564,10 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 			filtered = s.enrichDeepPrecisionFiles(ctx, targetRepo, filtered)
 			return filtered, targetRepo, meta, nil
 		}
+	}
+
+	if s.useCacheFirst && !s.allowLive {
+		return nil, "", truncationMeta{}, fmt.Errorf("sync first: run `pratc sync --repo=%s` before analyze, or rerun with explicit live override", targetRepo)
 	}
 
 	if s.allowLive && s.token != "" {

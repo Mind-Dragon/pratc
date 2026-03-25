@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
-	"time"
 )
 
 type Runner interface {
@@ -19,6 +18,7 @@ type Manager struct {
 	mu      sync.Mutex
 	running map[string]bool
 	subs    map[string]map[chan sseEvent]struct{}
+	pending map[string][]sseEvent
 }
 
 type sseEvent struct {
@@ -31,12 +31,16 @@ func NewManager(runner Runner) *Manager {
 		runner:  runner,
 		running: map[string]bool{},
 		subs:    map[string]map[chan sseEvent]struct{}{},
+		pending: map[string][]sseEvent{},
 	}
 }
 
 func (m *Manager) Start(repo string) error {
 	if repo == "" {
 		return fmt.Errorf("repo is required")
+	}
+	if m.runner == nil {
+		return fmt.Errorf("runner is required")
 	}
 
 	m.mu.Lock()
@@ -45,6 +49,7 @@ func (m *Manager) Start(repo string) error {
 		return nil
 	}
 	m.running[repo] = true
+	delete(m.pending, repo)
 	m.mu.Unlock()
 
 	go func() {
@@ -54,12 +59,7 @@ func (m *Manager) Start(repo string) error {
 			m.mu.Unlock()
 		}()
 
-		runner := m.runner
-		if runner == nil {
-			runner = noopRunner{}
-		}
-
-		err := runner.Run(context.Background(), repo, func(eventType string, payload map[string]any) {
+		err := m.runner.Run(context.Background(), repo, func(eventType string, payload map[string]any) {
 			m.publish(repo, eventType, payload)
 		})
 		if err != nil {
@@ -89,11 +89,18 @@ func (m *Manager) Stream(repo string, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ch, unsubscribe := m.subscribe(repo)
+	ch, replay, unsubscribe := m.subscribe(repo)
 	defer unsubscribe()
 
 	_, _ = w.Write([]byte(": connected\n\n"))
 	flusher.Flush()
+	for _, event := range replay {
+		_, _ = fmt.Fprintf(w, "event: %s\n", event.eventType)
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", event.data)
+	}
+	if len(replay) > 0 {
+		flusher.Flush()
+	}
 
 	for {
 		select {
@@ -107,16 +114,17 @@ func (m *Manager) Stream(repo string, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (m *Manager) subscribe(repo string) (<-chan sseEvent, func()) {
+func (m *Manager) subscribe(repo string) (<-chan sseEvent, []sseEvent, func()) {
 	ch := make(chan sseEvent, 16)
 	m.mu.Lock()
 	if _, ok := m.subs[repo]; !ok {
 		m.subs[repo] = map[chan sseEvent]struct{}{}
 	}
 	m.subs[repo][ch] = struct{}{}
+	replay := append([]sseEvent(nil), m.pending[repo]...)
 	m.mu.Unlock()
 
-	return ch, func() {
+	return ch, replay, func() {
 		m.mu.Lock()
 		delete(m.subs[repo], ch)
 		if len(m.subs[repo]) == 0 {
@@ -135,6 +143,7 @@ func (m *Manager) publish(repo, eventType string, payload map[string]any) {
 	event := sseEvent{eventType: eventType, data: string(body)}
 
 	m.mu.Lock()
+	m.pending[repo] = append(m.pending[repo], event)
 	defer m.mu.Unlock()
 	for ch := range m.subs[repo] {
 		select {
@@ -142,12 +151,4 @@ func (m *Manager) publish(repo, eventType string, payload map[string]any) {
 		default:
 		}
 	}
-}
-
-type noopRunner struct{}
-
-func (noopRunner) Run(_ context.Context, repo string, emit func(eventType string, payload map[string]any)) error {
-	emit("progress", map[string]any{"processed": 1, "total": 1, "repo": repo, "eta_seconds": 0})
-	time.Sleep(10 * time.Millisecond)
-	return nil
 }

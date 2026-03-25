@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/jeffersonnunn/pratc/internal/app"
+	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
 func TestHandlePlanValidParams(t *testing.T) {
@@ -275,5 +276,45 @@ func TestHandlePlanWrongMethod(t *testing.T) {
 
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected status 405, got %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestHandlePlanOmniValidParams(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/repos/opencode-ai/opencode/plan/omni?selector=1-5", nil)
+	rr := httptest.NewRecorder()
+
+	handlePlanOmni(rr, req, app.NewService(app.Config{}), "opencode-ai/opencode")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var resp types.OmniPlanResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("expected valid JSON response, got error: %v", err)
+	}
+
+	if resp.Repo != "opencode-ai/opencode" {
+		t.Fatalf("expected repo opencode-ai/opencode, got %q", resp.Repo)
+	}
+	if resp.Mode != "omni_batch" {
+		t.Fatalf("expected mode omni_batch, got %q", resp.Mode)
+	}
+	if resp.Selector != "1-5" {
+		t.Fatalf("expected selector 1-5, got %q", resp.Selector)
+	}
+	if resp.StageCount != 1 {
+		t.Fatalf("expected stageCount 1, got %d", resp.StageCount)
+	}
+	if len(resp.Selected) != 5 {
+		t.Fatalf("expected 5 selected IDs, got %d", len(resp.Selected))
+	}
+	if len(resp.Stages) != 1 {
+		t.Fatalf("expected 1 stage, got %d", len(resp.Stages))
+	}
+	if resp.Stages[0].Matched != 5 || resp.Stages[0].Selected != 0 {
+		t.Fatalf("expected first stage matched 5 and selected 0, got %+v", resp.Stages[0])
 	}
 }

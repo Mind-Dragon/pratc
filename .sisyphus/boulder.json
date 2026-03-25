@@ -1,30 +1,14 @@
 {
-  "active_plan": "/home/agent/pratc/.sisyphus/plans/batch-remediation.md",
-  "started_at": "2026-03-23T02:21:08.800Z",
+  "active_plan": "/home/agent/pratc/.sisyphus/plans/openclaw-5000pr-minimax-voyage.md",
+  "started_at": "2026-03-25T14:56:29.895Z",
   "session_ids": [
-    "ses_2e7df2954ffeOUkLdOp3iZuBmE",
-    "ses_2e77d23d4ffeVV5Z4si5IUYizx",
-    "ses_2e7614939ffeO344J4ljXErCr5",
-    "ses_2e7453f8cffeB2oJD0ki9f8Hfn",
-    "ses_2e70d8fa9ffeVsDh0y1u17Qasl",
-    "ses_2e6f15894ffeK7PkXy08SbTKHr",
-    "ses_2e6d53666ffegapBlxVbH744jx",
-    "ses_2e6b8a669ffe9htAgwEvVztl7O",
     "ses_2e543d99bffeItaKJ6ZWUqbMsn",
-    "ses_2e4f502dcffe5o5E5D1TMw56Xy",
-    "ses_2e4852417ffeeQOfa1EU25ssg2",
-    "ses_2e4852260ffeCOQ1Lr3d4kHWil",
-    "ses_2e48520d9ffeG2Y5CbCYJQW3SK",
-    "ses_2e4851f40ffeJCd5476txxpNBM",
-    "ses_2e465affdffedaIKoHKIN0qyE8",
-    "ses_2e465ae3cffe0oGY646GNKnjCy",
-    "ses_2e465aadeffeaMkRcZ42YUGFyy",
-    "ses_2e465ac94ffeGRSsI6f8rGDJTQ",
-    "ses_2e44687b2ffezonQbH6bfxShZv",
-    "ses_2e44685ddffe5Ni4CCT69V60Mv",
-    "ses_2e4468416ffemDfEdiRulsOK2F",
-    "ses_2e41f392bffeZCbIKs0NtJp3fb"
+    "ses_2da75bb38ffeyv7wG72RxldFDq",
+    "ses_2da725e93ffe5GMIIqw9d4x0kt",
+    "ses_2da6f7ea9ffePY1IgdyNyXM1ES",
+    "ses_2da6b1bedffezm4n2joEoxmSoP",
+    "ses_2da6701feffekeIHAGJjIGHcsS"
   ],
-  "plan_name": "batch-remediation",
+  "plan_name": "openclaw-5000pr-minimax-voyage",
   "worktree_path": null
 }

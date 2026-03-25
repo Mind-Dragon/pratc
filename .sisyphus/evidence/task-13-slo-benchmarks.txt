@@ -1,7 +1,7 @@
 ================================================================================
 prATC v0.1 SLO Benchmark Evidence
 ================================================================================
-Timestamp:  2026-03-22T20:58:20Z
+Timestamp:  2026-03-24T16:15:37Z
 Hostname:   heimdall2
 Repository: opencode-ai/opencode
 Fixture:    opencode-ai/opencode
@@ -13,36 +13,36 @@ BENCHMARK RESULTS (Warm-Cache)
 --------------------------------------------------------------------------------
 
 Command: analyze
-  Duration:  0.150s
+  Duration:  0.063s
   SLO Limit: 300s
   Exit Code: 0
   Status:    PASS
 
 Command: cluster
-  Duration:  0.059s
+  Duration:  0.013s
   SLO Limit: 180s
-  Exit Code: 0
-  Status:    PASS
+  Exit Code: 1
+  Status:    FAIL
 
 Command: graph
-  Duration:  0.031s
+  Duration:  0.013s
   SLO Limit: 120s
-  Exit Code: 0
-  Status:    PASS
+  Exit Code: 1
+  Status:    FAIL
 
 Command: plan
-  Duration:  0.016s
+  Duration:  0.013s
   SLO Limit: 90s
-  Exit Code: 0
-  Status:    PASS
+  Exit Code: 1
+  Status:    FAIL
 
 --------------------------------------------------------------------------------
 SUMMARY
 --------------------------------------------------------------------------------
-  analyze: PASS (0.150s)
-  cluster: PASS (0.059s)
-  graph: PASS (0.031s)
-  plan: PASS (0.016s)
+  analyze: PASS (0.063s)
+  cluster: FAIL (0.013s)
+  graph: FAIL (0.013s)
+  plan: FAIL (0.013s)
 
-OVERALL: PASS - All commands within SLO thresholds
+OVERALL: FAIL - One or more commands exceeded SLO thresholds
 =================================================================================

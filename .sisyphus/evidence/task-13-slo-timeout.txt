@@ -1,7 +1,7 @@
 ================================================================================
 prATC v0.1 SLO Timeout Verification
 ================================================================================
-Timestamp:  2026-03-22T20:58:20Z
+Timestamp:  2026-03-24T16:15:37Z
 Hostname:   heimdall2
 
 --------------------------------------------------------------------------------
@@ -17,20 +17,19 @@ SLO TIMEOUT THRESHOLDS
 COMMAND EXIT CODE VERIFICATION
 --------------------------------------------------------------------------------
 
-  analyze: exit=0 status=PASS duration=0.150s
-  cluster: exit=0 status=PASS duration=0.059s
-  graph: exit=0 status=PASS duration=0.031s
-  plan: exit=0 status=PASS duration=0.016s
+  analyze: exit=0 status=PASS duration=0.063s
+  cluster: exit=1 status=FAIL duration=0.013s
+  graph: exit=1 status=FAIL duration=0.013s
+  plan: exit=1 status=FAIL duration=0.013s
 
 --------------------------------------------------------------------------------
 VERIFICATION RESULT
 --------------------------------------------------------------------------------
-PASS: All commands completed within SLO thresholds without timeout.
+FAIL: One or more commands exceeded SLO thresholds or failed.
 
-Commands verified:
-  - analyze: 0.150s <= 300s
-  - cluster: 0.059s <= 180s
-  - graph: 0.031s <= 120s
-  - plan: 0.016s <= 90s
+Commands requiring attention:
+  - cluster: 0.013s > 180s (FAIL)
+  - graph: 0.013s > 120s (FAIL)
+  - plan: 0.013s > 90s (FAIL)
 
 =================================================================================

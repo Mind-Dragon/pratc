@@ -3,10 +3,14 @@ package app
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/formula"
 	"github.com/jeffersonnunn/pratc/internal/testutil"
 	"github.com/jeffersonnunn/pratc/internal/types"
@@ -202,6 +206,102 @@ func TestAnalyzeProvidesAuthFallbackGuidanceForLiveRepoWithoutToken(t *testing.T
 	}
 }
 
+func TestAnalyzeBlocksLiveFetchWithoutRecentSyncAndWithoutLiveOverride(t *testing.T) {
+	t.Parallel()
+
+	store := openTestCache(t)
+	service := Service{
+		now:           fixedNow,
+		allowLive:     false,
+		useCacheFirst: true,
+		token:         "token",
+		cacheStore:    store,
+		cacheTTL:      time.Hour,
+	}
+
+	_, err := service.Analyze(context.Background(), "example/repo")
+	if err == nil {
+		t.Fatal("expected sync-first error")
+	}
+	message := err.Error()
+	if !strings.Contains(message, "sync") || !strings.Contains(message, "analyze") {
+		t.Fatalf("expected sync-first guidance, got %q", message)
+	}
+	if !strings.Contains(message, "pratc sync --repo=example/repo") {
+		t.Fatalf("expected sync command guidance, got %q", message)
+	}
+}
+
+func TestAnalyzeAllowsExplicitLiveOverrideWhenCacheIsMissing(t *testing.T) {
+	t.Parallel()
+
+	store := openTestCache(t)
+	service := Service{
+		now:           fixedNow,
+		allowLive:     true,
+		useCacheFirst: true,
+		token:         "token",
+		cacheStore:    store,
+		cacheTTL:      time.Hour,
+	}
+
+	_, err := service.Analyze(context.Background(), "not-a-repo")
+	if err == nil {
+		t.Fatal("expected live fetch attempt to fail for invalid repo")
+	}
+	message := err.Error()
+	if strings.Contains(message, "sync first") {
+		t.Fatalf("expected explicit live override to skip sync-first error, got %q", message)
+	}
+	if !strings.Contains(message, "invalid repo") && !strings.Contains(message, "no fixture data") {
+		t.Fatalf("expected live override path to proceed past sync gate, got %q", message)
+	}
+}
+
+func TestNewServiceDoesNotEnableLiveAccessFromTokenOnly(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(Config{Now: fixedNow, Token: "token"})
+	if service.allowLive {
+		t.Fatal("expected token alone to not enable live access")
+	}
+}
+
+func TestAnalyzeUsesFreshCacheWhenSyncIsRecent(t *testing.T) {
+	t.Parallel()
+
+	manifest, err := testutil.LoadManifest()
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+	prs, err := testutil.LoadFixturePRs()
+	if err != nil {
+		t.Fatalf("load fixture prs: %v", err)
+	}
+
+	store := openTestCache(t)
+	seedCachedPRs(t, store, manifest.Repo, prs, fixedNow())
+
+	service := Service{
+		now:           fixedNow,
+		allowLive:     false,
+		useCacheFirst: true,
+		cacheStore:    store,
+		cacheTTL:      time.Hour,
+	}
+
+	response, err := service.Analyze(context.Background(), manifest.Repo)
+	if err != nil {
+		t.Fatalf("analyze from cache: %v", err)
+	}
+	if response.Repo != manifest.Repo {
+		t.Fatalf("repo = %q, want %q", response.Repo, manifest.Repo)
+	}
+	if len(response.PRs) == 0 {
+		t.Fatal("expected cached analysis to return prs")
+	}
+}
+
 func TestAnalyzeAndPlanIncludeTelemetryContracts(t *testing.T) {
 	t.Parallel()
 
@@ -280,12 +380,79 @@ func TestAnalyzeDeepPrecisionHasRicherConflictFileDetailThanFast(t *testing.T) {
 	}
 }
 
+func TestAnalyzeCompletes6kCachedPRsWithinFiveMinutes(t *testing.T) {
+	if !runSixKPerfProof() {
+		t.Skip("set PRATC_ENABLE_6K_PERF_TEST=1 to run the 6k analyze perf proof")
+	}
+
+	manifest, err := testutil.LoadManifest()
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	store := openTestCache(t)
+	seedCachedPRs(t, store, manifest.Repo, syntheticAnalysisPRs(manifest.Repo, 6000), fixedNow())
+
+	service := Service{
+		now:           fixedNow,
+		useCacheFirst: true,
+		cacheStore:    store,
+		cacheTTL:      time.Hour,
+		maxPRs:        6000,
+	}
+
+	start := time.Now()
+	response, err := service.Analyze(context.Background(), manifest.Repo)
+	elapsed := time.Since(start)
+	t.Logf("6k analysis: elapsed=%s total_prs=%d clusters=%d conflicts=%d", elapsed, len(response.PRs), response.Counts.ClusterCount, response.Counts.ConflictPairs)
+	if err != nil {
+		t.Fatalf("analyze 6k cached prs: %v", err)
+	}
+	if len(response.PRs) != 6000 {
+		t.Fatalf("expected 6000 prs after explicit cap override, got %d", len(response.PRs))
+	}
+	if elapsed > 5*time.Minute {
+		t.Fatalf("6k analysis took %s, want < 5m", elapsed)
+	}
+}
+
 func totalConflictFileEntries(conflicts []types.ConflictPair) int {
 	total := 0
 	for _, conflict := range conflicts {
 		total += len(conflict.FilesTouched)
 	}
 	return total
+}
+
+func syntheticAnalysisPRs(repo string, count int) []types.PR {
+	prs := make([]types.PR, 0, count)
+	for i := 1; i <= count; i++ {
+		now := fixedNow()
+		prs = append(prs, types.PR{
+			Repo:              repo,
+			Number:            i,
+			Title:             fmt.Sprintf("release %04d", i),
+			Body:              fmt.Sprintf("note %04d", i),
+			URL:               fmt.Sprintf("https://example.invalid/%s/pull/%d", repo, i),
+			Author:            "deterministic-bot",
+			FilesChanged:      []string{fmt.Sprintf("synthetic/file-%04d.go", i)},
+			CIStatus:          "success",
+			Mergeable:         "mergeable",
+			BaseBranch:        "main",
+			HeadBranch:        fmt.Sprintf("synthetic-%04d", i),
+			CreatedAt:         now.Add(-time.Hour).Format(time.RFC3339),
+			UpdatedAt:         now.Add(-time.Minute).Format(time.RFC3339),
+			Additions:         1,
+			Deletions:         1,
+			ChangedFilesCount: 1,
+		})
+	}
+	return prs
+}
+
+func runSixKPerfProof() bool {
+	value := strings.TrimSpace(os.Getenv("PRATC_ENABLE_6K_PERF_TEST"))
+	return value == "1" || strings.EqualFold(value, "true") || strings.EqualFold(value, "yes")
 }
 
 func TestLiveProgressReporterEmitsMilestones(t *testing.T) {
@@ -356,4 +523,35 @@ func TestLiveAnalysisProgressReporterEmitsMilestones(t *testing.T) {
 
 func fixedNow() time.Time {
 	return time.Date(2026, time.March, 19, 10, 0, 0, 0, time.UTC)
+}
+
+func openTestCache(t *testing.T) *cache.Store {
+	t.Helper()
+
+	store, err := cache.Open(filepath.Join(t.TempDir(), "pratc.db"))
+	if err != nil {
+		t.Fatalf("open cache: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("close cache: %v", err)
+		}
+	})
+	return store
+}
+
+func seedCachedPRs(t *testing.T, store *cache.Store, repo string, prs []types.PR, syncedAt time.Time) {
+	t.Helper()
+
+	for _, pr := range prs {
+		if pr.Repo != repo {
+			continue
+		}
+		if err := store.UpsertPR(pr); err != nil {
+			t.Fatalf("seed cached pr %d: %v", pr.Number, err)
+		}
+	}
+	if err := store.SetLastSync(repo, syncedAt); err != nil {
+		t.Fatalf("seed last sync: %v", err)
+	}
 }

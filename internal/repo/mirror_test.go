@@ -7,8 +7,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
 )
@@ -259,6 +261,83 @@ func TestGetChangedFilesUsesCacheHitWithoutGitDiff(t *testing.T) {
 	}
 }
 
+func TestGetChangedFilesCacheHitLatency(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newMirrorTestStore(t)
+	const repo = "octo/repo"
+	const prNumber = 7
+	const iterations = 2000
+
+	if err := store.UpsertPRFiles(repo, prNumber, []string{"z.go", "a.go"}); err != nil {
+		t.Fatalf("seed cached pr files: %v", err)
+	}
+
+	mirror := NewMirrorWithCache(filepath.Join(t.TempDir(), "octo", "repo.git"), store)
+	mirror.runner = failingRunner{t: t}
+
+	if _, err := mirror.GetChangedFiles(ctx, prNumber, "main"); err != nil {
+		t.Fatalf("warm cache-hit lookup: %v", err)
+	}
+
+	durations := make([]time.Duration, 0, iterations)
+	for i := 0; i < iterations; i++ {
+		start := time.Now()
+		files, err := mirror.GetChangedFiles(ctx, prNumber, "main")
+		if err != nil {
+			t.Fatalf("cache-hit lookup %d: %v", i, err)
+		}
+		if !reflect.DeepEqual(files, []string{"a.go", "z.go"}) {
+			t.Fatalf("unexpected cached files on iteration %d: %v", i, files)
+		}
+		durations = append(durations, time.Since(start))
+	}
+
+	sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
+	var total time.Duration
+	for _, d := range durations {
+		total += d
+	}
+	mean := total / time.Duration(len(durations))
+	median := durations[len(durations)/2]
+
+	t.Logf("cache-hit file-list retrieval: mean=%s median=%s iterations=%d", mean, median, iterations)
+
+	const threshold = 100 * time.Millisecond
+	if mean >= threshold {
+		t.Fatalf("mean cache-hit retrieval %s exceeds %s", mean, threshold)
+	}
+	if median >= threshold {
+		t.Fatalf("median cache-hit retrieval %s exceeds %s", median, threshold)
+	}
+}
+
+func BenchmarkGetChangedFilesCacheHit(b *testing.B) {
+	ctx := context.Background()
+	store := newMirrorTestStore(b)
+	const repo = "octo/repo"
+	const prNumber = 7
+
+	if err := store.UpsertPRFiles(repo, prNumber, []string{"z.go", "a.go"}); err != nil {
+		b.Fatalf("seed cached pr files: %v", err)
+	}
+
+	mirror := NewMirrorWithCache(filepath.Join(b.TempDir(), "octo", "repo.git"), store)
+	mirror.runner = failingRunner{t: b}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		files, err := mirror.GetChangedFiles(ctx, prNumber, "main")
+		if err != nil {
+			b.Fatalf("cache-hit lookup %d: %v", i, err)
+		}
+		if !reflect.DeepEqual(files, []string{"a.go", "z.go"}) {
+			b.Fatalf("unexpected cached files on iteration %d: %v", i, files)
+		}
+	}
+}
+
 func TestGetChangedFilesBatchPopulatesCacheOnMiss(t *testing.T) {
 	t.Parallel()
 
@@ -310,6 +389,46 @@ func TestGetChangedFilesBatchPopulatesCacheOnMiss(t *testing.T) {
 	}
 }
 
+func TestGetChangedFilesBatch1000PRsCompletesWithinOneMinute(t *testing.T) {
+	ctx := context.Background()
+	repo := newMirrorGitRepo(t)
+	openPRs := make([]int, 1000)
+	for i := range openPRs {
+		openPRs[i] = i + 1
+	}
+
+	repo.createPR(t, 1, map[string]string{"changed.txt": "changed\n"})
+	sha := gitOutput(t, repo.sourceDir, "rev-parse", "HEAD")
+	repo.seedPullRefsToSHA(t, openPRs, sha)
+
+	store := newMirrorTestStore(t)
+	mirror := NewMirrorWithCache(repo.bareDir, store)
+
+	start := time.Now()
+	results, err := mirror.GetChangedFilesBatch(ctx, openPRs, "main", 10)
+	if err != nil {
+		t.Fatalf("get changed files batch: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	if len(results) != len(openPRs) {
+		t.Fatalf("unexpected result count: got %d want %d", len(results), len(openPRs))
+	}
+	for _, result := range results {
+		if result.Err != nil {
+			t.Fatalf("batch result for pr %d: %v", result.PRNumber, result.Err)
+		}
+		if !reflect.DeepEqual(result.Files, []string{"changed.txt"}) {
+			t.Fatalf("unexpected files for pr %d: %v", result.PRNumber, result.Files)
+		}
+	}
+
+	t.Logf("1000-pr extraction: elapsed=%s results=%d workers=%d", elapsed, len(results), 10)
+	if elapsed >= time.Minute {
+		t.Fatalf("1000-pr extraction took %s, want < 1m", elapsed)
+	}
+}
+
 func TestGetChangedFilesRefreshesAfterCacheClear(t *testing.T) {
 	t.Parallel()
 
@@ -354,6 +473,39 @@ func TestGetChangedFilesRefreshesAfterCacheClear(t *testing.T) {
 	}
 }
 
+func TestFetchAllBatched1000PRsCompletesWithinTwoMinutes(t *testing.T) {
+	ctx := context.Background()
+	repo := newMirrorGitRepo(t)
+	openPRs := make([]int, 1000)
+	for i := range openPRs {
+		openPRs[i] = i + 1
+	}
+	repo.seedPullRefs(t, openPRs)
+
+	mirror, err := OpenOrCreate(ctx, filepath.Join(t.TempDir(), "mirrors"), repo.repo, repo.bareDir)
+	if err != nil {
+		t.Fatalf("open mirror: %v", err)
+	}
+	runner := &countingRunner{runner: mirror.runner}
+	mirror.runner = runner
+
+	start := time.Now()
+	if err := mirror.FetchAllBatched(ctx, openPRs, 100, nil); err != nil {
+		t.Fatalf("fetch 1000 PR refs in batches: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	expectedFetches := (len(openPRs) + 100) / 100
+	t.Logf("1000-pr sync: elapsed=%s fetches=%d refspecs=%d batches=%d", elapsed, runner.fetches, len(openPRs)+1, expectedFetches)
+
+	if runner.fetches != expectedFetches {
+		t.Fatalf("unexpected fetch count: got %d want %d", runner.fetches, expectedFetches)
+	}
+	if elapsed >= 2*time.Minute {
+		t.Fatalf("1000-pr sync took %s, want < 2m", elapsed)
+	}
+}
+
 func createRemoteWithMain(t *testing.T, root string) string {
 	t.Helper()
 	workRepo := filepath.Join(root, "source")
@@ -379,6 +531,28 @@ func runGit(t *testing.T, dir string, args ...string) {
 	if err != nil {
 		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, string(out))
 	}
+}
+
+func runGitWithInput(t *testing.T, dir string, stdin string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(stdin)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, string(out))
+	}
+}
+
+func gitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, string(out))
+	}
+	return strings.TrimSpace(string(out))
 }
 
 type mirrorGitRepo struct {
@@ -440,6 +614,23 @@ func (r *mirrorGitRepo) updatePR(t *testing.T, prNumber int, files map[string]st
 	runGit(t, r.sourceDir, "push", "origin", fmt.Sprintf("HEAD:refs/pull/%d/head", prNumber))
 }
 
+func (r *mirrorGitRepo) seedPullRefs(t *testing.T, prs []int) {
+	t.Helper()
+
+	sha := gitOutput(t, r.sourceDir, "rev-parse", "main")
+	r.seedPullRefsToSHA(t, prs, sha)
+}
+
+func (r *mirrorGitRepo) seedPullRefsToSHA(t *testing.T, prs []int, sha string) {
+	t.Helper()
+
+	var stdin strings.Builder
+	for _, pr := range prs {
+		fmt.Fprintf(&stdin, "update refs/pull/%d/head %s\n", pr, sha)
+	}
+	runGitWithInput(t, r.bareDir, stdin.String(), "update-ref", "--stdin")
+}
+
 func (r *mirrorGitRepo) writeFiles(t *testing.T, files map[string]string) {
 	t.Helper()
 
@@ -454,7 +645,7 @@ func (r *mirrorGitRepo) writeFiles(t *testing.T, files map[string]string) {
 	}
 }
 
-func newMirrorTestStore(t *testing.T) *cache.Store {
+func newMirrorTestStore(t testing.TB) *cache.Store {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "cache.db")
@@ -468,4 +659,26 @@ func newMirrorTestStore(t *testing.T) *cache.Store {
 		}
 	})
 	return store
+}
+
+type failingRunner struct {
+	t testing.TB
+}
+
+func (r failingRunner) Run(ctx context.Context, args ...string) ([]byte, error) {
+	r.t.Helper()
+	r.t.Fatalf("unexpected git command on cache-hit path: %s", strings.Join(args, " "))
+	return nil, nil
+}
+
+type countingRunner struct {
+	runner  commandRunner
+	fetches int
+}
+
+func (r *countingRunner) Run(ctx context.Context, args ...string) ([]byte, error) {
+	if len(args) > 0 && args[0] == "fetch" {
+		r.fetches++
+	}
+	return r.runner.Run(ctx, args...)
 }

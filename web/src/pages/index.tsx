@@ -2,6 +2,7 @@ import React from "react";
 import type { GetServerSideProps } from "next";
 
 import Layout from "../components/Layout";
+import SyncStatusPanel from "../components/SyncStatusPanel";
 import { fetchAnalysis } from "../lib/api";
 import type { AnalysisResponse } from "../types/api";
 
@@ -10,6 +11,15 @@ const DEFAULT_REPO = "opencode-ai/opencode";
 type DashboardProps = {
   analysis: AnalysisResponse | null;
 };
+
+function isSyncInProgress(payload: unknown): payload is { sync_status: string; repo: string; message: string } {
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    "sync_status" in payload &&
+    !("counts" in payload)
+  );
+}
 
 export const getServerSideProps: GetServerSideProps<DashboardProps> = async (context) => {
   const rawRepo = context.query.repo;
@@ -38,6 +48,27 @@ export default function DashboardPage({ analysis }: DashboardProps) {
           </div>
           <div className="hero-badge">Read-only</div>
         </section>
+        <SyncStatusPanel />
+      </Layout>
+    );
+  }
+
+  if (isSyncInProgress(analysis)) {
+    return (
+      <Layout
+        title="prATC Dashboard"
+        eyebrow="Air Traffic Control"
+        description="Sync in progress. Data will be available shortly."
+      >
+        <section className="hero-panel" aria-label="overview">
+          <div>
+            <p className="hero-kicker">Repository focus</p>
+            <h2>{analysis.repo}</h2>
+            <p>Sync in progress. Analysis data will appear once the sync completes.</p>
+          </div>
+          <div className="hero-badge">Syncing</div>
+        </section>
+        <SyncStatusPanel />
       </Layout>
     );
   }
@@ -65,6 +96,8 @@ export default function DashboardPage({ analysis }: DashboardProps) {
         </div>
         <div className="hero-badge">Dry run only</div>
       </section>
+
+      <SyncStatusPanel />
 
       <section className="stats-grid" aria-label="summary cards">
         {cards.map((card) => (

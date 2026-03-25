@@ -228,6 +228,26 @@ type PlanResponse struct {
 	Telemetry               *OperationTelemetry  `json:"telemetry,omitempty"`
 }
 
+// OmniPlanStage represents one processing stage in omni-batch mode.
+type OmniPlanStage struct {
+	Stage     int `json:"stage"`
+	StageSize int `json:"stageSize"`
+	Matched   int `json:"matched"`
+	Selected  int `json:"selected"`
+}
+
+// OmniPlanResponse is the response for the omni-batch plan endpoint.
+type OmniPlanResponse struct {
+	Repo        string          `json:"repo"`
+	GeneratedAt string          `json:"generatedAt"`
+	Selector    string          `json:"selector"`
+	Mode        string          `json:"mode"`
+	StageCount  int             `json:"stageCount"`
+	Stages      []OmniPlanStage `json:"stages"`
+	Selected    []int           `json:"selected"`
+	Ordering    []int           `json:"ordering"`
+}
+
 type HealthResponse struct {
 	Status  string `json:"status"`
 	Version string `json:"version"`

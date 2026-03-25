@@ -11,15 +11,18 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/app"
 	"github.com/jeffersonnunn/pratc/internal/audit"
 	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/formula"
+	"github.com/jeffersonnunn/pratc/internal/planning"
 	"github.com/jeffersonnunn/pratc/internal/repo"
 	"github.com/jeffersonnunn/pratc/internal/settings"
 	prsync "github.com/jeffersonnunn/pratc/internal/sync"
+	"github.com/jeffersonnunn/pratc/internal/types"
 	"github.com/spf13/cobra"
 )
 
@@ -28,6 +31,13 @@ var rootCmd = &cobra.Command{
 	Short: "PR Air Traffic Control",
 	Long:  "prATC is a CLI for pull request analysis, clustering, graphing, planning, and API serving.",
 }
+
+const (
+	analyzeSyncWaitTimeout  = 250 * time.Millisecond
+	analyzeSyncPollInterval = 10 * time.Millisecond
+)
+
+var analyzeSyncMu sync.Mutex
 
 func ExecuteContext(ctx context.Context) {
 	err := rootCmd.ExecuteContext(ctx)
@@ -66,22 +76,146 @@ func isInvalidArgumentError(err error) bool {
 	return false
 }
 
-func checkHasSyncData(repo string) (bool, error) {
+func analyzeSyncDBPath() string {
 	dbPath := strings.TrimSpace(os.Getenv("PRATC_DB_PATH"))
 	if dbPath == "" {
 		home, _ := os.UserHomeDir()
 		dbPath = filepath.Join(home, ".pratc", "pratc.db")
 	}
-	store, err := cache.Open(dbPath)
+	return dbPath
+}
+
+func checkAnalyzeSyncWarningData(repo string) (int, bool, bool) {
+	store, err := cache.Open(analyzeSyncDBPath())
 	if err != nil {
-		return false, nil
+		return 0, false, true
 	}
 	defer store.Close()
-	prs, err := store.ListPRs(cache.PRFilter{Repo: repo})
-	if err != nil || len(prs) == 0 {
-		return false, nil
+
+	openPRCount, hasOpenPRCount := 0, false
+	if prs, err := store.ListPRs(cache.PRFilter{Repo: repo}); err == nil {
+		openPRCount = len(prs)
+		hasOpenPRCount = true
 	}
-	return true, nil
+
+	lastSync, err := store.LastSync(repo)
+	if err != nil || lastSync.IsZero() {
+		return openPRCount, hasOpenPRCount, true
+	}
+
+	cacheTTL := time.Hour
+	if ttlStr := strings.TrimSpace(os.Getenv("PRATC_CACHE_TTL")); ttlStr != "" {
+		if parsed, parseErr := time.ParseDuration(ttlStr); parseErr == nil {
+			cacheTTL = parsed
+		}
+	}
+
+	if time.Since(lastSync) > cacheTTL {
+		return openPRCount, hasOpenPRCount, true
+	}
+
+	return openPRCount, hasOpenPRCount, false
+}
+
+type analyzeSyncInProgressResponse struct {
+	Repo        string `json:"repo"`
+	GeneratedAt string `json:"generatedAt"`
+	SyncStatus  string `json:"sync_status"`
+	JobID       string `json:"job_id,omitempty"`
+	Message     string `json:"message"`
+}
+
+func buildAnalyzeSyncInProgressResponse(repo, jobID string) analyzeSyncInProgressResponse {
+	return analyzeSyncInProgressResponse{
+		Repo:        repo,
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+		SyncStatus:  "in_progress",
+		JobID:       jobID,
+		Message:     "sync in progress",
+	}
+}
+
+func buildAnalyzeSyncTimeoutResponse(repo, jobID string, timeout time.Duration) analyzeSyncInProgressResponse {
+	return analyzeSyncInProgressResponse{
+		Repo:        repo,
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+		SyncStatus:  "in_progress",
+		JobID:       jobID,
+		Message:     fmt.Sprintf("sync still in progress after waiting %s", timeout),
+	}
+}
+
+func analyzeSyncActive(repo string) bool {
+	analyzeSyncMu.Lock()
+	defer analyzeSyncMu.Unlock()
+
+	store, err := cache.Open(analyzeSyncDBPath())
+	if err != nil {
+		return false
+	}
+	defer store.Close()
+
+	_, ok, err := store.ResumeSyncJob(repo)
+	return err == nil && ok
+}
+
+func waitForAnalyzeSyncCompletion(repo string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for analyzeSyncActive(repo) {
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(analyzeSyncPollInterval)
+	}
+	return true
+}
+
+func currentAnalyzeSyncJobID(repo string) (string, bool) {
+	analyzeSyncMu.Lock()
+	defer analyzeSyncMu.Unlock()
+
+	store, err := cache.Open(analyzeSyncDBPath())
+	if err != nil {
+		return "", false
+	}
+	defer store.Close()
+
+	job, ok, err := store.ResumeSyncJob(repo)
+	if err != nil || !ok {
+		return "", false
+	}
+	return job.ID, true
+}
+
+func startAnalyzeBackgroundSync(repo string) (string, error) {
+	analyzeSyncMu.Lock()
+	defer analyzeSyncMu.Unlock()
+
+	dbPath := analyzeSyncDBPath()
+	store, err := cache.Open(dbPath)
+	if err != nil {
+		return "", fmt.Errorf("open sync store: %w", err)
+	}
+	defer store.Close()
+
+	if job, ok, err := store.ResumeSyncJob(repo); err == nil && ok {
+		return job.ID, nil
+	}
+
+	job, err := store.CreateSyncJob(repo)
+	if err != nil {
+		return "", fmt.Errorf("create sync job: %w", err)
+	}
+
+	manager := newRepoSyncManager(dbPath, job.ID)
+	if err := manager.Start(repo); err != nil {
+		if markErr := store.MarkSyncJobFailed(job.ID, err.Error()); markErr != nil {
+			return "", fmt.Errorf("start background sync: %w (mark failed job: %v)", err, markErr)
+		}
+		return "", fmt.Errorf("start background sync: %w", err)
+	}
+
+	return job.ID, nil
 }
 
 func RegisterAnalyzeCommand() {
@@ -89,27 +223,23 @@ func RegisterAnalyzeCommand() {
 	var format string
 	var useCacheFirst bool
 	var forceLive bool
+	var force bool
 
 	command := &cobra.Command{
 		Use:   "analyze",
 		Short: "Analyze pull requests for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg := app.Config{UseCacheFirst: useCacheFirst}
+			cfg := buildAnalyzeConfig(useCacheFirst, forceLive)
 			service := app.NewService(cfg)
 
-			if !forceLive && useCacheFirst {
-				if hasSync, _ := checkHasSyncData(repo); !hasSync {
-					warning := `⚠️  No recent sync data found for %s
-   Starting background sync job...
-   Run 'pratc sync --repo=%s --watch' to monitor progress.
-
-`
-					fmt.Fprintf(os.Stderr, warning, repo, repo)
-
-					go func() {
-						manager := prsync.NewManager(nil)
-						_ = manager.Start(repo)
-					}()
+			if shouldWarnAnalyzeSync(useCacheFirst, force, forceLive) {
+				if openPRCount, hasOpenPRCount, shouldWarn := checkAnalyzeSyncWarningData(repo); shouldWarn {
+					fmt.Fprint(os.Stderr, formatAnalyzeSyncWarning(repo, openPRCount, hasOpenPRCount))
+					jobID, err := startAnalyzeBackgroundSync(repo)
+					if err != nil {
+						return err
+					}
+					return writeJSON(cmd, buildAnalyzeSyncInProgressResponse(repo, jobID))
 				}
 			}
 
@@ -130,19 +260,57 @@ func RegisterAnalyzeCommand() {
 	command.Flags().StringVar(&format, "format", "json", "Output format: json")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
 	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch")
+	command.Flags().BoolVar(&force, "force", false, "Compatibility flag to skip sync warning")
+	_ = command.Flags().MarkHidden("force")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
+}
+
+func buildAnalyzeConfig(useCacheFirst, forceLive bool) app.Config {
+	return app.Config{AllowLive: forceLive, UseCacheFirst: useCacheFirst}
+}
+
+func buildCacheFirstConfig(useCacheFirst bool) app.Config {
+	return app.Config{UseCacheFirst: useCacheFirst}
+}
+
+func shouldWarnAnalyzeSync(useCacheFirst, force, forceLive bool) bool {
+	return !force && !forceLive && useCacheFirst
+}
+
+func estimateAnalyzeSyncAPICalls(openPRCount int) int {
+	if openPRCount <= 0 {
+		return 1
+	}
+	return ((openPRCount + 99) / 100) + (openPRCount * 3)
+}
+
+func formatAnalyzeSyncWarning(repo string, openPRCount int, hasOpenPRCount bool) string {
+	estimateLine := "   Estimated GitHub API calls: unavailable until sync data is available.\n"
+	if hasOpenPRCount {
+		estimateLine = fmt.Sprintf("   Estimated GitHub API calls: ~%d (based on %d open PRs)\n", estimateAnalyzeSyncAPICalls(openPRCount), openPRCount)
+	}
+
+	return fmt.Sprintf(`⚠️  No recent sync data found for %s
+%s   Sync in progress — background sync job started.
+   Recommended workflow:
+   1) pratc sync --repo=%s
+   2) pratc analyze --repo=%s
+   Tip: use 'pratc sync --repo=%s --watch' to monitor progress.
+
+`, repo, estimateLine, repo, repo, repo)
 }
 
 func RegisterClusterCommand() {
 	var repo string
 	var format string
+	var useCacheFirst bool
 
 	command := &cobra.Command{
 		Use:   "cluster",
 		Short: "Cluster pull requests for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			service := app.NewService(app.Config{})
+			service := app.NewService(buildCacheFirstConfig(useCacheFirst))
 			response, err := service.Cluster(cmd.Context(), repo)
 			if err != nil {
 				return err
@@ -158,6 +326,7 @@ func RegisterClusterCommand() {
 	}
 	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
 	command.Flags().StringVar(&format, "format", "json", "Output format: json")
+	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
@@ -165,12 +334,13 @@ func RegisterClusterCommand() {
 func RegisterGraphCommand() {
 	var repo string
 	var format string
+	var useCacheFirst bool
 
 	command := &cobra.Command{
 		Use:   "graph",
 		Short: "Render a dependency graph for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			service := app.NewService(app.Config{})
+			service := app.NewService(buildCacheFirstConfig(useCacheFirst))
 			response, err := service.Graph(cmd.Context(), repo)
 			if err != nil {
 				return err
@@ -189,6 +359,7 @@ func RegisterGraphCommand() {
 	}
 	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
 	command.Flags().StringVar(&format, "format", "dot", "Output format: dot|json")
+	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
@@ -200,6 +371,7 @@ func RegisterPlanCommand() {
 	var format string
 	var dryRun bool
 	var includeBots bool
+	var useCacheFirst bool
 
 	command := &cobra.Command{
 		Use:   "plan",
@@ -214,7 +386,7 @@ func RegisterPlanCommand() {
 				dryRun = true
 			}
 
-			service := app.NewService(app.Config{})
+			service := app.NewService(buildCacheFirstConfig(useCacheFirst))
 			response, err := service.Plan(cmd.Context(), repo, target, selectedMode)
 			if err != nil {
 				return err
@@ -237,6 +409,7 @@ func RegisterPlanCommand() {
 	command.Flags().StringVar(&format, "format", "json", "Output format: json")
 	command.Flags().BoolVar(&dryRun, "dry-run", true, "Plan only; do not execute (always true by default)")
 	command.Flags().BoolVar(&includeBots, "include-bots", false, "Include bot PRs in merge plan (default excludes bots)")
+	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
@@ -266,7 +439,7 @@ func RegisterSyncCommand() {
 		Use:   "sync",
 		Short: "Sync repository metadata and refs",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			manager := prsync.NewManager(nil)
+			manager := newRepoSyncManager("", "")
 			if err := manager.Start(repo); err != nil {
 				return err
 			}
@@ -327,7 +500,7 @@ func runServer(ctx context.Context, port int, defaultRepo string) error {
 		return err
 	}
 	defer settingsStore.Close()
-	repoSync := prsync.NewManager(nil)
+	repoSync := newRepoSyncManager("", "")
 
 	mux := http.NewServeMux()
 
@@ -369,6 +542,17 @@ func runServer(ctx context.Context, port int, defaultRepo string) error {
 	})
 
 	mux.HandleFunc("/api/repos/", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if strings.HasPrefix(path, "/api/repos/") && strings.Contains(path, "/plan/omni") {
+			parts := strings.Split(strings.TrimPrefix(path, "/api/repos/"), "/")
+			if len(parts) >= 3 {
+				owner := parts[0]
+				repoName := parts[1]
+				fullRepo := owner + "/" + repoName
+				handlePlanOmni(w, r, service, fullRepo)
+				return
+			}
+		}
 		handleRepoAction(w, r, service, repoSync)
 	})
 
@@ -398,6 +582,14 @@ type settingsStore interface {
 type repoSyncAPI interface {
 	Start(repo string) error
 	Stream(repo string, w http.ResponseWriter, r *http.Request)
+}
+
+var newRepoSyncManager = func(jobDBPath, jobID string) *prsync.Manager {
+	var jobRecorder prsync.JobRecorder
+	if strings.TrimSpace(jobDBPath) != "" {
+		jobRecorder = prsync.NewDBJobRecorder(jobDBPath)
+	}
+	return prsync.NewManager(prsync.NewDefaultRunner(jobRecorder, jobID))
 }
 
 func getSyncStatus(repo string) map[string]any {
@@ -644,6 +836,24 @@ func handleAnalyze(w http.ResponseWriter, r *http.Request, service app.Service, 
 		return
 	}
 
+	if analyzeSyncActive(repo) {
+		if !waitForAnalyzeSyncCompletion(repo, analyzeSyncWaitTimeout) {
+			jobID, _ := currentAnalyzeSyncJobID(repo)
+			writeHTTPJSON(w, http.StatusAccepted, buildAnalyzeSyncTimeoutResponse(repo, jobID, analyzeSyncWaitTimeout))
+			return
+		}
+	}
+
+	if _, _, shouldWarn := checkAnalyzeSyncWarningData(repo); shouldWarn {
+		jobID, err := startAnalyzeBackgroundSync(repo)
+		if err != nil {
+			writeHTTPError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeHTTPJSON(w, http.StatusAccepted, buildAnalyzeSyncInProgressResponse(repo, jobID))
+		return
+	}
+
 	response, err := service.Analyze(r.Context(), repo)
 	if err != nil {
 		writeHTTPError(w, http.StatusInternalServerError, err.Error())
@@ -786,6 +996,115 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 
 	writeHTTPJSON(w, http.StatusOK, response)
 }
+func handlePlanOmni(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
+	if !ensureGET(w, r) || !ensureRepo(w, repo) {
+		return
+	}
+
+	query := r.URL.Query()
+
+	selectorStr := strings.TrimSpace(query.Get("selector"))
+	if selectorStr == "" {
+		writeHTTPJSON(w, http.StatusBadRequest, map[string]any{
+			"error":   "MISSING_SELECTOR",
+			"message": "selector parameter is required",
+			"status":  "400 Bad Request",
+		})
+		return
+	}
+
+	expr, err := planning.Parse(selectorStr)
+	if err != nil {
+		writeHTTPJSON(w, http.StatusBadRequest, map[string]any{
+			"error":   string(planning.ErrSelectorInvalidSyntax),
+			"message": err.Error(),
+			"status":  "400 Bad Request",
+		})
+		return
+	}
+
+	stageSize := 64
+	if raw := strings.TrimSpace(query.Get("stage_size")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeHTTPJSON(w, http.StatusBadRequest, map[string]any{
+				"error":   "INVALID_STAGE_SIZE",
+				"message": "stage_size must be a positive integer",
+				"status":  "400 Bad Request",
+			})
+			return
+		}
+		stageSize = parsed
+	}
+
+	target := 20
+	if raw := strings.TrimSpace(query.Get("target")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeHTTPJSON(w, http.StatusBadRequest, map[string]any{
+				"error":   "INVALID_TARGET",
+				"message": "target must be a positive integer",
+				"status":  "400 Bad Request",
+			})
+			return
+		}
+		target = parsed
+	}
+
+	allIDs := expr.AllIDs()
+
+	var stages []types.OmniPlanStage
+	totalMatched := len(allIDs)
+	stageCount := (totalMatched + stageSize - 1) / stageSize
+	if stageCount == 0 {
+		stageCount = 1
+	}
+
+	for i := 0; i < stageCount; i++ {
+		start := i * stageSize
+		end := start + stageSize
+		if end > totalMatched {
+			end = totalMatched
+		}
+		stageMatched := end - start
+		stageSelected := 0
+		if i == 0 && target < stageMatched {
+			stageSelected = target
+		}
+		stages = append(stages, types.OmniPlanStage{
+			Stage:     i + 1,
+			StageSize: stageSize,
+			Matched:   stageMatched,
+			Selected:  stageSelected,
+		})
+	}
+
+	selected := make([]int, 0)
+	ordering := make([]int, 0)
+	if totalMatched > 0 {
+		limit := target
+		if limit > totalMatched {
+			limit = totalMatched
+		}
+		for i := 0; i < limit; i++ {
+			selected = append(selected, allIDs[i])
+			ordering = append(ordering, allIDs[i])
+		}
+	}
+
+	response := types.OmniPlanResponse{
+		Repo:        repo,
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+		Selector:    selectorStr,
+		Mode:        "omni_batch",
+		StageCount:  stageCount,
+		Stages:      stages,
+		Selected:    selected,
+		Ordering:    ordering,
+	}
+
+	writeHTTPJSON(w, http.StatusOK, response)
+}
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -847,6 +1166,137 @@ func writeHTTPError(w http.ResponseWriter, status int, message string) {
 	writeHTTPJSON(w, status, map[string]string{"error": message})
 }
 
+func mirrorDBPath() string {
+	dbPath := strings.TrimSpace(os.Getenv("PRATC_DB_PATH"))
+	if dbPath == "" {
+		home, _ := os.UserHomeDir()
+		dbPath = filepath.Join(home, ".pratc", "pratc.db")
+	}
+	return dbPath
+}
+
+func mirrorDirectorySize(path string) (int64, error) {
+	var total int64
+	err := filepath.WalkDir(path, func(_ string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, statErr := entry.Info()
+		if statErr != nil {
+			return statErr
+		}
+		total += info.Size()
+		return nil
+	})
+	return total, err
+}
+
+func formatMirrorTimestamp(ts time.Time) string {
+	if ts.IsZero() {
+		return "-"
+	}
+	return ts.UTC().Format(time.RFC3339)
+}
+
+func writeMirrorList(cmd *cobra.Command, baseDir string) error {
+	entries, err := os.ReadDir(baseDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No mirrors found (directory does not exist)")
+			return nil
+		}
+		return fmt.Errorf("read mirror directory: %w", err)
+	}
+	if len(entries) == 0 {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No mirrors found")
+		return nil
+	}
+
+	store, err := cache.Open(mirrorDBPath())
+	if err != nil {
+		store = nil
+	} else {
+		defer store.Close()
+	}
+
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "REPO\tPATH\tSIZE\tLAST_SYNC")
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		owner := entry.Name()
+		ownerPath := filepath.Join(baseDir, owner)
+		subEntries, err := os.ReadDir(ownerPath)
+		if err != nil {
+			continue
+		}
+		for _, sub := range subEntries {
+			if !sub.IsDir() {
+				continue
+			}
+			repoName := strings.TrimSuffix(sub.Name(), ".git")
+			repoIdentifier := owner + "/" + repoName
+			repoPath := filepath.Join(ownerPath, sub.Name())
+			size, sizeErr := mirrorDirectorySize(repoPath)
+			if sizeErr != nil {
+				size = 0
+			}
+			lastSync := time.Time{}
+			if store != nil {
+				if syncedAt, err := store.LastSync(repoIdentifier); err == nil {
+					lastSync = syncedAt
+				}
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%d\t%s\n", repoIdentifier, repoPath, size, formatMirrorTimestamp(lastSync))
+		}
+	}
+	return nil
+}
+
+func writeMirrorInfo(cmd *cobra.Command, baseDir, repoIdentifier string) error {
+	repoPath, err := repo.MirrorPath(baseDir, repoIdentifier)
+	if err != nil {
+		return fmt.Errorf("invalid repo format: %w", err)
+	}
+	info, err := os.Stat(repoPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("mirror not found for %s", repoIdentifier)
+		}
+		return fmt.Errorf("stat mirror path: %w", err)
+	}
+
+	size, sizeErr := mirrorDirectorySize(repoPath)
+	if sizeErr != nil {
+		size = 0
+	}
+
+	store, err := cache.Open(mirrorDBPath())
+	if err != nil {
+		store = nil
+	} else {
+		defer store.Close()
+	}
+
+	lastSync := time.Time{}
+	if store != nil {
+		if syncedAt, err := store.LastSync(repoIdentifier); err == nil {
+			lastSync = syncedAt
+		}
+	}
+
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Repository: %s\n", repoIdentifier)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Path: %s\n", repoPath)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Exists: %v\n", info.IsDir())
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Disk usage: %d bytes\n", size)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Last modified: %s\n", info.ModTime().UTC().Format(time.RFC3339))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Last sync: %s\n", formatMirrorTimestamp(lastSync))
+	return nil
+}
+
 func RegisterMirrorCommand() {
 	baseDir, err := repo.DefaultBaseDir()
 	if err != nil {
@@ -864,41 +1314,7 @@ func RegisterMirrorCommand() {
 		Use:   "list",
 		Short: "List all synced repos",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			entries, err := os.ReadDir(baseDir)
-			if err != nil {
-				if os.IsNotExist(err) {
-					_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No mirrors found (directory does not exist)")
-					return nil
-				}
-				return fmt.Errorf("read mirror directory: %w", err)
-			}
-			if len(entries) == 0 {
-				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No mirrors found")
-				return nil
-			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-40s %s\n", "REPO", "PATH")
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), strings.Repeat("-", 80))
-			for _, entry := range entries {
-				if !entry.IsDir() {
-					continue
-				}
-				owner := entry.Name()
-				ownerPath := filepath.Join(baseDir, owner)
-				subEntries, err := os.ReadDir(ownerPath)
-				if err != nil {
-					continue
-				}
-				for _, sub := range subEntries {
-					if !sub.IsDir() {
-						continue
-					}
-					repoName := sub.Name()
-					fullRepo := owner + "/" + repoName
-					repoPath := filepath.Join(ownerPath, repoName)
-					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-40s %s\n", fullRepo, repoPath)
-				}
-			}
-			return nil
+			return writeMirrorList(cmd, baseDir)
 		},
 	}
 
@@ -907,25 +1323,7 @@ func RegisterMirrorCommand() {
 		Short: "Show detailed stats for a mirror",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			repoIdentifier := args[0]
-			repoPath, err := repo.MirrorPath(baseDir, repoIdentifier)
-			if err != nil {
-				return fmt.Errorf("invalid repo format: %w", err)
-			}
-			info, err := os.Stat(repoPath)
-			if err != nil {
-				if os.IsNotExist(err) {
-					return fmt.Errorf("mirror not found for %s", repoIdentifier)
-				}
-				return fmt.Errorf("stat mirror path: %w", err)
-			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Repository: %s\n", repoIdentifier)
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Path: %s\n", repoPath)
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Exists: %v\n", info.IsDir())
-			if info.IsDir() {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Last modified: %s\n", info.ModTime().Format(time.RFC3339))
-			}
-			return nil
+			return writeMirrorInfo(cmd, baseDir, args[0])
 		},
 	}
 

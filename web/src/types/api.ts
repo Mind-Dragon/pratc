@@ -109,6 +109,24 @@ export interface PlanRejection {
   reason: string;
 }
 
+export interface OmniPlanStage {
+  stage: number;
+  stageSize: number;
+  matched: number;
+  selected: number;
+}
+
+export interface OmniPlanResponse {
+  repo: string;
+  generatedAt: string;
+  selector: string;
+  mode: string;
+  stageCount: number;
+  stages: OmniPlanStage[];
+  selected: number[];
+  ordering: number[];
+}
+
 export interface ActionIntent {
   action: string;
   pr_number: number;

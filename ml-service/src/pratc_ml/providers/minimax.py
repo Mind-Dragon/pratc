@@ -16,7 +16,7 @@ def embed_texts(
     texts: list[str],
     timeout_seconds: float = 30.0,
 ) -> list[list[float]]:
-    endpoint = "https://api.minimaxi.chat/v1/embeddings"
+    endpoint = "https://api.minimax.io/v1/embeddings"
     payload = {
         "model": model,
         "texts": texts,
