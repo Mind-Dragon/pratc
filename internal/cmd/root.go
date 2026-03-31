@@ -224,12 +224,13 @@ func RegisterAnalyzeCommand() {
 	var useCacheFirst bool
 	var forceLive bool
 	var force bool
+	var maxPRs int
 
 	command := &cobra.Command{
 		Use:   "analyze",
 		Short: "Analyze pull requests for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg := buildAnalyzeConfig(useCacheFirst, forceLive)
+			cfg := buildAnalyzeConfig(useCacheFirst, forceLive, maxPRs)
 			service := app.NewService(cfg)
 
 			if shouldWarnAnalyzeSync(useCacheFirst, force, forceLive) {
@@ -261,13 +262,14 @@ func RegisterAnalyzeCommand() {
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
 	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch")
 	command.Flags().BoolVar(&force, "force", false, "Compatibility flag to skip sync warning")
+	command.Flags().IntVar(&maxPRs, "max-prs", -1, "Max PRs to analyze (-1=default 1000, 0=no cap)")
 	_ = command.Flags().MarkHidden("force")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
 
-func buildAnalyzeConfig(useCacheFirst, forceLive bool) app.Config {
-	return app.Config{AllowLive: forceLive, UseCacheFirst: useCacheFirst}
+func buildAnalyzeConfig(useCacheFirst, forceLive bool, maxPRs int) app.Config {
+	return app.Config{AllowLive: forceLive, UseCacheFirst: useCacheFirst, MaxPRs: maxPRs}
 }
 
 func buildCacheFirstConfig(useCacheFirst bool) app.Config {
@@ -417,16 +419,18 @@ func RegisterPlanCommand() {
 func RegisterServeCommand() {
 	var port int
 	var repo string
+	var useCacheFirst bool
 
 	command := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve the prATC API",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runServer(cmd.Context(), port, repo)
+			return runServer(cmd.Context(), port, repo, useCacheFirst)
 		},
 	}
 	command.Flags().IntVar(&port, "port", 8080, "Port to bind the API server to")
 	command.Flags().StringVar(&repo, "repo", "", "Optional default repository for API routes")
+	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", false, "Check cache before live fetch for analyze/cluster endpoints")
 	rootCmd.AddCommand(command)
 }
 
@@ -493,8 +497,8 @@ func parseMode(raw string) (formula.Mode, error) {
 	}
 }
 
-func runServer(ctx context.Context, port int, defaultRepo string) error {
-	service := app.NewService(app.Config{})
+func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst bool) error {
+	service := app.NewService(buildCacheFirstConfig(useCacheFirst))
 	settingsStore, err := openSettingsStore()
 	if err != nil {
 		return err
@@ -842,7 +846,21 @@ func handleAnalyze(w http.ResponseWriter, r *http.Request, service app.Service, 
 		return
 	}
 
-	if analyzeSyncActive(repo) {
+	useCacheFirst := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("use_cache_first")), "true")
+
+	maxPRs := 0
+	if maxPRsStr := strings.TrimSpace(r.URL.Query().Get("max_prs")); maxPRsStr != "" {
+		if v, err := strconv.Atoi(maxPRsStr); err == nil {
+			maxPRs = v
+		}
+	}
+
+	analyzeSvc := service
+	if useCacheFirst || maxPRs > 0 {
+		analyzeSvc = app.NewService(app.Config{UseCacheFirst: useCacheFirst, MaxPRs: maxPRs})
+	}
+
+	if !useCacheFirst && analyzeSyncActive(repo) {
 		if !waitForAnalyzeSyncCompletion(repo, analyzeSyncWaitTimeout) {
 			jobID, _ := currentAnalyzeSyncJobID(repo)
 			writeHTTPJSON(w, http.StatusAccepted, buildAnalyzeSyncTimeoutResponse(repo, jobID, analyzeSyncWaitTimeout))
@@ -850,17 +868,19 @@ func handleAnalyze(w http.ResponseWriter, r *http.Request, service app.Service, 
 		}
 	}
 
-	if _, _, shouldWarn := checkAnalyzeSyncWarningData(repo); shouldWarn {
-		jobID, err := startAnalyzeBackgroundSync(repo)
-		if err != nil {
-			writeHTTPError(w, http.StatusInternalServerError, err.Error())
+	if !useCacheFirst {
+		if _, _, shouldWarn := checkAnalyzeSyncWarningData(repo); shouldWarn {
+			jobID, err := startAnalyzeBackgroundSync(repo)
+			if err != nil {
+				writeHTTPError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			writeHTTPJSON(w, http.StatusAccepted, buildAnalyzeSyncInProgressResponse(repo, jobID))
 			return
 		}
-		writeHTTPJSON(w, http.StatusAccepted, buildAnalyzeSyncInProgressResponse(repo, jobID))
-		return
 	}
 
-	response, err := service.Analyze(r.Context(), repo)
+	response, err := analyzeSvc.Analyze(r.Context(), repo)
 	if err != nil {
 		writeHTTPError(w, http.StatusInternalServerError, err.Error())
 		return

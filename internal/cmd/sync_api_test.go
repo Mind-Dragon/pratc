@@ -56,7 +56,10 @@ func (m testMetadataSource) SyncRepo(_ context.Context, _ string, progress func(
 type testMirror struct{}
 
 func (testMirror) FetchAll(_ context.Context, _ []int, _ func(done, total int)) error { return nil }
-func (testMirror) PruneClosedPRs(_ context.Context, _ []int) error                    { return nil }
+func (testMirror) FetchAllWithSkipped(_ context.Context, _ []int, _ func(done, total int)) ([]int, error) {
+	return nil, nil
+}
+func (testMirror) PruneClosedPRs(_ context.Context, _ []int) error { return nil }
 func (testMirror) Drift(_ context.Context, _ map[int]string) (map[int]string, error) {
 	return map[int]string{}, nil
 }

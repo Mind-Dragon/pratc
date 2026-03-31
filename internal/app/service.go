@@ -104,7 +104,7 @@ func NewService(cfg Config) Service {
 	allowLive := cfg.AllowLive
 
 	maxPRs := cfg.MaxPRs
-	if maxPRs <= 0 {
+	if maxPRs < 0 {
 		maxPRs = 1000
 	}
 
