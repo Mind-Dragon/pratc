@@ -27,8 +27,8 @@ type dbJobRecorder struct {
 	dbPath string
 }
 
-func NewDefaultRunner(jobRecorder JobRecorder, jobID string) *DefaultRunner {
-	return NewRunner(defaultWorker(), jobRecorder, jobID)
+func NewDefaultRunner(jobRecorder JobRecorder, jobID string, cacheStore *cache.Store) *DefaultRunner {
+	return NewRunner(defaultWorker(cacheStore), jobRecorder, jobID)
 }
 
 func NewDBJobRecorder(dbPath string) JobRecorder {
@@ -72,21 +72,19 @@ func (r *DefaultRunner) Run(ctx context.Context, repo string, emit func(eventTyp
 	return nil
 }
 
-func defaultWorker() Worker {
+func defaultWorker(cacheStore *cache.Store) Worker {
 	return Worker{
-		MirrorFactory: func(_ context.Context, repoID string) (Mirror, error) {
+		MirrorFactory: func(ctx context.Context, repoID string) (Mirror, error) {
 			baseDir, err := repo.DefaultBaseDir()
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("default base dir: %w", err)
 			}
-			mirrorPath, err := repo.MirrorPath(baseDir, repoID)
-			if err != nil {
-				return nil, err
-			}
-			return repo.NewMirror(mirrorPath), nil
+			remoteURL := fmt.Sprintf("https://github.com/%s.git", repoID)
+			return repo.OpenOrCreate(ctx, baseDir, repoID, remoteURL)
 		},
-		Metadata: githubMetadataSource{client: gh.NewClient(gh.Config{Token: os.Getenv("GITHUB_TOKEN"), ReserveRequests: 200})},
-		Now:      func() time.Time { return time.Now().UTC() },
+		Metadata:   githubMetadataSource{client: gh.NewClient(gh.Config{Token: os.Getenv("GITHUB_TOKEN"), ReserveRequests: 200}), cacheStore: cacheStore},
+		CacheStore: cacheStore,
+		Now:        func() time.Time { return time.Now().UTC() },
 	}
 }
 
@@ -115,7 +113,8 @@ func (r dbJobRecorder) MarkSyncJobFailed(jobID string, message string) error {
 }
 
 type githubMetadataSource struct {
-	client *gh.Client
+	client     *gh.Client
+	cacheStore *cache.Store
 }
 
 func (g githubMetadataSource) SyncRepo(ctx context.Context, repoID string, progress func(done, total int)) (MetadataSnapshot, error) {
@@ -126,6 +125,14 @@ func (g githubMetadataSource) SyncRepo(ctx context.Context, repoID string, progr
 	prs, err := g.client.FetchPullRequests(ctx, repoID, gh.PullRequestListOptions{PerPage: 100, Progress: progress})
 	if err != nil {
 		return MetadataSnapshot{}, fmt.Errorf("fetch pull requests: %w", err)
+	}
+
+	if g.cacheStore != nil {
+		for _, pr := range prs {
+			if saveErr := g.cacheStore.UpsertPR(pr); saveErr != nil {
+				return MetadataSnapshot{}, fmt.Errorf("save pull request %d: %w", pr.Number, saveErr)
+			}
+		}
 	}
 
 	openPRs := make([]int, 0, len(prs))

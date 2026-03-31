@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/jeffersonnunn/pratc/internal/cache"
 )
 
 type Mirror interface {
 	FetchAll(ctx context.Context, openPRs []int, progress func(done, total int)) error
+	FetchAllWithSkipped(ctx context.Context, openPRs []int, progress func(done, total int)) ([]int, error)
 	PruneClosedPRs(ctx context.Context, closedPRs []int) error
 	Drift(ctx context.Context, remoteByPR map[int]string) (map[int]string, error)
 }
@@ -28,6 +31,7 @@ type MetadataSnapshot struct {
 type SyncResult struct {
 	Repo          string            `json:"repo"`
 	SyncedPRs     int               `json:"synced_prs"`
+	SkippedPRs    []int             `json:"skipped_prs"`
 	DriftDetected map[int]string    `json:"drift_detected"`
 	GeneratedAt   string            `json:"generated_at"`
 	Progress      map[string][2]int `json:"progress"`
@@ -36,6 +40,7 @@ type SyncResult struct {
 type Worker struct {
 	MirrorFactory MirrorFactory
 	Metadata      MetadataSource
+	CacheStore    *cache.Store
 	Now           func() time.Time
 }
 
@@ -65,11 +70,12 @@ func (w Worker) SyncJob(ctx context.Context, repo string, progress func(stage st
 		return nil, fmt.Errorf("open mirror: %w", err)
 	}
 
-	if err := mirror.FetchAll(ctx, snapshot.OpenPRs, func(done, total int) {
+	skipped, err := mirror.FetchAllWithSkipped(ctx, snapshot.OpenPRs, func(done, total int) {
 		if progress != nil {
 			progress("mirror_fetch", done, total)
 		}
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, fmt.Errorf("fetch mirror refs: %w", err)
 	}
 
@@ -85,6 +91,7 @@ func (w Worker) SyncJob(ctx context.Context, repo string, progress func(stage st
 	result := &SyncResult{
 		Repo:          repo,
 		SyncedPRs:     snapshot.SyncedPRs,
+		SkippedPRs:    append([]int{}, skipped...),
 		DriftDetected: drift,
 		GeneratedAt:   now().Format(time.RFC3339),
 		Progress:      map[string][2]int{},
