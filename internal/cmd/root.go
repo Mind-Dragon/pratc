@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -22,7 +20,6 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/formula"
 	"github.com/jeffersonnunn/pratc/internal/planning"
 	"github.com/jeffersonnunn/pratc/internal/repo"
-	"github.com/jeffersonnunn/pratc/internal/report"
 	"github.com/jeffersonnunn/pratc/internal/settings"
 	prsync "github.com/jeffersonnunn/pratc/internal/sync"
 	"github.com/jeffersonnunn/pratc/internal/types"
@@ -226,18 +223,13 @@ func RegisterAnalyzeCommand() {
 	var format string
 	var useCacheFirst bool
 	var forceLive bool
-	var maxPRs int
 	var force bool
 
 	command := &cobra.Command{
 		Use:   "analyze",
 		Short: "Analyze pull requests for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			effectiveMaxPRs := maxPRs
-			if cmd.Flags().Changed("max-prs") && maxPRs <= 0 {
-				effectiveMaxPRs = -1
-			}
-			cfg := buildAnalyzeConfig(useCacheFirst, forceLive, effectiveMaxPRs)
+			cfg := buildAnalyzeConfig(useCacheFirst, forceLive)
 			service := app.NewService(cfg)
 
 			if shouldWarnAnalyzeSync(useCacheFirst, force, forceLive) {
@@ -268,15 +260,14 @@ func RegisterAnalyzeCommand() {
 	command.Flags().StringVar(&format, "format", "json", "Output format: json")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
 	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch")
-	command.Flags().IntVar(&maxPRs, "max-prs", 0, "Maximum PRs to analyze (0=no cap, positive N=cap at N; default: 1000 when flag omitted)")
 	command.Flags().BoolVar(&force, "force", false, "Compatibility flag to skip sync warning")
 	_ = command.Flags().MarkHidden("force")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
 
-func buildAnalyzeConfig(useCacheFirst, forceLive bool, maxPRs int) app.Config {
-	return app.Config{AllowLive: forceLive, UseCacheFirst: useCacheFirst, MaxPRs: maxPRs}
+func buildAnalyzeConfig(useCacheFirst, forceLive bool) app.Config {
+	return app.Config{AllowLive: forceLive, UseCacheFirst: useCacheFirst}
 }
 
 func buildCacheFirstConfig(useCacheFirst bool) app.Config {
@@ -314,19 +305,12 @@ func RegisterClusterCommand() {
 	var repo string
 	var format string
 	var useCacheFirst bool
-	var forceLive bool
-	var maxPRs int
 
 	command := &cobra.Command{
 		Use:   "cluster",
 		Short: "Cluster pull requests for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			effectiveMaxPRs := maxPRs
-			if cmd.Flags().Changed("max-prs") && maxPRs <= 0 {
-				effectiveMaxPRs = -1
-			}
-
-			service := app.NewService(buildAnalyzeConfig(useCacheFirst, forceLive, effectiveMaxPRs))
+			service := app.NewService(buildCacheFirstConfig(useCacheFirst))
 			response, err := service.Cluster(cmd.Context(), repo)
 			if err != nil {
 				return err
@@ -343,8 +327,6 @@ func RegisterClusterCommand() {
 	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
 	command.Flags().StringVar(&format, "format", "json", "Output format: json")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
-	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch")
-	command.Flags().IntVar(&maxPRs, "max-prs", 0, "Maximum PRs to analyze (0=no cap, positive N=cap at N; default: 1000 when flag omitted)")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
@@ -353,19 +335,12 @@ func RegisterGraphCommand() {
 	var repo string
 	var format string
 	var useCacheFirst bool
-	var forceLive bool
-	var maxPRs int
 
 	command := &cobra.Command{
 		Use:   "graph",
 		Short: "Render a dependency graph for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			effectiveMaxPRs := maxPRs
-			if cmd.Flags().Changed("max-prs") && maxPRs <= 0 {
-				effectiveMaxPRs = -1
-			}
-
-			service := app.NewService(buildAnalyzeConfig(useCacheFirst, forceLive, effectiveMaxPRs))
+			service := app.NewService(buildCacheFirstConfig(useCacheFirst))
 			response, err := service.Graph(cmd.Context(), repo)
 			if err != nil {
 				return err
@@ -385,8 +360,6 @@ func RegisterGraphCommand() {
 	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
 	command.Flags().StringVar(&format, "format", "dot", "Output format: dot|json")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
-	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch")
-	command.Flags().IntVar(&maxPRs, "max-prs", 0, "Maximum PRs to analyze (0=no cap, positive N=cap at N; default: 1000 when flag omitted)")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
@@ -399,38 +372,11 @@ func RegisterPlanCommand() {
 	var dryRun bool
 	var includeBots bool
 	var useCacheFirst bool
-	var forceLive bool
-	var maxPRs int
-	var omni bool
-	var selector string
 
 	command := &cobra.Command{
 		Use:   "plan",
 		Short: "Generate a merge plan for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if omni {
-				if strings.TrimSpace(selector) == "" {
-					return fmt.Errorf("--selector is required when --omni is set")
-				}
-
-				expr, err := planning.Parse(selector)
-				if err != nil {
-					return fmt.Errorf("invalid selector: %w", err)
-				}
-
-				response := buildOmniPlanResponse(repo, selector, expr, target, 64)
-
-				details := fmt.Sprintf("target=%d mode=omni_batch selector=%s", target, selector)
-				logAuditEntry("plan", repo, details)
-
-				switch strings.ToLower(format) {
-				case "json", "":
-					return writeJSON(cmd, response)
-				default:
-					return fmt.Errorf("invalid format %q for plan", format)
-				}
-			}
-
 			selectedMode, err := parseMode(mode)
 			if err != nil {
 				return err
@@ -440,12 +386,7 @@ func RegisterPlanCommand() {
 				dryRun = true
 			}
 
-			effectiveMaxPRs := maxPRs
-			if cmd.Flags().Changed("max-prs") && maxPRs <= 0 {
-				effectiveMaxPRs = -1
-			}
-
-			service := app.NewService(buildAnalyzeConfig(useCacheFirst, forceLive, effectiveMaxPRs))
+			service := app.NewService(buildCacheFirstConfig(useCacheFirst))
 			response, err := service.Plan(cmd.Context(), repo, target, selectedMode)
 			if err != nil {
 				return err
@@ -469,149 +410,21 @@ func RegisterPlanCommand() {
 	command.Flags().BoolVar(&dryRun, "dry-run", true, "Plan only; do not execute (always true by default)")
 	command.Flags().BoolVar(&includeBots, "include-bots", false, "Include bot PRs in merge plan (default excludes bots)")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
-	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch")
-	command.Flags().IntVar(&maxPRs, "max-prs", 0, "Maximum PRs to analyze (0=no cap, positive N=cap at N; default: 1000 when flag omitted)")
-	command.Flags().BoolVar(&omni, "omni", false, "Use omni-batch planning mode (requires --selector)")
-	command.Flags().StringVar(&selector, "selector", "", "PR selector expression for omni mode (e.g., 1-5, 10 AND 20)")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
-}
-
-func RegisterReportCommand() {
-	var repo string
-	var format string
-	var output string
-	var useCacheFirst bool
-	var forceLive bool
-	var maxPRs int
-
-	command := &cobra.Command{
-		Use:   "report",
-		Short: "Generate repository report output",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			effectiveMaxPRs := maxPRs
-			if cmd.Flags().Changed("max-prs") && maxPRs <= 0 {
-				effectiveMaxPRs = -1
-			}
-
-			service := app.NewService(buildAnalyzeConfig(useCacheFirst, forceLive, effectiveMaxPRs))
-
-			switch strings.ToLower(strings.TrimSpace(format)) {
-			case "pdf", "":
-				pdfBytes, err := service.ReportPDF(cmd.Context(), repo)
-				if err != nil {
-					// Use unified fallback for consistent CLI/API behavior
-					pdfBytes, err = app.ReportPDFFallback(repo)
-					if err != nil {
-						return fmt.Errorf("failed to generate fallback PDF: %w", err)
-					}
-				}
-
-				if strings.TrimSpace(output) == "" {
-					_, err = cmd.OutOrStdout().Write(pdfBytes)
-					return err
-				}
-
-				return os.WriteFile(output, pdfBytes, 0o644)
-			case "json":
-				response, err := service.ReportData(cmd.Context(), repo)
-				if err != nil {
-					return err
-				}
-
-				if strings.TrimSpace(output) == "" {
-					return writeJSON(cmd, response)
-				}
-
-				payload, err := json.MarshalIndent(response, "", "  ")
-				if err != nil {
-					return err
-				}
-				payload = append(payload, '\n')
-				return os.WriteFile(output, payload, 0o644)
-			default:
-				return fmt.Errorf("invalid format %q for report", format)
-			}
-		},
-	}
-
-	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
-	command.Flags().StringVar(&format, "format", "pdf", "Output format: pdf|json")
-	command.Flags().StringVar(&output, "output", "", "Output file path (defaults to stdout)")
-	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
-	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch")
-	command.Flags().IntVar(&maxPRs, "max-prs", 0, "Maximum PRs to analyze (0=no cap, positive N=cap at N; default: 1000 when flag omitted)")
-	_ = command.MarkFlagRequired("repo")
-	rootCmd.AddCommand(command)
-}
-
-func buildOmniPlanResponse(repo, selectorStr string, expr *planning.SelectExpr, target, stageSize int) types.OmniPlanResponse {
-	allIDs := expr.AllIDs()
-
-	totalMatched := len(allIDs)
-	stageCount := (totalMatched + stageSize - 1) / stageSize
-	if stageCount == 0 {
-		stageCount = 1
-	}
-
-	var stages []types.OmniPlanStage
-	for i := 0; i < stageCount; i++ {
-		start := i * stageSize
-		end := start + stageSize
-		if end > totalMatched {
-			end = totalMatched
-		}
-		stageMatched := end - start
-		stageSelected := 0
-		if i == 0 && target < stageMatched {
-			stageSelected = target
-		}
-		stages = append(stages, types.OmniPlanStage{
-			Stage:     i + 1,
-			StageSize: stageSize,
-			Matched:   stageMatched,
-			Selected:  stageSelected,
-		})
-	}
-
-	selected := make([]int, 0)
-	ordering := make([]int, 0)
-	if totalMatched > 0 {
-		limit := target
-		if limit > totalMatched {
-			limit = totalMatched
-		}
-		for i := 0; i < limit; i++ {
-			selected = append(selected, allIDs[i])
-			ordering = append(ordering, allIDs[i])
-		}
-	}
-
-	return types.OmniPlanResponse{
-		Repo:        repo,
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		Selector:    selectorStr,
-		Mode:        "omni_batch",
-		StageCount:  stageCount,
-		Stages:      stages,
-		Selected:    selected,
-		Ordering:    ordering,
-	}
 }
 
 func RegisterServeCommand() {
 	var port int
-	var host string
 	var repo string
 
 	command := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve the prATC API",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runServer(cmd.Context(), host, port, repo)
+			return runServer(cmd.Context(), port, repo)
 		},
 	}
-	command.Flags().StringVar(&host, "host", "0.0.0.0", "Host to bind the API server to (defaults to 0.0.0.0 for all interfaces; allowed values: 127.0.0.1, ::1, 100.112.201.95)")
 	command.Flags().IntVar(&port, "port", 8080, "Port to bind the API server to")
 	command.Flags().StringVar(&repo, "repo", "", "Optional default repository for API routes")
 	rootCmd.AddCommand(command)
@@ -621,7 +434,6 @@ func RegisterSyncCommand() {
 	var repo string
 	var watch bool
 	var interval time.Duration
-	var noWait bool
 
 	command := &cobra.Command{
 		Use:   "sync",
@@ -632,45 +444,32 @@ func RegisterSyncCommand() {
 				return err
 			}
 
-			if watch {
-				if interval <= 0 {
-					return fmt.Errorf("invalid value for --interval: must be greater than 0")
-				}
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "watching sync for %s every %s\n", repo, interval)
-				ticker := time.NewTicker(interval)
-				defer ticker.Stop()
-				for {
-					select {
-					case <-cmd.Context().Done():
-						return nil
-					case <-ticker.C:
-						if err := manager.Start(repo); err != nil {
-							return err
-						}
-					}
-				}
-			}
-
-			if noWait {
+			if !watch {
 				return writeJSON(cmd, map[string]any{"started": true, "repo": repo})
 			}
 
-			const syncWaitTimeout = 30 * time.Minute
-			if err := manager.Wait(cmd.Context(), repo, syncWaitTimeout); err != nil {
-				return err
+			if interval <= 0 {
+				return fmt.Errorf("invalid value for --interval: must be greater than 0")
 			}
-			return writeJSON(cmd, map[string]any{
-				"completed":   true,
-				"repo":        repo,
-				"generatedAt": time.Now().UTC().Format(time.RFC3339),
-			})
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "watching sync for %s every %s\n", repo, interval)
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-cmd.Context().Done():
+					return nil
+				case <-ticker.C:
+					if err := manager.Start(repo); err != nil {
+						return err
+					}
+				}
+			}
 		},
 	}
 
 	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
 	command.Flags().BoolVar(&watch, "watch", false, "Run sync in watch mode")
 	command.Flags().DurationVar(&interval, "interval", 5*time.Minute, "Watch mode interval")
-	command.Flags().BoolVar(&noWait, "no-wait", false, "Return immediately without waiting for sync to complete")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
@@ -694,28 +493,7 @@ func parseMode(raw string) (formula.Mode, error) {
 	}
 }
 
-// allowedBindHosts defines the safe bind targets for VPN-safe serving.
-// Per the 0.2.1 topology contract, only localhost and the designated VPN entrypoint
-// are allowed to prevent accidental public exposure.
-var allowedBindHosts = map[string]bool{
-	"0.0.0.0":        true,
-	"127.0.0.1":      true, // IPv4 localhost
-	"::1":            true, // IPv6 localhost
-	"100.112.201.95": true, // VPN entrypoint per Task 1 contract
-}
-
-// validateBindAddr checks if the given host is an allowed bind target.
-func validateBindAddr(host string) error {
-	if !allowedBindHosts[host] {
-		return fmt.Errorf("bind policy: %q is not an allowed bind target; valid targets are: 0.0.0.0, 127.0.0.1, ::1, 100.112.201.95", host)
-	}
-	return nil
-}
-
-func runServer(ctx context.Context, host string, port int, defaultRepo string) error {
-	if err := validateBindAddr(host); err != nil {
-		return err
-	}
+func runServer(ctx context.Context, port int, defaultRepo string) error {
 	service := app.NewService(app.Config{})
 	settingsStore, err := openSettingsStore()
 	if err != nil {
@@ -778,7 +556,7 @@ func runServer(ctx context.Context, host string, port int, defaultRepo string) e
 		handleRepoAction(w, r, service, repoSync)
 	})
 
-	server := &http.Server{Addr: net.JoinHostPort(host, strconv.Itoa(port)), Handler: corsMiddleware(mux)}
+	server := &http.Server{Addr: ":" + strconv.Itoa(port), Handler: corsMiddleware(mux)}
 
 	go func() {
 		<-ctx.Done()
@@ -808,20 +586,15 @@ type repoSyncAPI interface {
 
 var newRepoSyncManager = func(jobDBPath, jobID string) *prsync.Manager {
 	var jobRecorder prsync.JobRecorder
-	var cacheStore *cache.Store
-
-	// Use default path if none provided
-	if strings.TrimSpace(jobDBPath) == "" {
+	if strings.TrimSpace(jobDBPath) != "" {
+		jobRecorder = prsync.NewDBJobRecorder(jobDBPath)
+	}
+	dbPath := strings.TrimSpace(os.Getenv("PRATC_DB_PATH"))
+	if dbPath == "" {
 		home, _ := os.UserHomeDir()
-		jobDBPath = filepath.Join(home, ".pratc", "pratc.db")
+		dbPath = filepath.Join(home, ".pratc", "pratc.db")
 	}
-
-	jobRecorder = prsync.NewDBJobRecorder(jobDBPath)
-	store, err := cache.Open(jobDBPath)
-	if err == nil {
-		cacheStore = store
-	}
-
+	cacheStore, _ := cache.Open(dbPath)
 	return prsync.NewManager(prsync.NewDefaultRunner(jobRecorder, jobID, cacheStore))
 }
 
@@ -924,108 +697,9 @@ func handleRepoAction(w http.ResponseWriter, r *http.Request, service app.Servic
 	case "sync/status":
 		syncStatus := getSyncStatus(repo)
 		writeHTTPJSON(w, http.StatusOK, syncStatus)
-	case "report.pdf":
-		handleReportPDF(w, r, repo)
-	case "report/metadata":
-		handleReportMetadata(w, r, service, repo)
-	case "charts/staleness.png":
-		handleChartStalenessPNG(w, r, service, repo)
 	default:
 		writeHTTPError(w, http.StatusNotFound, "route not found")
 	}
-}
-
-func handleReportPDF(w http.ResponseWriter, r *http.Request, repo string) {
-	if !ensureGET(w, r) || !ensureRepo(w, repo) {
-		return
-	}
-
-	service := app.NewService(buildCacheFirstConfig(true))
-	pdfBytes, err := service.ReportPDF(r.Context(), repo)
-	if err != nil {
-		// Use unified fallback for consistent CLI/API behavior
-		pdfBytes, err = app.ReportPDFFallback(repo)
-		if err != nil {
-			writeHTTPError(w, http.StatusInternalServerError, fmt.Sprintf("failed to generate PDF: %v", err))
-			return
-		}
-	}
-
-	parts := strings.Split(repo, "/")
-	filename := "report.pdf"
-	if len(parts) == 2 {
-		filename = fmt.Sprintf("%s-%s-report.pdf", parts[0], parts[1])
-	}
-
-	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(pdfBytes)
-}
-
-func handleReportMetadata(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
-	if !ensureGET(w, r) || !ensureRepo(w, repo) {
-		return
-	}
-
-	analysis, err := service.Analyze(r.Context(), repo)
-	if err != nil {
-		writeHTTPError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	response := types.ReportMetadataResponse{
-		Repo:            analysis.Repo,
-		GeneratedAt:     analysis.GeneratedAt,
-		TotalPRs:        analysis.Counts.TotalPRs,
-		ClusterCount:    analysis.Counts.ClusterCount,
-		ConflictPairs:   analysis.Counts.ConflictPairs,
-		DuplicateGroups: analysis.Counts.DuplicateGroups,
-		OverlapGroups:   analysis.Counts.OverlapGroups,
-		StalePRs:        analysis.Counts.StalePRs,
-	}
-
-	writeHTTPJSON(w, http.StatusOK, response)
-}
-
-func handleChartStalenessPNG(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
-	if !ensureGET(w, r) || !ensureRepo(w, repo) {
-		return
-	}
-
-	analysis, err := service.Analyze(r.Context(), repo)
-	if err != nil {
-		writeHTTPError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	// Transform analysis data into staleness rows
-	signals := make([]report.StalenessSignalRow, 0, len(analysis.StalenessSignals))
-	for _, signal := range analysis.StalenessSignals {
-		signals = append(signals, report.StalenessSignalRow{
-			PRNumber: signal.PRNumber,
-			Score:    signal.Score,
-		})
-	}
-
-	// Create chart renderer
-	chart := report.StalenessDistributionChart(signals)
-	if chart == nil {
-		writeHTTPError(w, http.StatusNotFound, "no data for chart")
-		return
-	}
-
-	// Render to PNG
-	pngData, err := chart.Render()
-	if err != nil {
-		writeHTTPError(w, http.StatusInternalServerError, fmt.Sprintf("failed to render chart: %v", err))
-		return
-	}
-
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(pngData)
 }
 
 func openSettingsStore() (*settings.Store, error) {
@@ -1383,73 +1057,66 @@ func handlePlanOmni(w http.ResponseWriter, r *http.Request, service app.Service,
 		target = parsed
 	}
 
-	response := buildOmniPlanResponse(repo, selectorStr, expr, target, stageSize)
+	allIDs := expr.AllIDs()
+
+	var stages []types.OmniPlanStage
+	totalMatched := len(allIDs)
+	stageCount := (totalMatched + stageSize - 1) / stageSize
+	if stageCount == 0 {
+		stageCount = 1
+	}
+
+	for i := 0; i < stageCount; i++ {
+		start := i * stageSize
+		end := start + stageSize
+		if end > totalMatched {
+			end = totalMatched
+		}
+		stageMatched := end - start
+		stageSelected := 0
+		if i == 0 && target < stageMatched {
+			stageSelected = target
+		}
+		stages = append(stages, types.OmniPlanStage{
+			Stage:     i + 1,
+			StageSize: stageSize,
+			Matched:   stageMatched,
+			Selected:  stageSelected,
+		})
+	}
+
+	selected := make([]int, 0)
+	ordering := make([]int, 0)
+	if totalMatched > 0 {
+		limit := target
+		if limit > totalMatched {
+			limit = totalMatched
+		}
+		for i := 0; i < limit; i++ {
+			selected = append(selected, allIDs[i])
+			ordering = append(ordering, allIDs[i])
+		}
+	}
+
+	response := types.OmniPlanResponse{
+		Repo:        repo,
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+		Selector:    selectorStr,
+		Mode:        "omni_batch",
+		StageCount:  stageCount,
+		Stages:      stages,
+		Selected:    selected,
+		Ordering:    ordering,
+	}
+
 	writeHTTPJSON(w, http.StatusOK, response)
-}
-
-// allowedCorsOrigins defines the strict allowlist of origins permitted for CORS.
-// Per the 0.2.1 topology contract, only explicitly listed origins are allowed.
-// This replaces the previous brittle heuristic that checked substring patterns.
-var allowedCorsOrigins = map[string]bool{
-	"http://localhost:3000":      true, // Local development
-	"http://localhost:7788":      true, // Local development alternate
-	"http://100.112.201.95:7788": true, // VPN entrypoint per Task 1 contract
-}
-
-// isOriginAllowed checks if the given origin is in the strict allowlist.
-// It parses the origin URL and performs exact scheme+host matching.
-func isOriginAllowed(origin string) bool {
-	if origin == "" {
-		return false // Empty origin is never allowed
-	}
-
-	// Fast path: check exact match first (covers most common cases)
-	if allowedCorsOrigins[origin] {
-		return true
-	}
-
-	// Parse the origin to extract scheme and host for stricter validation
-	// Origin format: scheme://host[:port]
-	parsed, err := url.Parse(origin)
-	if err != nil {
-		return false // Invalid origin URL
-	}
-
-	// Only HTTP scheme is allowed (no https for VPN entrypoint per topology)
-	if parsed.Scheme != "http" {
-		return false
-	}
-
-	// Check if parsed origin matches any allowlist entry
-	// This handles cases where the origin includes a port
-	for allowed := range allowedCorsOrigins {
-		allowedParsed, err := url.Parse(allowed)
-		if err != nil {
-			continue
-		}
-		if parsed.Scheme == allowedParsed.Scheme && parsed.Host == allowedParsed.Host {
-			return true
-		}
-	}
-
-	return false
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-
-		// Strict origin validation: only set ACAO for explicitly allowed origins
-		if isOriginAllowed(origin) {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			// Credentials are only sent when origin is validated
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
-		}
-		// For disallowed origins or no-origin requests: do NOT emit ACAO header
-
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -1668,10 +1335,9 @@ func RegisterMirrorCommand() {
 
 	pruneCmd := &cobra.Command{
 		Use:   "prune",
-		Short: "Preview or remove mirrors for repos no longer tracked",
-		Long:  "Safe by default: preview mirrors that would be removed unless --confirm is set.",
+		Short: "Remove mirrors for repos no longer tracked",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			confirm, _ := cmd.Flags().GetBool("confirm")
+			dryRun, _ := cmd.Flags().GetBool("dry-run")
 
 			dbPath := os.Getenv("PRATC_DB_PATH")
 			if dbPath == "" {
@@ -1724,8 +1390,8 @@ func RegisterMirrorCommand() {
 				return nil
 			}
 
-			if !confirm {
-				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "The following mirrors would be removed (safe by default; add --confirm to delete):")
+			if dryRun {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "The following mirrors would be removed (use without --dry-run to confirm):")
 				for _, path := range toRemove {
 					_, _ = fmt.Fprintln(cmd.OutOrStdout(), path)
 				}
@@ -1742,7 +1408,7 @@ func RegisterMirrorCommand() {
 			return nil
 		},
 	}
-	pruneCmd.Flags().Bool("confirm", false, "Delete unused mirrors instead of previewing them")
+	pruneCmd.Flags().Bool("dry-run", false, "Show what would be removed without deleting")
 
 	cleanCmd := &cobra.Command{
 		Use:   "clean",

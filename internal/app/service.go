@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -70,6 +71,19 @@ const (
 	precisionModeDeep = "deep"
 )
 
+func fetchTokenFromGHCLI() string {
+	path, err := exec.LookPath("gh")
+	if err != nil {
+		return ""
+	}
+	cmd := exec.Command(path, "auth", "token")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
+}
+
 func NewService(cfg Config) Service {
 	now := cfg.Now
 	if now == nil {
@@ -82,6 +96,9 @@ func NewService(cfg Config) Service {
 	}
 	if token == "" {
 		token = strings.TrimSpace(os.Getenv("GH_TOKEN"))
+	}
+	if token == "" {
+		token = fetchTokenFromGHCLI()
 	}
 
 	allowLive := cfg.AllowLive
@@ -552,7 +569,7 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 	}
 
 	if targetRepo != manifest.Repo && strings.TrimSpace(s.token) == "" {
-		return nil, "", truncationMeta{}, fmt.Errorf("missing auth for live repo %q: unlock psst GITHUB_PAT or export GH_TOKEN from `gh auth token`", targetRepo)
+		return nil, "", truncationMeta{}, fmt.Errorf("missing auth for live repo %q: unlock psst GITHUB_PAT, export GH_TOKEN, or login with gh CLI", targetRepo)
 	}
 
 	// Try cache first if enabled

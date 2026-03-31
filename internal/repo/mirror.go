@@ -182,6 +182,21 @@ func (m *Mirror) FetchAll(ctx context.Context, openPRs []int, progress func(done
 	return m.FetchAllBatched(ctx, openPRs, 100, progress)
 }
 
+func (m *Mirror) FetchAllWithSkipped(ctx context.Context, openPRs []int, progress func(done, total int)) ([]int, error) {
+	total := len(openPRs)
+	skipped := make([]int, 0)
+	for i, number := range openPRs {
+		refspec := fmt.Sprintf("refs/pull/%d/head:refs/pr/%d/head", number, number)
+		if _, err := m.runner.Run(ctx, "fetch", "--prune", "--filter=blob:none", "origin", refspec); err != nil {
+			skipped = append(skipped, number)
+		}
+		if progress != nil {
+			progress(i+1, total)
+		}
+	}
+	return skipped, nil
+}
+
 func (m *Mirror) FetchAllBatched(ctx context.Context, openPRs []int, maxRefsPerFetch int, progress func(done, total int)) error {
 	refspecs := BuildRefspecs(openPRs)
 	total := len(refspecs)
