@@ -21,9 +21,11 @@ type MergedPR struct {
 }
 
 type SyncProgress struct {
-	Cursor       string
-	ProcessedPRs int
-	TotalPRs     int
+	Cursor            string
+	ProcessedPRs      int
+	TotalPRs          int
+	NextScheduledAt   time.Time
+	EstimatedRequests int
 }
 
 type SyncJobStatus string
@@ -32,6 +34,7 @@ const (
 	SyncJobStatusInProgress SyncJobStatus = "in_progress"
 	SyncJobStatusCompleted  SyncJobStatus = "completed"
 	SyncJobStatusFailed     SyncJobStatus = "failed"
+	SyncJobStatusPaused     SyncJobStatus = "paused"
 )
 
 type SyncJob struct {

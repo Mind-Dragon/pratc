@@ -5,8 +5,11 @@ import type {
   OmniPlanResponse,
   PlanResponse,
 } from "../types/api";
+import { createLoggingFetch } from "./logging";
 
 const DEFAULT_REPO = "opencode-ai/opencode";
+
+const loggedFetch = createLoggingFetch();
 
 export interface SettingsMap {
   [key: string]: unknown;
@@ -54,7 +57,7 @@ function repoPath(repo: string): string {
 
 async function fetchJSON<T>(path: string, fallback: T): Promise<T> {
   try {
-    const response = await fetch(`${apiBaseUrl()}${path}`);
+    const response = await loggedFetch(`${apiBaseUrl()}${path}`);
     if (!response.ok) {
       return fallback;
     }
@@ -110,7 +113,7 @@ export async function postSetting(
     : `${basePath}/settings/${payload.scope}/${encodeURIComponent(payload.key)}`;
 
   try {
-    const response = await fetch(`${apiBaseUrl()}${path}`, {
+    const response = await loggedFetch(`${apiBaseUrl()}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: payload.value }),
@@ -132,7 +135,7 @@ export async function deleteSetting(
   const path = `${repoPath(repo)}/settings/${scope}/${encodeURIComponent(key)}`;
 
   try {
-    const response = await fetch(`${apiBaseUrl()}${path}`, {
+    const response = await loggedFetch(`${apiBaseUrl()}${path}`, {
       method: "DELETE",
     });
     if (!response.ok) {
@@ -151,7 +154,7 @@ export async function exportSettingsYAML(
   const path = `${repoPath(repo)}/settings/${scope}/export`;
 
   try {
-    const response = await fetch(`${apiBaseUrl()}${path}`);
+    const response = await loggedFetch(`${apiBaseUrl()}${path}`);
     if (!response.ok) {
       return null;
     }
@@ -169,7 +172,7 @@ export async function importSettingsYAML(
   const path = `${repoPath(repo)}/settings/${scope}/import`;
 
   try {
-    const response = await fetch(`${apiBaseUrl()}${path}`, {
+    const response = await loggedFetch(`${apiBaseUrl()}${path}`, {
       method: "POST",
       headers: { "Content-Type": "text/yaml" },
       body: content,

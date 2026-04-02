@@ -18,12 +18,15 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/audit"
 	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/formula"
+	"github.com/jeffersonnunn/pratc/internal/logger"
 	"github.com/jeffersonnunn/pratc/internal/planning"
 	"github.com/jeffersonnunn/pratc/internal/repo"
 	"github.com/jeffersonnunn/pratc/internal/settings"
 	prsync "github.com/jeffersonnunn/pratc/internal/sync"
 	"github.com/jeffersonnunn/pratc/internal/types"
+	"github.com/jeffersonnunn/pratc/internal/version"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var rootCmd = &cobra.Command{
@@ -40,12 +43,27 @@ const (
 var analyzeSyncMu sync.Mutex
 
 func ExecuteContext(ctx context.Context) {
+	fmt.Fprintf(os.Stderr, "Github Pull Request Air Traffic Control v%s %s by Jefferson Nunn\n", version.Version, version.BuildDate)
+
+	// Show config locations
+	settingsDB := os.Getenv("PRATC_SETTINGS_DB")
+	if settingsDB == "" {
+		settingsDB = "./pratc-settings.db (default)"
+	}
+	cacheDB := os.Getenv("PRATC_DB_PATH")
+	if cacheDB == "" {
+		home, _ := os.UserHomeDir()
+		cacheDB = filepath.Join(home, ".pratc", "pratc.db")
+	}
+	fmt.Fprintf(os.Stderr, "Using Config from: settings=%s | cache=%s\n", settingsDB, cacheDB)
+
 	err := rootCmd.ExecuteContext(ctx)
 	if err == nil {
 		return
 	}
 
-	_, _ = fmt.Fprintln(os.Stderr, err)
+	log := logger.New("cli")
+	log.Error("command failed", "err", err)
 	if isInvalidArgumentError(err) {
 		os.Exit(2)
 	}
@@ -230,6 +248,10 @@ func RegisterAnalyzeCommand() {
 		Use:   "analyze",
 		Short: "Analyze pull requests for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
+			log := logger.FromContext(ctx)
+
 			cfg := buildAnalyzeConfig(useCacheFirst, forceLive, maxPRs)
 			service := app.NewService(cfg)
 
@@ -244,7 +266,8 @@ func RegisterAnalyzeCommand() {
 				}
 			}
 
-			response, err := service.Analyze(cmd.Context(), repo)
+			log.Info("starting analyze", "repo", repo)
+			response, err := service.Analyze(ctx, repo)
 			if err != nil {
 				return err
 			}
@@ -312,8 +335,13 @@ func RegisterClusterCommand() {
 		Use:   "cluster",
 		Short: "Cluster pull requests for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
+			log := logger.FromContext(ctx)
+
 			service := app.NewService(buildCacheFirstConfig(useCacheFirst))
-			response, err := service.Cluster(cmd.Context(), repo)
+			log.Info("starting cluster", "repo", repo)
+			response, err := service.Cluster(ctx, repo)
 			if err != nil {
 				return err
 			}
@@ -337,13 +365,23 @@ func RegisterGraphCommand() {
 	var repo string
 	var format string
 	var useCacheFirst bool
+	var maxPRs int
 
 	command := &cobra.Command{
 		Use:   "graph",
 		Short: "Render a dependency graph for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			service := app.NewService(buildCacheFirstConfig(useCacheFirst))
-			response, err := service.Graph(cmd.Context(), repo)
+			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
+			log := logger.FromContext(ctx)
+
+			cfg := app.Config{UseCacheFirst: useCacheFirst}
+			if maxPRs >= 0 {
+				cfg.MaxPRs = maxPRs
+			}
+			service := app.NewService(cfg)
+			log.Info("starting graph", "repo", repo)
+			response, err := service.Graph(ctx, repo)
 			if err != nil {
 				return err
 			}
@@ -362,6 +400,7 @@ func RegisterGraphCommand() {
 	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
 	command.Flags().StringVar(&format, "format", "dot", "Output format: dot|json")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
+	command.Flags().IntVar(&maxPRs, "max-prs", -1, "Max PRs to graph (-1=default, 0=no cap)")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
@@ -374,11 +413,16 @@ func RegisterPlanCommand() {
 	var dryRun bool
 	var includeBots bool
 	var useCacheFirst bool
+	var maxPRs int
 
 	command := &cobra.Command{
 		Use:   "plan",
 		Short: "Generate a merge plan for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
+			log := logger.FromContext(ctx)
+
 			selectedMode, err := parseMode(mode)
 			if err != nil {
 				return err
@@ -388,8 +432,15 @@ func RegisterPlanCommand() {
 				dryRun = true
 			}
 
-			service := app.NewService(buildCacheFirstConfig(useCacheFirst))
-			response, err := service.Plan(cmd.Context(), repo, target, selectedMode)
+			cfg := buildCacheFirstConfig(useCacheFirst)
+			if maxPRs > 0 {
+				cfg.MaxPRs = maxPRs
+			} else if maxPRs == -1 {
+				cfg.MaxPRs = 1000
+			}
+			service := app.NewService(cfg)
+			log.Info("starting plan", "repo", repo, "target", target, "mode", selectedMode)
+			response, err := service.Plan(ctx, repo, target, selectedMode)
 			if err != nil {
 				return err
 			}
@@ -412,6 +463,7 @@ func RegisterPlanCommand() {
 	command.Flags().BoolVar(&dryRun, "dry-run", true, "Plan only; do not execute (always true by default)")
 	command.Flags().BoolVar(&includeBots, "include-bots", false, "Include bot PRs in merge plan (default excludes bots)")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
+	command.Flags().IntVar(&maxPRs, "max-prs", -1, "Max PRs to consider (-1=default 1000, 0=no cap)")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
@@ -425,7 +477,11 @@ func RegisterServeCommand() {
 		Use:   "serve",
 		Short: "Serve the prATC API",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runServer(cmd.Context(), port, repo, useCacheFirst)
+			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
+			log := logger.FromContext(ctx)
+			log.Info("starting server", "port", port, "repo", repo)
+			return runServer(ctx, port, repo, useCacheFirst)
 		},
 	}
 	command.Flags().IntVar(&port, "port", 8080, "Port to bind the API server to")
@@ -443,7 +499,12 @@ func RegisterSyncCommand() {
 		Use:   "sync",
 		Short: "Sync repository metadata and refs",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
+			log := logger.FromContext(ctx)
+
 			manager := newRepoSyncManager("", "")
+			log.Info("starting sync", "repo", repo)
 			if err := manager.Start(repo); err != nil {
 				return err
 			}
@@ -456,11 +517,22 @@ func RegisterSyncCommand() {
 				return fmt.Errorf("invalid value for --interval: must be greater than 0")
 			}
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "watching sync for %s every %s\n", repo, interval)
+
+			// Start the rate limit scheduler in watch mode
+			dbPath := strings.TrimSpace(os.Getenv("PRATC_DB_PATH"))
+			if dbPath == "" {
+				home, _ := os.UserHomeDir()
+				dbPath = filepath.Join(home, ".pratc", "pratc.db")
+			}
+			store, _ := cache.Open(dbPath)
+			scheduler := prsync.NewScheduler(store, prsync.WithCheckInterval(30*time.Second))
+			go scheduler.Run(cmd.Context())
+
 			ticker := time.NewTicker(interval)
 			defer ticker.Stop()
 			for {
 				select {
-				case <-cmd.Context().Done():
+				case <-ctx.Done():
 					return nil
 				case <-ticker.C:
 					if err := manager.Start(repo); err != nil {
@@ -504,6 +576,18 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst 
 		return err
 	}
 	defer settingsStore.Close()
+
+	dbPath := strings.TrimSpace(os.Getenv("PRATC_DB_PATH"))
+	if dbPath == "" {
+		home, _ := os.UserHomeDir()
+		dbPath = filepath.Join(home, ".pratc", "pratc.db")
+	}
+	cacheStore, err := cache.Open(dbPath)
+	if err != nil {
+		return fmt.Errorf("open cache store: %w", err)
+	}
+	defer cacheStore.Close()
+
 	repoSync := newRepoSyncManager("", "")
 
 	mux := http.NewServeMux()
@@ -531,6 +615,10 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst 
 	mux.HandleFunc("/api/settings/import", func(w http.ResponseWriter, r *http.Request) {
 		handleImportSettings(w, r, settingsStore)
 	})
+
+	mux.HandleFunc("/api/sync/jobs", handleListSyncJobs)
+	mux.HandleFunc("/api/sync/jobs/paused", handleListPausedSyncJobs)
+	mux.HandleFunc("/api/sync/events", handleSyncEvents(cacheStore))
 
 	mux.HandleFunc("/analyze", func(w http.ResponseWriter, r *http.Request) {
 		handleAnalyze(w, r, service, repoFromQuery(r, defaultRepo))
@@ -841,6 +929,149 @@ func handleImportSettings(w http.ResponseWriter, r *http.Request, store settings
 	writeHTTPJSON(w, http.StatusOK, map[string]any{"imported": true})
 }
 
+func handleListSyncJobs(w http.ResponseWriter, r *http.Request) {
+	if !ensureGET(w, r) {
+		return
+	}
+	store, err := cache.Open(analyzeSyncDBPath())
+	if err != nil {
+		writeHTTPError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer store.Close()
+
+	jobs, err := store.ListSyncJobs()
+	if err != nil {
+		writeHTTPError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeHTTPJSON(w, http.StatusOK, map[string]any{
+		"generatedAt": time.Now().UTC().Format(time.RFC3339),
+		"jobs":        jobs,
+	})
+}
+
+func handleListPausedSyncJobs(w http.ResponseWriter, r *http.Request) {
+	if !ensureGET(w, r) {
+		return
+	}
+	store, err := cache.Open(analyzeSyncDBPath())
+	if err != nil {
+		writeHTTPError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer store.Close()
+
+	jobs, err := store.ListPausedSyncJobs()
+	if err != nil {
+		writeHTTPError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeHTTPJSON(w, http.StatusOK, map[string]any{
+		"generatedAt": time.Now().UTC().Format(time.RFC3339),
+		"jobs":        jobs,
+	})
+}
+
+func handleSyncEvents(store *cache.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !ensureGET(w, r) {
+			return
+		}
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeHTTPError(w, http.StatusInternalServerError, "streaming not supported")
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		connectedEvent := map[string]any{"type": "connected", "timestamp": time.Now().UTC().Format(time.RFC3339)}
+		connectedData, _ := json.Marshal(connectedEvent)
+		fmt.Fprintf(w, "data: %s\n\n", connectedData)
+		flusher.Flush()
+
+		lastSeen := make(map[string]cache.SyncJobStatus)
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-ticker.C:
+				jobs, err := store.ListSyncJobs()
+				if err != nil {
+					continue
+				}
+
+				current := make(map[string]cache.SyncJobStatus)
+				for _, job := range jobs {
+					current[job.ID] = job.Status
+				}
+
+				for jobID, status := range current {
+					if prevStatus, existed := lastSeen[jobID]; !existed {
+						emitSyncEvent(w, flusher, "created", jobID, status, "")
+					} else if prevStatus != status {
+						emitStatusChange(w, flusher, prevStatus, status, jobID, "")
+					}
+				}
+
+				for jobID, prevStatus := range lastSeen {
+					if _, stillExists := current[jobID]; !stillExists {
+						if prevStatus == cache.SyncJobStatusFailed {
+							emitSyncEvent(w, flusher, "failed", jobID, prevStatus, "")
+						} else {
+							emitSyncEvent(w, flusher, "completed", jobID, prevStatus, "")
+						}
+					}
+				}
+
+				lastSeen = current
+			}
+		}
+	}
+}
+
+func emitSyncEvent(w http.ResponseWriter, flusher http.Flusher, eventType, jobID string, status cache.SyncJobStatus, message string) {
+	payload := map[string]any{
+		"type":    eventType,
+		"jobId":   jobID,
+		"status":  status,
+		"message": message,
+	}
+	data, _ := json.Marshal(payload)
+	fmt.Fprintf(w, "data: %s\n\n", data)
+	flusher.Flush()
+}
+
+func emitStatusChange(w http.ResponseWriter, flusher http.Flusher, from, to cache.SyncJobStatus, jobID, message string) {
+	var eventType string
+	switch to {
+	case cache.SyncJobStatusPaused:
+		eventType = "paused"
+	case cache.SyncJobStatusInProgress:
+		if from == cache.SyncJobStatusPaused {
+			eventType = "resumed"
+		} else {
+			eventType = "created"
+		}
+	case cache.SyncJobStatusCompleted:
+		eventType = "completed"
+	case cache.SyncJobStatusFailed:
+		eventType = "failed"
+	default:
+		eventType = "changed"
+	}
+	emitSyncEvent(w, flusher, eventType, jobID, to, message)
+}
+
 func handleAnalyze(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
 	if !ensureGET(w, r) || !ensureRepo(w, repo) {
 		return
@@ -1022,6 +1253,15 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 
 	writeHTTPJSON(w, http.StatusOK, response)
 }
+
+// handlePlanOmni handles GET /api/repos/:owner/:repo/plan/omni
+// Accepts a selector expression (ID, range, AND/OR combos) and returns
+// a staged plan splitting matched PRs into batches of stage_size.
+//
+// Query params:
+//   - selector (required): PR selector expression, e.g. "1-100", "50-150 AND 200-300"
+//   - target (default 20): number of PRs to select from the first stage
+//   - stage_size (default 64): max PRs per processing stage
 func handlePlanOmni(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
 	if !ensureGET(w, r) || !ensureRepo(w, repo) {
 		return
@@ -1326,7 +1566,8 @@ func writeMirrorInfo(cmd *cobra.Command, baseDir, repoIdentifier string) error {
 func RegisterMirrorCommand() {
 	baseDir, err := repo.DefaultBaseDir()
 	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "failed to resolve mirror base directory:", err)
+		log := logger.New("cli")
+		log.Error("failed to resolve mirror base directory", "err", err)
 		return
 	}
 
@@ -1340,6 +1581,10 @@ func RegisterMirrorCommand() {
 		Use:   "list",
 		Short: "List all synced repos",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
+			log := logger.FromContext(ctx)
+			log.Info("listing mirrors", "base_dir", baseDir)
 			return writeMirrorList(cmd, baseDir)
 		},
 	}
@@ -1349,6 +1594,10 @@ func RegisterMirrorCommand() {
 		Short: "Show detailed stats for a mirror",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
+			log := logger.FromContext(ctx)
+			log.Info("mirror info", "repo", args[0])
 			return writeMirrorInfo(cmd, baseDir, args[0])
 		},
 	}
@@ -1357,6 +1606,11 @@ func RegisterMirrorCommand() {
 		Use:   "prune",
 		Short: "Remove mirrors for repos no longer tracked",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
+			log := logger.FromContext(ctx)
+			log.Info("pruning mirrors", "base_dir", baseDir)
+
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
 
 			dbPath := os.Getenv("PRATC_DB_PATH")
@@ -1434,6 +1688,11 @@ func RegisterMirrorCommand() {
 		Use:   "clean",
 		Short: "Remove ALL mirrors (nuclear option)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
+			log := logger.FromContext(ctx)
+			log.Info("cleaning all mirrors", "base_dir", baseDir)
+
 			confirm, _ := cmd.Flags().GetBool("yes")
 			if !confirm {
 				return fmt.Errorf("refusing to clean all mirrors without --yes flag")
@@ -1466,6 +1725,10 @@ func RegisterMirrorCommand() {
 		Short: "Migrate a legacy mirror into the current location",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
+			log := logger.FromContext(ctx)
+			log.Info("migrating mirror", "repo", args[0])
 			return runMirrorMigrate(cmd, args[0], baseDir)
 		},
 	}
@@ -1508,4 +1771,227 @@ func isRepoInList(repo string, list []string) bool {
 		}
 	}
 	return false
+}
+
+func RegisterConfigCommand() {
+	configCmd := &cobra.Command{
+		Use:   "config",
+		Short: "Manage configuration settings",
+		Long:  "Get, set, list, delete, export, and import configuration settings",
+	}
+
+	var scope string
+	var repo string
+
+	// get subcommand
+	getCmd := &cobra.Command{
+		Use:   "get [key]",
+		Short: "Get a config value",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			key := args[0]
+			store, err := openSettingsStore()
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			ctx := cmd.Context()
+			vals, err := store.Get(ctx, repo)
+			if err != nil {
+				return err
+			}
+			if v, ok := vals[key]; ok {
+				fmt.Fprintln(cmd.OutOrStdout(), v)
+			}
+			return nil
+		},
+	}
+	getCmd.Flags().StringVar(&scope, "scope", "global", "Scope (global or repo)")
+	getCmd.Flags().StringVar(&repo, "repo", "", "Repository identifier (required for repo scope)")
+
+	// set subcommand
+	setCmd := &cobra.Command{
+		Use:   "set [key] [value]",
+		Short: "Set a config value",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			key, value := args[0], args[1]
+
+			// Validate scope and repo
+			if scope == settings.ScopeRepo && repo == "" {
+				return fmt.Errorf("repo identifier required for repo scope")
+			}
+			if scope != settings.ScopeGlobal && scope != settings.ScopeRepo {
+				return fmt.Errorf("invalid scope %q, must be 'global' or 'repo'", scope)
+			}
+
+			// Security: reject github_token at repo scope
+			if key == "github_token" && scope == settings.ScopeRepo {
+				return fmt.Errorf("github_token cannot be set at repo scope for security reasons")
+			}
+
+			store, err := openSettingsStore()
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			ctx := cmd.Context()
+			if err := store.ValidateSet(ctx, scope, repo, key, value); err != nil {
+				return err
+			}
+			if err := store.Set(ctx, scope, repo, key, value); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Set %s=%s at %s scope\n", key, value, scope)
+			return nil
+		},
+	}
+	setCmd.Flags().StringVar(&scope, "scope", "global", "Scope (global or repo)")
+	setCmd.Flags().StringVar(&repo, "repo", "", "Repository identifier (required for repo scope)")
+
+	// list subcommand
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all config key-value pairs",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Validate scope and repo
+			if scope == settings.ScopeRepo && repo == "" {
+				return fmt.Errorf("repo identifier required for repo scope")
+			}
+			if scope != settings.ScopeGlobal && scope != settings.ScopeRepo {
+				return fmt.Errorf("invalid scope %q, must be 'global' or 'repo'", scope)
+			}
+
+			store, err := openSettingsStore()
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			ctx := cmd.Context()
+			content, err := store.ExportYAML(ctx, scope, repo)
+			if err != nil {
+				return err
+			}
+
+			var settingsMap map[string]any
+			if err := yaml.Unmarshal(content, &settingsMap); err != nil {
+				return fmt.Errorf("failed to parse settings: %w", err)
+			}
+
+			for key, value := range settingsMap {
+				fmt.Fprintf(cmd.OutOrStdout(), "%s=%v\n", key, value)
+			}
+			return nil
+		},
+	}
+	listCmd.Flags().StringVar(&scope, "scope", "global", "Scope (global or repo)")
+	listCmd.Flags().StringVar(&repo, "repo", "", "Repository identifier (required for repo scope)")
+
+	// delete subcommand
+	deleteCmd := &cobra.Command{
+		Use:   "delete [key]",
+		Short: "Delete a config key",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			key := args[0]
+
+			// Validate scope and repo
+			if scope == settings.ScopeRepo && repo == "" {
+				return fmt.Errorf("repo identifier required for repo scope")
+			}
+			if scope != settings.ScopeGlobal && scope != settings.ScopeRepo {
+				return fmt.Errorf("invalid scope %q, must be 'global' or 'repo'", scope)
+			}
+
+			store, err := openSettingsStore()
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			ctx := cmd.Context()
+			if err := store.Delete(ctx, scope, repo, key); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Deleted %s from %s scope\n", key, scope)
+			return nil
+		},
+	}
+	deleteCmd.Flags().StringVar(&scope, "scope", "global", "Scope (global or repo)")
+	deleteCmd.Flags().StringVar(&repo, "repo", "", "Repository identifier (required for repo scope)")
+
+	// export subcommand
+	exportCmd := &cobra.Command{
+		Use:   "export",
+		Short: "Export settings as YAML",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Validate scope and repo
+			if scope == settings.ScopeRepo && repo == "" {
+				return fmt.Errorf("repo identifier required for repo scope")
+			}
+			if scope != settings.ScopeGlobal && scope != settings.ScopeRepo {
+				return fmt.Errorf("invalid scope %q, must be 'global' or 'repo'", scope)
+			}
+
+			store, err := openSettingsStore()
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			ctx := cmd.Context()
+			content, err := store.ExportYAML(ctx, scope, repo)
+			if err != nil {
+				return err
+			}
+			fmt.Fprint(cmd.OutOrStdout(), string(content))
+			return nil
+		},
+	}
+	exportCmd.Flags().StringVar(&scope, "scope", "global", "Scope (global or repo)")
+	exportCmd.Flags().StringVar(&repo, "repo", "", "Repository identifier (required for repo scope)")
+
+	// import subcommand
+	importCmd := &cobra.Command{
+		Use:   "import",
+		Short: "Import settings from YAML (stdin)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Validate scope and repo
+			if scope == settings.ScopeRepo && repo == "" {
+				return fmt.Errorf("repo identifier required for repo scope")
+			}
+			if scope != settings.ScopeGlobal && scope != settings.ScopeRepo {
+				return fmt.Errorf("invalid scope %q, must be 'global' or 'repo'", scope)
+			}
+
+			content, err := io.ReadAll(cmd.InOrStdin())
+			if err != nil {
+				return fmt.Errorf("failed to read input: %w", err)
+			}
+
+			store, err := openSettingsStore()
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			ctx := cmd.Context()
+			if err := store.ImportYAML(ctx, scope, repo, content); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "Settings imported successfully")
+			return nil
+		},
+	}
+	importCmd.Flags().StringVar(&scope, "scope", "global", "Scope (global or repo)")
+	importCmd.Flags().StringVar(&repo, "repo", "", "Repository identifier (required for repo scope)")
+
+	configCmd.AddCommand(getCmd, setCmd, listCmd, deleteCmd, exportCmd, importCmd)
+	rootCmd.AddCommand(configCmd)
 }

@@ -1,14 +1,52 @@
 {
-  "active_plan": "/home/agent/pratc/.sisyphus/plans/openclaw-5000pr-minimax-voyage.md",
-  "started_at": "2026-03-25T14:56:29.895Z",
+  "active_plan": "/home/agent/pratc/.sisyphus/plans/automatic-rate-limit-management.md",
+  "started_at": "2026-04-02T20:52:31.408Z",
   "session_ids": [
-    "ses_2e543d99bffeItaKJ6ZWUqbMsn",
-    "ses_2da75bb38ffeyv7wG72RxldFDq",
-    "ses_2da725e93ffe5GMIIqw9d4x0kt",
-    "ses_2da6f7ea9ffePY1IgdyNyXM1ES",
-    "ses_2da6b1bedffezm4n2joEoxmSoP",
-    "ses_2da6701feffekeIHAGJjIGHcsS"
+    "ses_2b1ccdd36ffeO5kpXGmFv9BNma",
+    "ses_2b0055327fferNiFHBmtyyE8js",
+    "ses_2b00352caffeGowjjlo9XlmkFg",
+    "ses_2b003256dffektU75N8IWU9XDH",
+    "ses_2b002ec7fffeN9l9DO1L5MaDHe",
+    "ses_2afff2f2effeAZGMR4iiuOE1oC",
+    "ses_2afff59d8ffec1ufCqK6ti2iKb",
+    "ses_2afffaeefffeOALBmkRX0maKDM",
+    "ses_2afff7d7bffekJ04FpoBocbRQY",
+    "ses_2affa940dffeS3eSAkNF2Z9VBm",
+    "ses_2affa6fa9ffefZg8axhDKOyqEf",
+    "ses_2affa6ec0ffelaqhkT2FJYz90i",
+    "ses_2affa8112ffe2V08OOfNJ3mAZd",
+    "ses_2affa5652ffeZyeEZYUvrReJSI",
+    "ses_2affa0f02ffeYsgVwbl4fg0RIT",
+    "ses_2affa3528ffeq8zfzFl42LIJT5",
+    "ses_2affa07f6ffeQY5UKjQzppwXiV",
+    "ses_2affa64adffequG2M8JhEtYmQT",
+    "ses_2affa988fffe2Yhl2E6MBoKFzK",
+    "ses_2affaca57ffe36QTV2QosdRu3W",
+    "ses_2affa3542ffeUeb96ziMl1Y1CX",
+    "ses_2afde4817ffeMm5hpEZHLTcCzO",
+    "ses_2afdaf8c6ffeu0UZu8O6jpVYH0",
+    "ses_2afdb2d64ffex8MyiLOWAv6DZd",
+    "ses_2afda7f5bffeNjo8IUvfHG7Pec",
+    "ses_2afdab43fffeHxYLvJWijUN027",
+    "ses_2afd6a1d3ffen5VyjQI4MuBSvN",
+    "ses_2afd6ced5ffe79NMqJcdoNuBa3",
+    "ses_2afd65dccffet2qGK6TLJEcE5a",
+    "ses_2afce96faffeWPpSYx1bdbzOqP",
+    "ses_2afce6940ffeK47vQrjLOahqM9",
+    "ses_2afce405fffeCGKzvPvLHSesE4",
+    "ses_2afcebeaeffeplZEQFotni0Bxl"
   ],
-  "plan_name": "openclaw-5000pr-minimax-voyage",
-  "worktree_path": null
+  "plan_name": "automatic-rate-limit-management",
+  "agent": "atlas",
+  "task_sessions": {
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_2afde4817ffeMm5hpEZHLTcCzO",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-02T21:39:56.209Z"
+    }
+  }
 }

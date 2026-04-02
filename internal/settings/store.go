@@ -71,6 +71,17 @@ func (s *Store) Get(ctx context.Context, repo string) (map[string]any, error) {
 	return result, nil
 }
 
+// List returns all settings for the given scope and repo.
+// Use scope=ScopeGlobal with empty repo for global settings,
+// or scope=ScopeRepo with "owner/repo" for repo-specific settings.
+func (s *Store) List(ctx context.Context, scope, repo string) (map[string]any, error) {
+	result := map[string]any{}
+	if err := s.loadInto(ctx, result, scope, repo); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func (s *Store) loadInto(ctx context.Context, into map[string]any, scope, repo string) error {
 	rows, err := s.db.QueryContext(ctx, `SELECT key, value_json FROM settings WHERE scope = ? AND repo = ?`, scope, repo)
 	if err != nil {
@@ -106,7 +117,7 @@ func (s *Store) ValidateSet(ctx context.Context, scope, repo, key string, value 
 	}
 	next := copyMap(current)
 	next[key] = value
-	return ValidateSettings(next)
+	return ValidateSettingsWithScope(next, scope)
 }
 
 func (s *Store) Set(ctx context.Context, scope, repo, key string, value any) error {
@@ -171,7 +182,7 @@ func (s *Store) ImportYAML(ctx context.Context, scope, repo string, content []by
 	for key, value := range data {
 		next[key] = value
 	}
-	if err := ValidateSettings(next); err != nil {
+	if err := ValidateSettingsWithScope(next, scope); err != nil {
 		return err
 	}
 

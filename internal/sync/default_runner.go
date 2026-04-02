@@ -122,7 +122,18 @@ func (g githubMetadataSource) SyncRepo(ctx context.Context, repoID string, progr
 		return MetadataSnapshot{}, fmt.Errorf("github client is required")
 	}
 
-	prs, err := g.client.FetchPullRequests(ctx, repoID, gh.PullRequestListOptions{PerPage: 100, Progress: progress})
+	opts := gh.PullRequestListOptions{
+		PerPage:  100,
+		Progress: progress,
+	}
+
+	if g.cacheStore != nil {
+		if lastSync, err := g.cacheStore.LastSync(repoID); err == nil && !lastSync.IsZero() {
+			opts.UpdatedSince = lastSync
+		}
+	}
+
+	prs, err := g.client.FetchPullRequests(ctx, repoID, opts)
 	if err != nil {
 		return MetadataSnapshot{}, fmt.Errorf("fetch pull requests: %w", err)
 	}

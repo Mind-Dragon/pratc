@@ -2,6 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 
 const DEFAULT_REPO = "opencode-ai/opencode";
 
+// Track start time for SSE connection to measure duration for error logging
+let sseStartTime = 0;
+
 type SyncStatus = "idle" | "syncing" | "error" | "complete";
 
 type SyncPhase = "mirroring" | "metadata" | "clustering" | "done";
@@ -85,6 +88,9 @@ export default function SyncStatusPanel() {
       eventSourceRef.current.close();
     }
 
+    // Track SSE connection start time for duration calculation in error logging
+    sseStartTime = Date.now();
+
     const url = `${apiBaseUrl()}${repoPath(repo)}/sync/stream`;
     const es = new EventSource(url);
     eventSourceRef.current = es;
@@ -101,7 +107,20 @@ export default function SyncStatusPanel() {
         if (data.errors !== undefined) {
           setErrorCount(data.errors);
         }
-      } catch {}
+      } catch (error) {
+        const durationMs = Math.round(Date.now() - sseStartTime);
+        const entry = {
+          ts: new Date().toISOString(),
+          level: "ERROR" as const,
+          component: "web" as const,
+          request_id: crypto.randomUUID(),
+          msg: "SSE progress parse error",
+          path: `${apiBaseUrl()}${repoPath(repo)}/sync/stream`,
+          duration_ms: durationMs,
+          error: error instanceof Error ? error.message : String(error),
+        };
+        console.error(JSON.stringify(entry));
+      }
     });
 
     es.addEventListener("complete", () => {
@@ -122,7 +141,20 @@ export default function SyncStatusPanel() {
       try {
         const data = JSON.parse(e.data) as DriftEntry;
         setDriftEntries((prev) => [...prev, data]);
-      } catch {}
+      } catch (error) {
+        const durationMs = Math.round(Date.now() - sseStartTime);
+        const entry = {
+          ts: new Date().toISOString(),
+          level: "ERROR" as const,
+          component: "web" as const,
+          request_id: crypto.randomUUID(),
+          msg: "SSE drift_detected parse error",
+          path: `${apiBaseUrl()}${repoPath(repo)}/sync/stream`,
+          duration_ms: durationMs,
+          error: error instanceof Error ? error.message : String(error),
+        };
+        console.error(JSON.stringify(entry));
+      }
     });
 
     es.addEventListener("error", (e) => {
@@ -131,7 +163,19 @@ export default function SyncStatusPanel() {
           const data = JSON.parse(e.data);
           setErrorMsg(data.message ?? "Sync failed");
           setStatus("error");
-        } catch {
+        } catch (error) {
+          const durationMs = Math.round(Date.now() - sseStartTime);
+          const entry = {
+            ts: new Date().toISOString(),
+            level: "ERROR" as const,
+            component: "web" as const,
+            request_id: crypto.randomUUID(),
+            msg: "SSE error event parse error",
+            path: `${apiBaseUrl()}${repoPath(repo)}/sync/stream`,
+            duration_ms: durationMs,
+            error: error instanceof Error ? error.message : String(error),
+          };
+          console.error(JSON.stringify(entry));
           setStatus("idle");
         }
       }
@@ -150,6 +194,7 @@ export default function SyncStatusPanel() {
   }, [repo, syncStartTime]);
 
   const fetchStats = useCallback(async () => {
+    const startTime = Date.now();
     try {
       const response = await fetch(`${apiBaseUrl()}${repoPath(repo)}/stats`);
       if (response.ok) {
@@ -159,11 +204,24 @@ export default function SyncStatusPanel() {
           setTotalPRs(data.total_prs);
         }
       }
-    } catch {
+    } catch (error) {
+      const durationMs = Math.round(Date.now() - startTime);
+      const entry = {
+        ts: new Date().toISOString(),
+        level: "ERROR" as const,
+        component: "web" as const,
+        request_id: crypto.randomUUID(),
+        msg: "fetchStats network error",
+        path: `${apiBaseUrl()}${repoPath(repo)}/stats`,
+        duration_ms: durationMs,
+        error: error instanceof Error ? error.message : String(error),
+      };
+      console.error(JSON.stringify(entry));
     }
   }, [repo]);
 
   const fetchSyncStatus = useCallback(async () => {
+    const startTime = Date.now();
     try {
       const response = await fetch(`${apiBaseUrl()}${repoPath(repo)}/sync/status`);
       if (response.ok) {
@@ -178,7 +236,19 @@ export default function SyncStatusPanel() {
           setStatus("syncing");
         }
       }
-    } catch {
+    } catch (error) {
+      const durationMs = Math.round(Date.now() - startTime);
+      const entry = {
+        ts: new Date().toISOString(),
+        level: "ERROR" as const,
+        component: "web" as const,
+        request_id: crypto.randomUUID(),
+        msg: "fetchSyncStatus network error",
+        path: `${apiBaseUrl()}${repoPath(repo)}/sync/status`,
+        duration_ms: durationMs,
+        error: error instanceof Error ? error.message : String(error),
+      };
+      console.error(JSON.stringify(entry));
     }
   }, [repo]);
 

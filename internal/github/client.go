@@ -7,11 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/jeffersonnunn/pratc/internal/logger"
+	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
 	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
@@ -27,6 +31,8 @@ type Config struct {
 	MaxSecondaryRetries int
 	Now                 func() time.Time
 	Sleep               func(time.Duration)
+	Logger              *logger.Logger
+	BudgetManager       *ratelimit.BudgetManager
 }
 
 type Client struct {
@@ -37,6 +43,8 @@ type Client struct {
 	maxSecondaryRetries int
 	now                 func() time.Time
 	sleep               func(time.Duration)
+	log                 *logger.Logger
+	budget              *ratelimit.BudgetManager
 }
 
 type PullRequestListOptions struct {
@@ -44,6 +52,7 @@ type PullRequestListOptions struct {
 	Cursor       string
 	UpdatedSince time.Time
 	Progress     func(processed int, total int)
+	Concurrency  int
 }
 
 type Review struct {
@@ -77,6 +86,11 @@ func NewClient(cfg Config) *Client {
 		maxRetries = 8
 	}
 
+	log := cfg.Logger
+	if log == nil {
+		log = logger.New("github")
+	}
+
 	return &Client{
 		baseURL:             baseURL,
 		httpClient:          httpClient,
@@ -85,6 +99,8 @@ func NewClient(cfg Config) *Client {
 		maxSecondaryRetries: maxRetries,
 		now:                 now,
 		sleep:               sleep,
+		log:                 log,
+		budget:              cfg.BudgetManager,
 	}
 }
 
@@ -238,6 +254,74 @@ func (c *Client) FetchPullRequestCIStatus(ctx context.Context, repo string, numb
 	return response.Data.Repository.PullRequest.StatusCheckRollup.State, nil
 }
 
+type PRFilesResult struct {
+	PRNumber int
+	Files    []string
+	Err      error
+}
+
+type PRReviewsResult struct {
+	PRNumber int
+	Reviews  []Review
+	Err      error
+}
+
+func (c *Client) FetchPullRequestFilesBatch(ctx context.Context, repo string, prNumbers []int, concurrency int) []PRFilesResult {
+	if concurrency <= 0 {
+		concurrency = 4
+	}
+	if concurrency > 20 {
+		concurrency = 20
+	}
+
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	results := make([]PRFilesResult, len(prNumbers))
+
+	for i, num := range prNumbers {
+		wg.Add(1)
+		go func(idx int, prNum int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			files, err := c.FetchPullRequestFiles(ctx, repo, prNum)
+			results[idx] = PRFilesResult{PRNumber: prNum, Files: files, Err: err}
+		}(i, num)
+	}
+
+	wg.Wait()
+	return results
+}
+
+func (c *Client) FetchPullRequestReviewsBatch(ctx context.Context, repo string, prNumbers []int, concurrency int) []PRReviewsResult {
+	if concurrency <= 0 {
+		concurrency = 4
+	}
+	if concurrency > 20 {
+		concurrency = 20
+	}
+
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	results := make([]PRReviewsResult, len(prNumbers))
+
+	for i, num := range prNumbers {
+		wg.Add(1)
+		go func(idx int, prNum int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			reviews, err := c.FetchPullRequestReviews(ctx, repo, prNum)
+			results[idx] = PRReviewsResult{PRNumber: prNum, Reviews: reviews, Err: err}
+		}(i, num)
+	}
+
+	wg.Wait()
+	return results
+}
+
 func (c *Client) graphQL(ctx context.Context, query string, variables map[string]any, dest any) error {
 	payload := map[string]any{
 		"query":     query,
@@ -298,6 +382,10 @@ func (c *Client) graphQL(ctx context.Context, query string, variables map[string
 	return errors.New("github graphql request failed after retries")
 }
 
+func addJitter(d time.Duration) time.Duration {
+	return d + time.Duration(rand.Int63n(int64(d/4)))
+}
+
 func (c *Client) handleRateLimit(resp *http.Response, attempt int) (bool, error) {
 	if resp.StatusCode == http.StatusForbidden {
 		wait := retryAfter(resp.Header.Get("Retry-After"))
@@ -307,17 +395,33 @@ func (c *Client) handleRateLimit(resp *http.Response, attempt int) (bool, error)
 		if wait <= 0 {
 			wait = 2 * time.Second
 		}
+
+		resetEpoch, _ := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64)
+
 		if attempt >= c.maxSecondaryRetries {
+			c.log.Error("secondary rate limit exhausted", "retry_after", wait.Seconds(), "reset_epoch", resetEpoch, "attempt", attempt, "max_retries", c.maxSecondaryRetries)
 			return false, fmt.Errorf("github rate limit exceeded; retry after %s", wait)
 		}
-		c.sleep(wait)
+
+		c.log.Info("secondary rate limit hit, retrying", "retry_after", wait.Seconds(), "reset_epoch", resetEpoch, "attempt", attempt+1, "max_retries", c.maxSecondaryRetries)
+		c.sleep(addJitter(wait))
 		return true, nil
 	}
 
 	remaining, err := strconv.Atoi(resp.Header.Get("X-RateLimit-Remaining"))
-	if err == nil && remaining < c.reserveRequests {
-		if wait := untilReset(c.now(), resp.Header.Get("X-RateLimit-Reset")); wait > 0 {
-			c.sleep(wait)
+	if err == nil {
+		c.log.Info("rate limit status checked", "remaining", remaining)
+
+		if remaining < c.reserveRequests {
+			if wait := untilReset(c.now(), resp.Header.Get("X-RateLimit-Reset")); wait > 0 {
+				resetEpoch, _ := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64)
+				c.log.Error("rate limit exhausted, pausing until reset", "remaining", remaining, "reserve_requests", c.reserveRequests, "reset_epoch", resetEpoch, "duration_ms", wait.Milliseconds())
+				c.sleep(addJitter(wait))
+			}
+		}
+		if c.budget != nil && remaining >= 0 {
+			resetEpoch, _ := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64)
+			c.budget.RecordResponse(remaining, resetEpoch)
 		}
 	}
 

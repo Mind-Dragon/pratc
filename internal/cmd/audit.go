@@ -10,6 +10,7 @@ import (
 
 	"github.com/jeffersonnunn/pratc/internal/audit"
 	"github.com/jeffersonnunn/pratc/internal/cache"
+	"github.com/jeffersonnunn/pratc/internal/logger"
 	"github.com/jeffersonnunn/pratc/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -22,6 +23,11 @@ func RegisterAuditCommand() {
 		Use:   "audit",
 		Short: "Query audit log entries",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
+			log := logger.FromContext(ctx)
+
+			log.Info("querying audit log", "limit", limit)
 			if err := audit.ValidateLimit(limit); err != nil {
 				return fmt.Errorf("invalid argument: %w", err)
 			}

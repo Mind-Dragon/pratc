@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -16,9 +15,11 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/formula"
 	gh "github.com/jeffersonnunn/pratc/internal/github"
 	"github.com/jeffersonnunn/pratc/internal/graph"
+	"github.com/jeffersonnunn/pratc/internal/logger"
 	"github.com/jeffersonnunn/pratc/internal/ml"
 	"github.com/jeffersonnunn/pratc/internal/planning"
 	"github.com/jeffersonnunn/pratc/internal/repo"
+	"github.com/jeffersonnunn/pratc/internal/settings"
 	"github.com/jeffersonnunn/pratc/internal/testutil"
 	"github.com/jeffersonnunn/pratc/internal/types"
 )
@@ -26,7 +27,8 @@ import (
 const (
 	duplicateThreshold = 0.90
 	overlapThreshold   = 0.70
-	version            = "0.1.0"
+	version            = "1.0.0"
+	defaultMaxPRs      = 1000
 )
 
 type Config struct {
@@ -91,12 +93,32 @@ func NewService(cfg Config) Service {
 	}
 
 	token := strings.TrimSpace(cfg.Token)
+
 	if token == "" {
-		token = strings.TrimSpace(os.Getenv("GITHUB_PAT"))
+		settingsDB := os.Getenv("PRATC_SETTINGS_DB")
+		if settingsDB == "" {
+			home, err := os.UserHomeDir()
+			if err == nil {
+				settingsDB = filepath.Join(home, ".pratc", "pratc-settings.db")
+			} else {
+				settingsDB = "./pratc-settings.db"
+			}
+		}
+		if settingsDB != "" {
+			store, err := settings.Open(settingsDB)
+			if err == nil {
+				defer store.Close()
+				globalSettings, err := store.Get(context.Background(), "")
+				if err == nil {
+					if githubToken, ok := globalSettings["github_token"].(string); ok && githubToken != "" {
+						token = strings.TrimSpace(githubToken)
+					}
+				}
+			}
+		}
 	}
-	if token == "" {
-		token = strings.TrimSpace(os.Getenv("GH_TOKEN"))
-	}
+
+	// Fallback to gh auth CLI if no token found
 	if token == "" {
 		token = fetchTokenFromGHCLI()
 	}
@@ -104,9 +126,6 @@ func NewService(cfg Config) Service {
 	allowLive := cfg.AllowLive
 
 	maxPRs := cfg.MaxPRs
-	if maxPRs < 0 {
-		maxPRs = 1000
-	}
 
 	deepCandidateSubsetSize := cfg.DeepCandidateSubsetSize
 	if deepCandidateSubsetSize <= 0 {
@@ -229,10 +248,26 @@ func (s Service) Health() types.HealthResponse {
 }
 
 func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisResponse, error) {
+	log := logger.New("app")
+	if ctx != nil {
+		log = logger.FromContext(ctx)
+	}
+
+	startTime := s.now()
+	defer func() {
+		durationMs := int(s.now().Sub(startTime).Milliseconds())
+		log.Info("analyze operation completed", "duration_ms", durationMs)
+		if durationMs > 300000 { // 300 seconds = 300000 ms
+			log.Error("analyze operation exceeded SLO", "duration_ms", durationMs, "slo_ms", 300000)
+		}
+	}()
+
 	prs, repoName, meta, err := s.loadPRs(ctx, repo)
 	if err != nil {
 		return types.AnalysisResponse{}, err
 	}
+
+	log.Info("analysis started", "pr_count", len(prs))
 
 	telemetry := types.OperationTelemetry{
 		PoolStrategy:     "heuristic_analysis_pipeline",
@@ -251,7 +286,7 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 
 	// Attempt ML-backed clustering via Voyage if configured.
 	if s.mlBridge != nil && s.mlBridge.Available() {
-		if mlClusters, _, err := s.mlBridge.Cluster(ctx, repoName, prs); err == nil && len(mlClusters) > 0 {
+		if mlClusters, _, err := s.mlBridge.Cluster(ctx, repoName, prs, logger.RequestIDFromContext(ctx)); err == nil && len(mlClusters) > 0 {
 			clusters = mlClusters
 		}
 	}
@@ -262,7 +297,7 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 
 	// Attempt ML-backed duplicate detection via Voyage if configured.
 	if s.mlBridge != nil && s.mlBridge.Available() {
-		if mlDups, mlOverlaps, err := s.mlBridge.Duplicates(ctx, repoName, prs, duplicateThreshold, overlapThreshold); err == nil {
+		if mlDups, mlOverlaps, err := s.mlBridge.Duplicates(ctx, repoName, prs, duplicateThreshold, overlapThreshold, logger.RequestIDFromContext(ctx)); err == nil {
 			if len(mlDups) > 0 {
 				duplicates = mlDups
 			}
@@ -273,8 +308,8 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 	}
 	var conflictProgress func(processed int, total int)
 	if meta.LiveSource {
-		writeLivePhaseStatus(os.Stderr, "analysis in progress", len(prs))
-		conflictProgress = newLiveAnalysisProgressReporter(os.Stderr, 100)
+		writeLivePhaseStatus(log, "analysis in progress", len(prs))
+		conflictProgress = newLiveAnalysisProgressReporter(log, 100)
 	}
 	conflictStart := time.Now()
 	conflicts := buildConflicts(repoName, prs, conflictProgress)
@@ -322,6 +357,20 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 }
 
 func (s Service) Cluster(ctx context.Context, repo string) (types.ClusterResponse, error) {
+	log := logger.New("app")
+	if ctx != nil {
+		log = logger.FromContext(ctx)
+	}
+
+	startTime := s.now()
+	defer func() {
+		durationMs := int(s.now().Sub(startTime).Milliseconds())
+		log.Info("cluster operation completed", "duration_ms", durationMs)
+		if durationMs > 180000 { // 180 seconds = 180000 ms
+			log.Error("cluster operation exceeded SLO", "duration_ms", durationMs, "slo_ms", 180000)
+		}
+	}()
+
 	prs, repoName, meta, err := s.loadPRs(ctx, repo)
 	if err != nil {
 		return types.ClusterResponse{}, err
@@ -332,7 +381,7 @@ func (s Service) Cluster(ctx context.Context, repo string) (types.ClusterRespons
 
 	// Attempt ML-backed clustering via Voyage if configured.
 	if s.mlBridge != nil && s.mlBridge.Available() {
-		if mlClusters, mlModel, err := s.mlBridge.Cluster(ctx, repoName, prs); err == nil && len(mlClusters) > 0 {
+		if mlClusters, mlModel, err := s.mlBridge.Cluster(ctx, repoName, prs, logger.RequestIDFromContext(ctx)); err == nil && len(mlClusters) > 0 {
 			clusters = mlClusters
 			model = mlModel
 		}
@@ -363,6 +412,20 @@ func (s Service) Cluster(ctx context.Context, repo string) (types.ClusterRespons
 }
 
 func (s Service) Graph(ctx context.Context, repo string) (types.GraphResponse, error) {
+	log := logger.New("app")
+	if ctx != nil {
+		log = logger.FromContext(ctx)
+	}
+
+	startTime := s.now()
+	defer func() {
+		durationMs := int(s.now().Sub(startTime).Milliseconds())
+		log.Info("graph operation completed", "duration_ms", durationMs)
+		if durationMs > 120000 { // 120 seconds = 120000 ms
+			log.Error("graph operation exceeded SLO", "duration_ms", durationMs, "slo_ms", 120000)
+		}
+	}()
+
 	prs, repoName, _, err := s.loadPRs(ctx, repo)
 	if err != nil {
 		return types.GraphResponse{}, err
@@ -379,6 +442,20 @@ func (s Service) Graph(ctx context.Context, repo string) (types.GraphResponse, e
 }
 
 func (s Service) Plan(ctx context.Context, repo string, target int, mode formula.Mode) (types.PlanResponse, error) {
+	log := logger.New("app")
+	if ctx != nil {
+		log = logger.FromContext(ctx)
+	}
+
+	startTime := s.now()
+	defer func() {
+		durationMs := int(s.now().Sub(startTime).Milliseconds())
+		log.Info("plan operation completed", "duration_ms", durationMs)
+		if durationMs > 90000 { // 90 seconds = 90000 ms
+			log.Error("plan operation exceeded SLO", "duration_ms", durationMs, "slo_ms", 90000)
+		}
+	}()
+
 	prs, repoName, meta, err := s.loadPRs(ctx, repo)
 	if err != nil {
 		return types.PlanResponse{}, err
@@ -558,6 +635,11 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 }
 
 func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, truncationMeta, error) {
+	log := logger.New("service")
+	if ctx != nil {
+		log = logger.FromContext(ctx)
+	}
+
 	manifest, err := testutil.LoadManifest()
 	if err != nil {
 		return nil, "", truncationMeta{}, fmt.Errorf("load fixture manifest: %w", err)
@@ -577,8 +659,10 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 		if cachedPRs, ok := s.tryLoadFromCache(targetRepo); ok && len(cachedPRs) > 0 {
 			filtered, meta := s.applyIntakeControls(cachedPRs)
 			meta.LiveSource = false
-			writeLivePhaseStatus(os.Stderr, "cache loaded, starting analysis", len(filtered))
-			filtered = s.enrichDeepPrecisionFiles(ctx, targetRepo, filtered)
+			writeLivePhaseStatus(log, "cache loaded, starting analysis", len(filtered))
+			if s.mirrorAvailable || s.token != "" {
+				s.enrichPRsWithFilesFromMirrorOrGraphQL(ctx, targetRepo, filtered)
+			}
 			return filtered, targetRepo, meta, nil
 		}
 	}
@@ -592,8 +676,10 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 		if liveErr == nil && len(livePRs) > 0 {
 			filtered, meta := s.applyIntakeControls(livePRs)
 			meta.LiveSource = true
-			writeLivePhaseStatus(os.Stderr, "fetch complete, starting analysis", len(filtered))
-			filtered = s.enrichDeepPrecisionFiles(ctx, targetRepo, filtered)
+			writeLivePhaseStatus(log, "fetch complete, starting analysis", len(filtered))
+			if s.mirrorAvailable || s.token != "" {
+				s.enrichPRsWithFilesFromMirrorOrGraphQL(ctx, targetRepo, filtered)
+			}
 			return filtered, targetRepo, meta, nil
 		}
 	}
@@ -621,7 +707,9 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 	})
 
 	controlled, meta := s.applyIntakeControls(filtered)
-	controlled = s.enrichDeepPrecisionFiles(ctx, targetRepo, controlled)
+	if s.mirrorAvailable || s.token != "" {
+		s.enrichPRsWithFilesFromMirrorOrGraphQL(ctx, targetRepo, controlled)
+	}
 	return controlled, targetRepo, meta, nil
 }
 
@@ -641,11 +729,16 @@ func (s Service) tryLoadFromCache(repo string) ([]types.PR, bool) {
 }
 
 func (s Service) fetchLivePRs(ctx context.Context, repo string) ([]types.PR, error) {
+	log := logger.New("service")
+	if ctx != nil {
+		log = logger.FromContext(ctx)
+	}
+
 	client := gh.NewClient(gh.Config{
 		Token:           s.token,
 		ReserveRequests: 200,
 	})
-	prs, err := client.FetchPullRequests(ctx, repo, gh.PullRequestListOptions{PerPage: 100, Progress: newLiveProgressReporter(os.Stderr, 100)})
+	prs, err := client.FetchPullRequests(ctx, repo, gh.PullRequestListOptions{PerPage: 100, Progress: newLiveProgressReporter(log, 100)})
 	if err != nil {
 		return nil, err
 	}
@@ -669,16 +762,23 @@ func (s Service) enrichFromMirror(ctx context.Context, repoID string, prs []type
 		return
 	}
 
-	mirrorPath, err := repo.MirrorPath(s.mirrorBaseDir, repoID)
+	remoteURL := fmt.Sprintf("https://github.com/%s.git", repoID)
+	mirror, err := repo.OpenOrCreate(ctx, s.mirrorBaseDir, repoID, remoteURL)
 	if err != nil {
 		s.enrichFromGraphQL(ctx, repoID, prs)
 		return
 	}
 
-	mirror := repo.NewMirror(mirrorPath)
 	prNumbers := make([]int, len(prs))
 	for i, pr := range prs {
 		prNumbers[i] = pr.Number
+	}
+
+	if len(prNumbers) > 0 {
+		if err := mirror.FetchAll(ctx, prNumbers, nil); err != nil {
+			s.enrichFromGraphQL(ctx, repoID, prs)
+			return
+		}
 	}
 
 	prFilesList, err := mirror.GetChangedFilesBatch(ctx, prNumbers, "main", 10)
@@ -693,8 +793,10 @@ func (s Service) enrichFromMirror(ctx context.Context, repoID string, prs []type
 	}
 
 	for i := range prs {
-		if files, ok := prFilesMap[prs[i].Number]; ok {
-			prs[i].FilesChanged = files
+		if len(prs[i].FilesChanged) == 0 {
+			if files, ok := prFilesMap[prs[i].Number]; ok {
+				prs[i].FilesChanged = files
+			}
 		}
 	}
 }
@@ -705,20 +807,22 @@ func (s Service) enrichFromGraphQL(ctx context.Context, repoID string, prs []typ
 		ReserveRequests: 200,
 	})
 	for i := range prs {
-		files, fileErr := client.FetchPullRequestFiles(ctx, repoID, prs[i].Number)
-		if fileErr == nil {
-			prs[i].FilesChanged = files
+		if len(prs[i].FilesChanged) == 0 {
+			files, fileErr := client.FetchPullRequestFiles(ctx, repoID, prs[i].Number)
+			if fileErr == nil {
+				prs[i].FilesChanged = files
+			}
 		}
 	}
 }
 
-func newLiveProgressReporter(w io.Writer, step int) func(processed int, total int) {
+func newLiveProgressReporter(log *logger.Logger, step int) func(processed int, total int) {
 	if step <= 0 {
 		step = 100
 	}
 	last := -1
 	return func(processed int, _ int) {
-		if processed <= 0 {
+		if log == nil || processed <= 0 {
 			return
 		}
 		if processed != 1 && processed%step != 0 {
@@ -728,19 +832,19 @@ func newLiveProgressReporter(w io.Writer, step int) func(processed int, total in
 			return
 		}
 		last = processed
-		_, _ = fmt.Fprintf(w, "[live] fetched %d PRs\n", processed)
+		log.Info("fetch progress", "fetched", processed)
 	}
 }
 
-func writeLivePhaseStatus(w io.Writer, phase string, count int) {
-	if strings.TrimSpace(phase) == "" {
+func writeLivePhaseStatus(log *logger.Logger, phase string, count int) {
+	if log == nil || strings.TrimSpace(phase) == "" {
 		return
 	}
 	if count > 0 {
-		_, _ = fmt.Fprintf(w, "[live] %s (%d PRs)\n", phase, count)
+		log.Info("phase status", "phase", phase, "pr_count", count)
 		return
 	}
-	_, _ = fmt.Fprintf(w, "[live] %s\n", phase)
+	log.Info("phase status", "phase", phase)
 }
 
 func (s Service) applyIntakeControls(input []types.PR) ([]types.PR, truncationMeta) {
@@ -775,52 +879,18 @@ func (s Service) applyIntakeControls(input []types.PR) ([]types.PR, truncationMe
 		output = windowed
 	}
 
-	if s.maxPRs > 0 && len(output) > s.maxPRs {
-		output = output[:s.maxPRs]
+	effectiveMaxPRs := s.maxPRs
+	if effectiveMaxPRs == -1 {
+		effectiveMaxPRs = defaultMaxPRs
+	}
+	if effectiveMaxPRs > 0 && len(output) > effectiveMaxPRs {
+		output = output[:effectiveMaxPRs]
 		meta.AnalysisTruncated = true
 		meta.TruncationReason = "max_prs_cap"
-		meta.MaxPRsApplied = s.maxPRs
+		meta.MaxPRsApplied = effectiveMaxPRs
 	}
 
 	return output, meta
-}
-
-func (s Service) enrichDeepPrecisionFiles(ctx context.Context, repo string, prs []types.PR) []types.PR {
-	if s.precisionMode != precisionModeDeep || strings.TrimSpace(s.token) == "" || len(prs) == 0 {
-		return prs
-	}
-
-	type candidate struct {
-		index int
-		pr    types.PR
-	}
-	candidates := make([]candidate, 0, len(prs))
-	for i, pr := range prs {
-		if len(pr.FilesChanged) > 0 {
-			continue
-		}
-		candidates = append(candidates, candidate{index: i, pr: pr})
-	}
-	if len(candidates) == 0 {
-		return prs
-	}
-
-	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].pr.ChangedFilesCount == candidates[j].pr.ChangedFilesCount {
-			return candidates[i].pr.Number < candidates[j].pr.Number
-		}
-		return candidates[i].pr.ChangedFilesCount > candidates[j].pr.ChangedFilesCount
-	})
-	limit := min(len(candidates), s.deepCandidateSubsetSize)
-	client := gh.NewClient(gh.Config{Token: s.token, ReserveRequests: 200})
-	for i := 0; i < limit; i++ {
-		files, err := client.FetchPullRequestFiles(ctx, repo, candidates[i].pr.Number)
-		if err != nil {
-			continue
-		}
-		prs[candidates[i].index].FilesChanged = files
-	}
-	return prs
 }
 
 func buildClusters(prs []types.PR) []types.PRCluster {
@@ -982,13 +1052,13 @@ func buildConflicts(repo string, prs []types.PR, progress func(processed int, to
 	return conflicts
 }
 
-func newLiveAnalysisProgressReporter(w io.Writer, step int) func(processed int, total int) {
+func newLiveAnalysisProgressReporter(log *logger.Logger, step int) func(processed int, total int) {
 	if step <= 0 {
 		step = 100
 	}
 	last := -1
 	return func(processed int, total int) {
-		if processed <= 0 || total <= 0 {
+		if log == nil || processed <= 0 || total <= 0 {
 			return
 		}
 		if processed != 1 && processed != total && processed%step != 0 {
@@ -998,7 +1068,7 @@ func newLiveAnalysisProgressReporter(w io.Writer, step int) func(processed int, 
 			return
 		}
 		last = processed
-		_, _ = fmt.Fprintf(w, "[live] analyzed %d/%d PRs\n", processed, total)
+		log.Info("analysis progress", "processed", processed, "total", total)
 	}
 }
 

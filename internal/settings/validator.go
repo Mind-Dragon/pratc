@@ -11,12 +11,27 @@ var allowedKeys = map[string]struct{}{
 	"beginning_pr_number": {},
 	"ending_pr_number":    {},
 	"max_prs":             {},
+	"github_token":        {},
+}
+
+// globalOnlyKeys are keys that cannot be set at repo scope.
+var globalOnlyKeys = map[string]struct{}{
+	"github_token": {},
 }
 
 func ValidateSettings(values map[string]any) error {
+	return ValidateSettingsWithScope(values, ScopeGlobal)
+}
+
+func ValidateSettingsWithScope(values map[string]any, scope string) error {
 	for key := range values {
 		if _, ok := allowedKeys[key]; !ok {
 			return fmt.Errorf("unknown setting key %q", key)
+		}
+		if scope == ScopeRepo {
+			if _, ok := globalOnlyKeys[key]; ok {
+				return fmt.Errorf("setting %q is not allowed at repo scope", key)
+			}
 		}
 	}
 

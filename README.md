@@ -8,6 +8,7 @@ prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull re
 - **Web Dashboard**: ATC overview, triage inbox, dependency graphs, and merge planning
 - **ML Clustering**: Python service for PR clustering and duplicate detection
 - **SQLite Cache**: Incremental GitHub sync with persisted state
+- **Omni Batch Planning**: Select PRs by ID ranges and boolean expressions via selector syntax
 - **Rate-Limit Aware**: Built-in retry and budget management
 
 ## Quick Start
@@ -115,6 +116,7 @@ RESTful routes (`/api/repos/:owner/:repo/...`):
 - `GET /api/repos/:owner/:repo/cluster`
 - `GET /api/repos/:owner/:repo/graph`
 - `GET /api/repos/:owner/:repo/plan` or `/api/repos/:owner/:repo/plans`
+- `GET /api/repos/:owner/:repo/plan/omni` - Omni batch plan with selector
 
 ### Sync
 - `POST /api/repos/:owner/:repo/sync` - Trigger sync
@@ -133,6 +135,108 @@ When calling plan endpoints, these query parameters are supported:
 | `candidate_pool_cap` | int | 100 | Max candidate pool size (1-500) |
 | `score_min` | float | 0.0 | Minimum PR score (0-100) |
 | `dry_run` | bool | true | Plan only, do not execute |
+
+## Omni Batch Planning
+
+Omni mode lets you select specific PRs by ID using a selector expression. This is useful when you already know which PRs you want to plan against, bypassing the normal scoring and filtering pipeline.
+
+### API Endpoint
+
+```
+GET /api/repos/:owner/:repo/plan/omni
+```
+
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `selector` | string | *(required)* | PR selector expression (see syntax below) |
+| `target` | int | 20 | Number of PRs to select from the first stage |
+| `stage_size` | int | 64 | Maximum PRs per processing stage |
+
+### Selector Syntax
+
+Selectors use a simple expression language to reference PRs by number.
+
+**Grammar:**
+
+```
+expr       → orExpr
+orExpr     → andExpr (OR andExpr)*
+andExpr    → term (AND term)*
+term       → '(' expr ')' | atomic
+atomic     → ID | RANGE
+```
+
+- **ID**: A single PR number (e.g., `123`)
+- **RANGE**: Two IDs separated by a hyphen, inclusive (e.g., `100-200`)
+- **AND**: Intersection of two sets (binds tighter than OR)
+- **OR**: Union of two sets (loosest precedence)
+- **Parentheses**: Override default precedence
+
+### Selector Examples
+
+```bash
+# Single PR
+curl "http://localhost:8080/api/repos/owner/repo/plan/omni?selector=42"
+
+# Range of PRs (inclusive)
+curl "http://localhost:8080/api/repos/owner/repo/plan/omni?selector=1-100"
+
+# Multiple ranges combined with AND (intersection)
+# Selects PRs present in both ranges: {100, 101, ..., 150}
+curl "http://localhost:8080/api/repos/owner/repo/plan/omni?selector=50-150+AND+100-200"
+# Note: URL-encode spaces as + or %20
+
+# Multiple ranges combined with OR (union)
+# Selects PRs from either range
+curl "http://localhost:8080/api/repos/owner/repo/plan/omni?selector=1-50+OR+200-250"
+
+# Grouping with parentheses
+# Selects intersection of (1-100 OR 300-400) with 50-150
+curl "http://localhost:8080/api/repos/owner/repo/plan/omni?selector=(1-100+OR+300-400)+AND+50-150"
+# Result: {50, 51, ..., 100}
+
+# With custom stage size and target
+curl "http://localhost:8080/api/repos/owner/repo/plan/omni?selector=1-200&target=10&stage_size=32"
+```
+
+### Response Format
+
+```json
+{
+  "repo": "owner/repo",
+  "generatedAt": "2026-04-02T12:00:00Z",
+  "selector": "1-100",
+  "mode": "omni_batch",
+  "stageCount": 2,
+  "stages": [
+    { "stage": 1, "stageSize": 64, "matched": 64, "selected": 20 },
+    { "stage": 2, "stageSize": 64, "matched": 37, "selected": 0 }
+  ],
+  "selected": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+  "ordering": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+}
+```
+
+- **stages**: The matched PRs are divided into batches of `stage_size`. Only the first stage populates the `selected` list, up to `target` PRs.
+- **selected**: PR IDs chosen from the first stage (limited by `target`).
+- **ordering**: Merge ordering for the selected PRs.
+
+### Integration with Other Commands
+
+Omni mode works alongside the standard analyze and config workflow:
+
+```bash
+# 1. Analyze the repo to understand the PR landscape
+pratc analyze --repo=owner/repo --format=json
+
+# 2. Configure planning settings
+pratc config set --scope=repo --repo=owner/repo planning.target 20
+
+# 3. Use omni mode for targeted planning on a specific PR range
+curl "http://localhost:8080/api/repos/owner/repo/plan/omni?selector=50-150"
+```
 
 ## Web Dashboard
 

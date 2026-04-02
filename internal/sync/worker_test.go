@@ -27,6 +27,19 @@ func (f *fakeMirror) FetchAll(_ context.Context, openPRs []int, progress func(do
 	return f.fetchErr
 }
 
+func (f *fakeMirror) FetchAllWithSkipped(_ context.Context, openPRs []int, progress func(done, total int)) ([]int, error) {
+	f.fetched = append([]int(nil), openPRs...)
+	if progress != nil {
+		progress(1, 2)
+		progress(2, 2)
+		f.progressN += 2
+	}
+	if f.fetchErr != nil {
+		return nil, f.fetchErr
+	}
+	return []int{}, nil
+}
+
 func (f *fakeMirror) PruneClosedPRs(_ context.Context, closedPRs []int) error {
 	f.pruned = append([]int(nil), closedPRs...)
 	return f.pruneErr

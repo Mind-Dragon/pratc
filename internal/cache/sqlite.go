@@ -43,6 +43,10 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+func (s *Store) DB() *sql.DB {
+	return s.db
+}
+
 func (s *Store) JournalMode() (string, error) {
 	var mode string
 	if err := s.db.QueryRow(`PRAGMA journal_mode;`).Scan(&mode); err != nil {
@@ -362,13 +366,15 @@ func (s *Store) CreateSyncJob(repo string) (SyncJob, error) {
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO sync_progress (repo, job_id, cursor, processed_prs, total_prs, last_sync_at, updated_at)
-		VALUES (?, ?, '', 0, 0, '', ?)
+		INSERT INTO sync_progress (repo, job_id, cursor, processed_prs, total_prs, next_scheduled_at, estimated_requests, last_sync_at, updated_at)
+		VALUES (?, ?, '', 0, 0, '', 0, '', ?)
 		ON CONFLICT(repo) DO UPDATE SET
 			job_id = excluded.job_id,
 			cursor = excluded.cursor,
 			processed_prs = excluded.processed_prs,
 			total_prs = excluded.total_prs,
+			next_scheduled_at = excluded.next_scheduled_at,
+			estimated_requests = excluded.estimated_requests,
 			updated_at = excluded.updated_at
 	`, repo, job.ID, now.Format(time.RFC3339))
 	if err != nil {
@@ -412,11 +418,29 @@ func (s *Store) UpdateSyncJobProgress(jobID string, progress SyncProgress) error
 	return nil
 }
 
+func (s *Store) SaveCursor(repo string, cursor string, processedPRs int, totalPRs int) error {
+	now := s.now().UTC().Format(time.RFC3339)
+	_, err := s.db.Exec(`
+		INSERT INTO sync_progress (repo, job_id, cursor, processed_prs, total_prs, last_sync_at, updated_at)
+		VALUES (?, '', ?, ?, ?, '', ?)
+		ON CONFLICT(repo) DO UPDATE SET
+			cursor = excluded.cursor,
+			processed_prs = excluded.processed_prs,
+			total_prs = excluded.total_prs,
+			updated_at = excluded.updated_at
+	`, repo, cursor, processedPRs, totalPRs, now)
+	if err != nil {
+		return fmt.Errorf("save cursor: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) GetSyncJob(jobID string) (SyncJob, error) {
 	row := s.db.QueryRow(`
 		SELECT
 			j.id, j.repo, j.status, j.error_message, COALESCE(j.last_sync_at, ''), j.created_at, j.updated_at,
-			COALESCE(p.cursor, ''), COALESCE(p.processed_prs, 0), COALESCE(p.total_prs, 0)
+			COALESCE(p.cursor, ''), COALESCE(p.processed_prs, 0), COALESCE(p.total_prs, 0),
+			COALESCE(p.next_scheduled_at, ''), COALESCE(p.estimated_requests, 0)
 		FROM sync_jobs j
 		LEFT JOIN sync_progress p ON p.job_id = j.id
 		WHERE j.id = ?
@@ -427,9 +451,12 @@ func (s *Store) GetSyncJob(jobID string) (SyncJob, error) {
 	var lastSync string
 	var createdAt string
 	var updatedAt string
+	var nextScheduledAt string
+	var estimatedRequests int
 	if err := row.Scan(
 		&job.ID, &job.Repo, &status, &job.Error, &lastSync, &createdAt, &updatedAt,
 		&job.Progress.Cursor, &job.Progress.ProcessedPRs, &job.Progress.TotalPRs,
+		&nextScheduledAt, &estimatedRequests,
 	); err != nil {
 		return SyncJob{}, fmt.Errorf("get sync job: %w", err)
 	}
@@ -438,6 +465,8 @@ func (s *Store) GetSyncJob(jobID string) (SyncJob, error) {
 	job.CreatedAt = parseOptionalTime(createdAt)
 	job.UpdatedAt = parseOptionalTime(updatedAt)
 	job.LastSyncAt = parseOptionalTime(lastSync)
+	job.Progress.NextScheduledAt = parseOptionalTime(nextScheduledAt)
+	job.Progress.EstimatedRequests = estimatedRequests
 	return job, nil
 }
 
@@ -493,19 +522,222 @@ func (s *Store) MarkSyncJobComplete(jobID string, syncedAt time.Time) error {
 }
 
 func (s *Store) MarkSyncJobFailed(jobID string, message string) error {
+	now := s.now().UTC().Format(time.RFC3339)
 	_, err := s.db.Exec(`
 		UPDATE sync_jobs
 		SET status = ?, error_message = ?, updated_at = ?
 		WHERE id = ?
-	`, SyncJobStatusFailed, message, s.now().UTC().Format(time.RFC3339), jobID)
+	`, SyncJobStatusFailed, message, now, jobID)
 	if err != nil {
 		return fmt.Errorf("mark sync job failed: %w", err)
 	}
 	return nil
 }
 
+func (s *Store) ResumeSyncJobByID(jobID string) error {
+	now := s.now().UTC().Format(time.RFC3339)
+	result, err := s.db.Exec(`
+		UPDATE sync_jobs
+		SET status = ?, error_message = ?, updated_at = ?
+		WHERE id = ?
+	`, SyncJobStatusInProgress, "", now, jobID)
+	if err != nil {
+		return fmt.Errorf("resume sync job by ID: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("no job found with ID %s", jobID)
+	}
+
+	return nil
+}
+
+func (s *Store) PauseSyncJob(jobID string, nextScheduledAt time.Time, reason string) error {
+	now := s.now().UTC().Format(time.RFC3339)
+	_, err := s.db.Exec(`
+		UPDATE sync_jobs
+		SET status = 'paused', error_message = ?, updated_at = ?
+		WHERE id = ?
+	`, reason, now, jobID)
+	if err != nil {
+		return fmt.Errorf("pause sync job: %w", err)
+	}
+
+	var repo string
+	if err := s.db.QueryRow(`SELECT repo FROM sync_jobs WHERE id = ?`, jobID).Scan(&repo); err != nil {
+		return fmt.Errorf("lookup sync job repo after pause: %w", err)
+	}
+
+	nextScheduled := ""
+	if !nextScheduledAt.IsZero() {
+		nextScheduled = nextScheduledAt.UTC().Format(time.RFC3339)
+	}
+
+	_, err = s.db.Exec(`
+		UPDATE sync_progress
+		SET next_scheduled_at = ?, updated_at = ?
+		WHERE repo = ?
+	`, nextScheduled, now, repo)
+	if err != nil {
+		return fmt.Errorf("persist next scheduled after pause: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Store) ListPausedSyncJobs() ([]SyncJob, error) {
+	rows, err := s.db.Query(`
+		SELECT
+			j.id, j.repo, j.status, j.error_message, COALESCE(j.last_sync_at, ''), j.created_at, j.updated_at,
+			COALESCE(p.cursor, ''), COALESCE(p.processed_prs, 0), COALESCE(p.total_prs, 0),
+			COALESCE(p.next_scheduled_at, '')
+		FROM sync_jobs j
+		LEFT JOIN sync_progress p ON p.repo = j.repo
+		WHERE j.status = 'paused'
+		ORDER BY j.updated_at ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list paused sync jobs: %w", err)
+	}
+	defer rows.Close()
+
+	var jobs []SyncJob
+	for rows.Next() {
+		var job SyncJob
+		var status string
+		var lastSync string
+		var createdAt string
+		var updatedAt string
+		var nextScheduledStr string
+		if err := rows.Scan(
+			&job.ID, &job.Repo, &status, &job.Error, &lastSync, &createdAt, &updatedAt,
+			&job.Progress.Cursor, &job.Progress.ProcessedPRs, &job.Progress.TotalPRs,
+			&nextScheduledStr,
+		); err != nil {
+			return nil, fmt.Errorf("scan paused sync job: %w", err)
+		}
+
+		job.Status = SyncJobStatus(status)
+		job.CreatedAt = parseOptionalTime(createdAt)
+		job.UpdatedAt = parseOptionalTime(updatedAt)
+		job.LastSyncAt = parseOptionalTime(lastSync)
+		job.Progress.NextScheduledAt = parseOptionalTime(nextScheduledStr)
+		jobs = append(jobs, job)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate paused sync jobs: %w", err)
+	}
+
+	return jobs, nil
+}
+
+// ListSyncJobs returns all sync jobs ordered by updated_at descending.
+func (s *Store) ListSyncJobs() ([]SyncJob, error) {
+	rows, err := s.db.Query(`
+		SELECT
+			j.id, j.repo, j.status, j.error_message, COALESCE(j.last_sync_at, ''), j.created_at, j.updated_at,
+			COALESCE(p.cursor, ''), COALESCE(p.processed_prs, 0), COALESCE(p.total_prs, 0),
+			COALESCE(p.next_scheduled_at, ''), COALESCE(p.estimated_requests, 0)
+		FROM sync_jobs j
+		LEFT JOIN sync_progress p ON p.job_id = j.id
+		ORDER BY j.updated_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list sync jobs: %w", err)
+	}
+	defer rows.Close()
+
+	var jobs []SyncJob
+	for rows.Next() {
+		var job SyncJob
+		var status string
+		var lastSync string
+		var createdAt string
+		var updatedAt string
+		var nextScheduledStr string
+		var estimatedRequests int
+		if err := rows.Scan(
+			&job.ID, &job.Repo, &status, &job.Error, &lastSync, &createdAt, &updatedAt,
+			&job.Progress.Cursor, &job.Progress.ProcessedPRs, &job.Progress.TotalPRs,
+			&nextScheduledStr, &estimatedRequests,
+		); err != nil {
+			return nil, fmt.Errorf("scan sync job: %w", err)
+		}
+
+		job.Status = SyncJobStatus(status)
+		job.CreatedAt = parseOptionalTime(createdAt)
+		job.UpdatedAt = parseOptionalTime(updatedAt)
+		job.LastSyncAt = parseOptionalTime(lastSync)
+		job.Progress.NextScheduledAt = parseOptionalTime(nextScheduledStr)
+		job.Progress.EstimatedRequests = estimatedRequests
+		jobs = append(jobs, job)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate sync jobs: %w", err)
+	}
+
+	return jobs, nil
+}
+
+// GetPausedSyncJobByRepo returns a paused sync job for the given repo, including scheduling information.
+func (s *Store) GetPausedSyncJobByRepo(repo string) (SyncJob, error) {
+	rows, err := s.db.Query(`
+		SELECT j.id, j.repo, j.status, j.error_message, COALESCE(j.last_sync_at, ''), j.created_at, j.updated_at,
+		       COALESCE(p.cursor, ''), COALESCE(p.processed_prs, 0), COALESCE(p.total_prs, 0),
+		       COALESCE(p.next_scheduled_at, ''), p.estimated_requests
+		FROM sync_jobs j
+		LEFT JOIN sync_progress p ON j.repo = p.repo
+		WHERE j.repo = ? AND j.status = ?
+		ORDER BY j.updated_at DESC
+		LIMIT 1
+	`, repo, string(SyncJobStatusPaused))
+	if err != nil {
+		return SyncJob{}, fmt.Errorf("get paused sync job by repo: %w", err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return SyncJob{}, fmt.Errorf("no paused sync job found for repo %q", repo)
+	}
+
+	var job SyncJob
+	var status string
+	var lastSync string
+	var createdAt string
+	var updatedAt string
+	var nextScheduledAtStr string
+	var estimatedRequests int
+
+	if err := rows.Scan(
+		&job.ID, &job.Repo, &status, &job.Error, &lastSync, &createdAt, &updatedAt,
+		&job.Progress.Cursor, &job.Progress.ProcessedPRs, &job.Progress.TotalPRs,
+		&nextScheduledAtStr, &estimatedRequests,
+	); err != nil {
+		return SyncJob{}, fmt.Errorf("scan paused sync job: %w", err)
+	}
+
+	job.Status = SyncJobStatus(status)
+	job.CreatedAt = parseOptionalTime(createdAt)
+	job.UpdatedAt = parseOptionalTime(updatedAt)
+	job.LastSyncAt = parseOptionalTime(lastSync)
+	job.Progress.EstimatedRequests = estimatedRequests
+	job.Progress.NextScheduledAt = parseOptionalTime(nextScheduledAtStr)
+
+	if err := rows.Err(); err != nil {
+		return SyncJob{}, fmt.Errorf("iterate paused sync job: %w", err)
+	}
+
+	return job, nil
+}
+
 func (s *Store) init(ctx context.Context) error {
-	const supportedSchemaVersion = 2
+	const supportedSchemaVersion = 3
 
 	var currentVersion int
 	if err := s.db.QueryRowContext(ctx, `PRAGMA user_version;`).Scan(&currentVersion); err != nil {
@@ -539,6 +771,9 @@ func (s *Store) init(ctx context.Context) error {
 		`INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
 		 VALUES (2, 'audit_log', '2026-03-22T00:00:00Z');`,
 		`PRAGMA user_version = 2;`,
+		`INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
+		 VALUES (3, 'sync_progress_scheduling', '2026-04-02T00:00:00Z');`,
+		`PRAGMA user_version = 3;`,
 		`CREATE TABLE IF NOT EXISTS audit_log (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			timestamp TEXT NOT NULL,
@@ -625,6 +860,33 @@ func (s *Store) init(ctx context.Context) error {
 		}
 	}
 
+	if err := s.addColumnIfNotExists("sync_progress", "next_scheduled_at", "TEXT"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfNotExists("sync_progress", "estimated_requests", "INTEGER"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Store) addColumnIfNotExists(table, column, colType string) error {
+	var exists int
+	err := s.db.QueryRow(
+		`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`, table, column,
+	).Scan(&exists)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("check column %s.%s: %w", table, column, err)
+	}
+	if exists == 1 {
+		return nil
+	}
+	_, err = s.db.Exec(
+		fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, column, colType),
+	)
+	if err != nil {
+		return fmt.Errorf("add column %s.%s: %w", table, column, err)
+	}
 	return nil
 }
 

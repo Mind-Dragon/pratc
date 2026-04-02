@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	supportedSchemaVersion = 2
+	supportedSchemaVersion = 3
 )
 
 func TestCacheUpsertAndQuery(t *testing.T) {
@@ -363,8 +363,8 @@ func TestMigrationFreshInstall(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT version, name, applied_at FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &name, &appliedAt); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 2 || name != "audit_log" {
-		t.Fatalf("expected version=2 name=audit_log, got version=%d name=%s", version, name)
+	if version != 3 || name != "sync_progress_scheduling" {
+		t.Fatalf("expected version=3 name=sync_progress_scheduling, got version=%d name=%s", version, name)
 	}
 
 	requiredTables := []string{
@@ -462,8 +462,8 @@ func TestMigrationUpgradeFromNminus1(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations after upgrade: %v", err)
 	}
-	if version != supportedSchemaVersion || name != "audit_log" {
-		t.Fatalf("expected migration version=%d name=audit_log, got version=%d name=%s", supportedSchemaVersion, version, name)
+	if version != supportedSchemaVersion || name != "sync_progress_scheduling" {
+		t.Fatalf("expected migration version=%d name=sync_progress_scheduling, got version=%d name=%s", supportedSchemaVersion, version, name)
 	}
 
 	requiredTables := []string{
@@ -668,6 +668,104 @@ func TestMigrationFailFastOnFutureSchema(t *testing.T) {
 	}
 }
 
+func TestCachePauseAndListPausedSyncJobs(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	store.now = func() time.Time {
+		return mustParseTime(t, "2026-04-02T10:00:00Z")
+	}
+
+	job, err := store.CreateSyncJob("owner/repo")
+	if err != nil {
+		t.Fatalf("create sync job: %v", err)
+	}
+
+	if err := store.UpdateSyncJobProgress(job.ID, SyncProgress{
+		Cursor:       "cursor-1",
+		ProcessedPRs: 10,
+		TotalPRs:     100,
+	}); err != nil {
+		t.Fatalf("update sync job progress: %v", err)
+	}
+
+	pauseTime := mustParseTime(t, "2026-04-02T12:00:00Z")
+	pauseReason := "rate limit exhausted"
+	if err := store.PauseSyncJob(job.ID, pauseTime, pauseReason); err != nil {
+		t.Fatalf("pause sync job: %v", err)
+	}
+
+	got, err := store.GetSyncJob(job.ID)
+	if err != nil {
+		t.Fatalf("get sync job after pause: %v", err)
+	}
+	if got.Status != "paused" {
+		t.Fatalf("expected status 'paused', got %q", got.Status)
+	}
+	if got.Error != pauseReason {
+		t.Fatalf("expected error %q, got %q", pauseReason, got.Error)
+	}
+
+	pausedJobs, err := store.ListPausedSyncJobs()
+	if err != nil {
+		t.Fatalf("list paused sync jobs: %v", err)
+	}
+	if len(pausedJobs) != 1 {
+		t.Fatalf("expected 1 paused job, got %d", len(pausedJobs))
+	}
+	if pausedJobs[0].ID != job.ID {
+		t.Fatalf("expected job ID %q, got %q", job.ID, pausedJobs[0].ID)
+	}
+	if pausedJobs[0].Error != pauseReason {
+		t.Fatalf("expected error %q, got %q", pauseReason, pausedJobs[0].Error)
+	}
+
+	job2, err := store.CreateSyncJob("owner/repo2")
+	if err != nil {
+		t.Fatalf("create second sync job: %v", err)
+	}
+	if err := store.PauseSyncJob(job2.ID, mustParseTime(t, "2026-04-02T14:00:00Z"), "another limit"); err != nil {
+		t.Fatalf("pause second sync job: %v", err)
+	}
+
+	pausedJobs, err = store.ListPausedSyncJobs()
+	if err != nil {
+		t.Fatalf("list paused sync jobs after second pause: %v", err)
+	}
+	if len(pausedJobs) != 2 {
+		t.Fatalf("expected 2 paused jobs, got %d", len(pausedJobs))
+	}
+	if pausedJobs[0].ID != job.ID || pausedJobs[1].ID != job2.ID {
+		t.Fatalf("expected jobs in order by updated_at, got %q then %q", pausedJobs[0].ID, pausedJobs[1].ID)
+	}
+}
+
+func TestCachePauseWithZeroTime(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+
+	job, err := store.CreateSyncJob("owner/repo")
+	if err != nil {
+		t.Fatalf("create sync job: %v", err)
+	}
+
+	if err := store.PauseSyncJob(job.ID, time.Time{}, "zero time test"); err != nil {
+		t.Fatalf("pause sync job with zero time: %v", err)
+	}
+
+	pausedJobs, err := store.ListPausedSyncJobs()
+	if err != nil {
+		t.Fatalf("list paused sync jobs: %v", err)
+	}
+	if len(pausedJobs) != 1 {
+		t.Fatalf("expected 1 paused job, got %d", len(pausedJobs))
+	}
+	if pausedJobs[0].Error != "zero time test" {
+		t.Fatalf("expected error %q, got %q", "zero time test", pausedJobs[0].Error)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && findSubstring(s, substr))
 }
@@ -716,8 +814,8 @@ func TestMigrationIdempotency(t *testing.T) {
 	if err := store2.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if count != 2 {
-		t.Fatalf("expected 2 migration records, got %d", count)
+	if count != 3 {
+		t.Fatalf("expected 3 migration records, got %d", count)
 	}
 
 	var userVersion int

@@ -17,10 +17,19 @@ import (
 var repoPartPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 type Mirror struct {
-	gitDir string
-	repo   string
-	runner commandRunner
-	cache  *cache.Store
+	gitDir    string
+	repo      string
+	runner    commandRunner
+	cache     *cache.Store
+	BatchSize int
+}
+
+func WithBatchSize(size int) func(*Mirror) {
+	return func(m *Mirror) {
+		if size > 0 {
+			m.BatchSize = size
+		}
+	}
 }
 
 type commandRunner interface {
@@ -138,7 +147,7 @@ func MigrateLegacyMirror(root, newBaseDir, repo string) error {
 	return nil
 }
 
-func OpenOrCreate(ctx context.Context, baseDir, repo, remoteURL string) (*Mirror, error) {
+func OpenOrCreate(ctx context.Context, baseDir, repo, remoteURL string, opts ...func(*Mirror)) (*Mirror, error) {
 	if strings.TrimSpace(remoteURL) == "" {
 		return nil, errors.New("remote URL is required")
 	}
@@ -160,7 +169,10 @@ func OpenOrCreate(ctx context.Context, baseDir, repo, remoteURL string) (*Mirror
 		return nil, fmt.Errorf("stat mirror path: %w", err)
 	}
 
-	m := &Mirror{gitDir: gitDir, repo: repo, runner: gitRunner{gitDir: gitDir}}
+	m := &Mirror{gitDir: gitDir, repo: repo, runner: gitRunner{gitDir: gitDir}, BatchSize: 100}
+	for _, opt := range opts {
+		opt(m)
+	}
 	if _, err := m.runner.Run(ctx, "remote", "remove", "origin"); err != nil {
 		_ = err
 	}
@@ -179,7 +191,11 @@ func BuildRefspecs(openPRs []int) []string {
 }
 
 func (m *Mirror) FetchAll(ctx context.Context, openPRs []int, progress func(done, total int)) error {
-	return m.FetchAllBatched(ctx, openPRs, 100, progress)
+	batchSize := m.BatchSize
+	if batchSize <= 0 {
+		batchSize = 100
+	}
+	return m.FetchAllBatched(ctx, openPRs, batchSize, progress)
 }
 
 func (m *Mirror) FetchAllWithSkipped(ctx context.Context, openPRs []int, progress func(done, total int)) ([]int, error) {

@@ -145,6 +145,16 @@ func (l *Logger) Error(msg string, keyValues ...any) {
 	l.Logger.Error(msg, keyValues...)
 }
 
+// Debug logs a message at ERROR level (DEBUG=ERROR for example).
+func (l *Logger) Debug(msg string, keyValues ...any) {
+	l.Logger.Error(msg, keyValues...)
+}
+
+// Warn logs a message at WARN level.
+func (l *Logger) Warn(msg string, keyValues ...any) {
+	l.Logger.Warn(msg, keyValues...)
+}
+
 // RequestIDFromContext extracts the request ID from context.
 func RequestIDFromContext(ctx context.Context) string {
 	if ctx == nil {

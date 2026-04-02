@@ -12,6 +12,7 @@ import (
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/formula"
+	"github.com/jeffersonnunn/pratc/internal/logger"
 	"github.com/jeffersonnunn/pratc/internal/testutil"
 	"github.com/jeffersonnunn/pratc/internal/types"
 )
@@ -201,8 +202,8 @@ func TestAnalyzeProvidesAuthFallbackGuidanceForLiveRepoWithoutToken(t *testing.T
 	if !strings.Contains(message, "GH_TOKEN") {
 		t.Fatalf("expected GH_TOKEN guidance, got %q", message)
 	}
-	if !strings.Contains(message, "gh auth token") {
-		t.Fatalf("expected gh auth token guidance, got %q", message)
+	if !strings.Contains(message, "gh CLI") {
+		t.Fatalf("expected gh CLI guidance, got %q", message)
 	}
 }
 
@@ -458,66 +459,69 @@ func runSixKPerfProof() bool {
 func TestLiveProgressReporterEmitsMilestones(t *testing.T) {
 	t.Parallel()
 
-	var out bytes.Buffer
-	reporter := newLiveProgressReporter(&out, 100)
+	var buf bytes.Buffer
+	log := logger.NewForTest(&buf, "test")
+	reporter := newLiveProgressReporter(log, 100)
 	for i := 1; i <= 250; i++ {
 		reporter(i, 0)
 	}
 
-	log := out.String()
-	if !strings.Contains(log, "fetched 1 PRs") {
-		t.Fatalf("expected first progress milestone, got %q", log)
+	output := buf.String()
+	if !strings.Contains(output, `"fetched":1`) {
+		t.Fatalf("expected first progress milestone, got %q", output)
 	}
-	if !strings.Contains(log, "fetched 100 PRs") {
-		t.Fatalf("expected 100 milestone, got %q", log)
+	if !strings.Contains(output, `"fetched":100`) {
+		t.Fatalf("expected 100 milestone, got %q", output)
 	}
-	if !strings.Contains(log, "fetched 200 PRs") {
-		t.Fatalf("expected 200 milestone, got %q", log)
+	if !strings.Contains(output, `"fetched":200`) {
+		t.Fatalf("expected 200 milestone, got %q", output)
 	}
-	if strings.Contains(log, "fetched 99 PRs") {
-		t.Fatalf("unexpected non-milestone progress entry: %q", log)
+	if strings.Contains(output, `"fetched":99`) {
+		t.Fatalf("unexpected non-milestone progress entry: %q", output)
 	}
 }
 
 func TestWriteLivePhaseStatusIncludesCount(t *testing.T) {
 	t.Parallel()
 
-	var out bytes.Buffer
-	writeLivePhaseStatus(&out, "fetch complete, starting analysis", 5959)
+	var buf bytes.Buffer
+	log := logger.NewForTest(&buf, "test")
+	writeLivePhaseStatus(log, "fetch complete, starting analysis", 5959)
 
-	log := out.String()
-	if !strings.Contains(log, "[live] fetch complete, starting analysis") {
-		t.Fatalf("expected phase status message, got %q", log)
+	output := buf.String()
+	if !strings.Contains(output, `"phase":"fetch complete, starting analysis"`) {
+		t.Fatalf("expected phase status message, got %q", output)
 	}
-	if !strings.Contains(log, "5959") {
-		t.Fatalf("expected count in phase status message, got %q", log)
+	if !strings.Contains(output, `"pr_count":5959`) {
+		t.Fatalf("expected count in phase status message, got %q", output)
 	}
 }
 
 func TestLiveAnalysisProgressReporterEmitsMilestones(t *testing.T) {
 	t.Parallel()
 
-	var out bytes.Buffer
-	reporter := newLiveAnalysisProgressReporter(&out, 100)
+	var buf bytes.Buffer
+	log := logger.NewForTest(&buf, "test")
+	reporter := newLiveAnalysisProgressReporter(log, 100)
 	for i := 1; i <= 250; i++ {
 		reporter(i, 250)
 	}
 
-	log := out.String()
-	if !strings.Contains(log, "analyzed 1/250 PRs") {
-		t.Fatalf("expected first progress milestone, got %q", log)
+	output := buf.String()
+	if !strings.Contains(output, `"processed":1`) || !strings.Contains(output, `"total":250`) {
+		t.Fatalf("expected first progress milestone, got %q", output)
 	}
-	if !strings.Contains(log, "analyzed 100/250 PRs") {
-		t.Fatalf("expected 100 milestone, got %q", log)
+	if !strings.Contains(output, `"processed":100`) {
+		t.Fatalf("expected 100 milestone, got %q", output)
 	}
-	if !strings.Contains(log, "analyzed 200/250 PRs") {
-		t.Fatalf("expected 200 milestone, got %q", log)
+	if !strings.Contains(output, `"processed":200`) {
+		t.Fatalf("expected 200 milestone, got %q", output)
 	}
-	if !strings.Contains(log, "analyzed 250/250 PRs") {
-		t.Fatalf("expected final completion milestone, got %q", log)
+	if !strings.Contains(output, `"processed":250`) {
+		t.Fatalf("expected final completion milestone, got %q", output)
 	}
-	if strings.Contains(log, "analyzed 99/250 PRs") {
-		t.Fatalf("unexpected non-milestone progress entry: %q", log)
+	if strings.Contains(output, `"processed":99`) {
+		t.Fatalf("unexpected non-milestone progress entry: %q", output)
 	}
 }
 

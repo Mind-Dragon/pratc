@@ -16,9 +16,9 @@ const defaultTimeout = 120 * time.Second
 
 // Bridge invokes the Python ML service via JSON-over-STDIN/STDOUT subprocess.
 type Bridge struct {
-	python   string
-	workDir  string
-	timeout  time.Duration
+	python  string
+	workDir string
+	timeout time.Duration
 }
 
 // Config holds optional Bridge configuration.
@@ -55,12 +55,12 @@ func (b *Bridge) Available() bool {
 
 // Cluster delegates clustering to the Python ML service.
 // Returns nil clusters if the subprocess is unavailable or fails.
-func (b *Bridge) Cluster(ctx context.Context, repo string, prs []types.PR) ([]types.PRCluster, string, error) {
+func (b *Bridge) Cluster(ctx context.Context, repo string, prs []types.PR, requestID string) ([]types.PRCluster, string, error) {
 	if !b.Available() {
 		return nil, "", nil
 	}
 
-	payload := buildClusterPayload(repo, prs)
+	payload := buildClusterPayload(repo, prs, requestID)
 	var result clusterResult
 	if err := b.invoke(ctx, payload, &result); err != nil {
 		return nil, "", err
@@ -89,12 +89,12 @@ func (b *Bridge) Cluster(ctx context.Context, repo string, prs []types.PR) ([]ty
 
 // Duplicates delegates duplicate detection to the Python ML service.
 // Returns nil groups if the subprocess is unavailable or fails.
-func (b *Bridge) Duplicates(ctx context.Context, repo string, prs []types.PR, duplicateThreshold, overlapThreshold float64) ([]types.DuplicateGroup, []types.DuplicateGroup, error) {
+func (b *Bridge) Duplicates(ctx context.Context, repo string, prs []types.PR, duplicateThreshold, overlapThreshold float64, requestID string) ([]types.DuplicateGroup, []types.DuplicateGroup, error) {
 	if !b.Available() {
 		return nil, nil, nil
 	}
 
-	payload := buildDuplicatePayload(repo, prs, duplicateThreshold, overlapThreshold)
+	payload := buildDuplicatePayload(repo, prs, duplicateThreshold, overlapThreshold, requestID)
 	var result duplicateResult
 	if err := b.invoke(ctx, payload, &result); err != nil {
 		return nil, nil, err
@@ -148,55 +148,63 @@ func (b *Bridge) invoke(ctx context.Context, payload map[string]any, dest any) e
 	return nil
 }
 
-func buildClusterPayload(repo string, prs []types.PR) map[string]any {
+func buildClusterPayload(repo string, prs []types.PR, requestID string) map[string]any {
 	mlPRs := make([]map[string]any, 0, len(prs))
 	for _, pr := range prs {
 		mlPRs = append(mlPRs, prToML(pr))
 	}
-	return map[string]any{
+	payload := map[string]any{
 		"action": "cluster",
 		"repo":   repo,
 		"prs":    mlPRs,
 	}
+	if requestID != "" {
+		payload["request_id"] = requestID
+	}
+	return payload
 }
 
-func buildDuplicatePayload(repo string, prs []types.PR, dup, overlap float64) map[string]any {
+func buildDuplicatePayload(repo string, prs []types.PR, dup, overlap float64, requestID string) map[string]any {
 	mlPRs := make([]map[string]any, 0, len(prs))
 	for _, pr := range prs {
 		mlPRs = append(mlPRs, prToML(pr))
 	}
-	return map[string]any{
-		"action":            "duplicates",
-		"repo":              repo,
-		"prs":               mlPRs,
+	payload := map[string]any{
+		"action":             "duplicates",
+		"repo":               repo,
+		"prs":                mlPRs,
 		"duplicateThreshold": dup,
-		"overlapThreshold":  overlap,
+		"overlapThreshold":   overlap,
 	}
+	if requestID != "" {
+		payload["request_id"] = requestID
+	}
+	return payload
 }
 
 func prToML(pr types.PR) map[string]any {
 	return map[string]any{
-		"id":             pr.ID,
-		"repo":           pr.Repo,
-		"number":         pr.Number,
-		"title":          pr.Title,
-		"body":           pr.Body,
-		"url":            pr.URL,
-		"author":         pr.Author,
-		"labels":         pr.Labels,
-		"files_changed":  pr.FilesChanged,
-		"review_status":  pr.ReviewStatus,
-		"ci_status":      pr.CIStatus,
-		"mergeable":      pr.Mergeable,
-		"base_branch":    pr.BaseBranch,
-		"head_branch":    pr.HeadBranch,
-		"cluster_id":     pr.ClusterID,
-		"created_at":     pr.CreatedAt,
-		"updated_at":     pr.UpdatedAt,
-		"is_draft":       pr.IsDraft,
-		"is_bot":         pr.IsBot,
-		"additions":      pr.Additions,
-		"deletions":      pr.Deletions,
+		"id":                  pr.ID,
+		"repo":                pr.Repo,
+		"number":              pr.Number,
+		"title":               pr.Title,
+		"body":                pr.Body,
+		"url":                 pr.URL,
+		"author":              pr.Author,
+		"labels":              pr.Labels,
+		"files_changed":       pr.FilesChanged,
+		"review_status":       pr.ReviewStatus,
+		"ci_status":           pr.CIStatus,
+		"mergeable":           pr.Mergeable,
+		"base_branch":         pr.BaseBranch,
+		"head_branch":         pr.HeadBranch,
+		"cluster_id":          pr.ClusterID,
+		"created_at":          pr.CreatedAt,
+		"updated_at":          pr.UpdatedAt,
+		"is_draft":            pr.IsDraft,
+		"is_bot":              pr.IsBot,
+		"additions":           pr.Additions,
+		"deletions":           pr.Deletions,
 		"changed_files_count": pr.ChangedFilesCount,
 	}
 }
@@ -224,7 +232,7 @@ func findMLServiceDir() string {
 
 type clusterResult struct {
 	Clusters []clusterGroup `json:"clusters"`
-	Model    string          `json:"model"`
+	Model    string         `json:"model"`
 }
 
 type clusterGroup struct {
