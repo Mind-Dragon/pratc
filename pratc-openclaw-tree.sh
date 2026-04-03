@@ -335,7 +335,7 @@ for START in $(seq 0 "$BATCH_SIZE" "$((PR_COUNT - 1))"); do
   if [[ $END -ge $PR_COUNT ]]; then END=$((PR_COUNT - 1)); fi
 
   # Get PR numbers for this batch (0-indexed positions)
-  BATCH_PRS=$(echo "$ALL_PRS" | jq -r ".[$START:$((END + 1)) | join(',')")
+  BATCH_PRS=$(echo "$ALL_PRS" | jq -r ".[$START:$((END + 1))] | join(',')")
   BATCH_COUNT=$(echo "$BATCH_PRS" | tr ',' '\n' | wc -l)
 
   info "Batch $BATCH_NUM: positions $START-$END ($BATCH_COUNT PRs)"
