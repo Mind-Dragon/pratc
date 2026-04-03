@@ -139,6 +139,9 @@ else
   
   # Poll for sync completion
   SYNC_WAITED=0
+  LAST_PROGRESS=0
+  STUCK_COUNT=0
+  
   while [[ $SYNC_WAITED -lt 600 ]]; do
     sleep 5
     SYNC_WAITED=$((SYNC_WAITED + 5))
@@ -146,6 +149,20 @@ else
     SYNC_STATUS=$(curl -sf "http://localhost:$API_PORT/api/repos/$REPO/sync/status" 2>/dev/null || echo '{}')
     SYNC_IN_PROGRESS=$(echo "$SYNC_STATUS" | jq -r '.in_progress // true')
     CACHED_PR_COUNT=$(echo "$SYNC_STATUS" | jq -r '.pr_count // 0')
+    CURRENT_PROGRESS=$(echo "$SYNC_STATUS" | jq -r '.progress_percent // 0')
+    
+    # Detect stuck sync (no progress change)
+    if [[ "$CURRENT_PROGRESS" == "$LAST_PROGRESS" ]]; then
+      STUCK_COUNT=$((STUCK_COUNT + 1))
+    else
+      STUCK_COUNT=0
+      LAST_PROGRESS=$CURRENT_PROGRESS
+    fi
+    
+    # Fail if stuck for 10 consecutive polls (50 seconds)
+    if [[ $STUCK_COUNT -ge 10 ]]; then
+      fail "Sync stuck at ${CURRENT_PROGRESS}% progress for 50 seconds - server may be rate-limited or erroring"
+    fi
     
     if [[ "$SYNC_IN_PROGRESS" == "false" ]]; then
       SYNC_END=$(date +%s)
@@ -155,7 +172,7 @@ else
     fi
     
     if [[ $((SYNC_WAITED % 30)) -eq 0 ]]; then
-      info "Still syncing... ($SYNC_WAITED seconds, $CACHED_PR_COUNT PRs so far)"
+      info "Still syncing... ($SYNC_WAITED seconds, $CACHED_PR_COUNT PRs so far, progress: ${CURRENT_PROGRESS}%)"
     fi
   done
   
