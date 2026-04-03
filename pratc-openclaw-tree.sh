@@ -109,11 +109,60 @@ trap 'cleanup_server' EXIT
 
 start_or_reuse_server "$API_PORT"
 
-# Step 1: Sync skipped (using cached PRs)
-info "Step 1/5: Syncing $REPO (SKIPPED — using cached PRs)..."
-CACHED_PR_COUNT=$(curl -sf "http://localhost:$API_PORT/api/repos/$REPO/sync/status" 2>/dev/null | jq -r '.pr_count // 0')
-ok "Using $CACHED_PR_COUNT cached PRs (sync skipped)"
-log "SYNC SKIPPED pr_count=$CACHED_PR_COUNT"
+# Step 1: Check sync status and sync if needed
+info "Step 1/5: Checking sync status for $REPO..."
+
+SYNC_STATUS=$(curl -sf "http://localhost:$API_PORT/api/repos/$REPO/sync/status" 2>/dev/null || echo '{"status":"unknown","in_progress":false,"pr_count":0}')
+SYNC_STATE=$(echo "$SYNC_STATUS" | jq -r '.status // "unknown"')
+SYNC_IN_PROGRESS=$(echo "$SYNC_STATUS" | jq -r '.in_progress // false')
+CACHED_PR_COUNT=$(echo "$SYNC_STATUS" | jq -r '.pr_count // 0')
+
+# Check if sync is complete (status == "complete" or in_progress == false with non-zero last_sync)
+LAST_SYNC=$(echo "$SYNC_STATUS" | jq -r '.last_sync // "0001-01-01T00:00:00Z"')
+SYNC_COMPLETE=false
+
+if [[ "$SYNC_STATE" == "complete" ]]; then
+  SYNC_COMPLETE=true
+elif [[ "$SYNC_IN_PROGRESS" == "false" ]] && [[ "$LAST_SYNC" != "0001-01-01T00:00:00Z" ]] && [[ "$CACHED_PR_COUNT" -gt 0 ]]; then
+  SYNC_COMPLETE=true
+fi
+
+if [[ "$SYNC_COMPLETE" == "true" ]]; then
+  ok "Using $CACHED_PR_COUNT cached PRs (sync complete, last_sync: $LAST_SYNC)"
+  log "SYNC SKIPPED pr_count=$CACHED_PR_COUNT last_sync=$LAST_SYNC"
+else
+  warn "Sync incomplete (status: $SYNC_STATE, in_progress: $SYNC_IN_PROGRESS, last_sync: $LAST_SYNC)"
+  info "Running sync for $REPO..."
+  
+  SYNC_START=$(date +%s)
+  curl -sf "http://localhost:$API_PORT/api/repos/$REPO/sync" -X POST 2>/dev/null || fail "Failed to trigger sync"
+  
+  # Poll for sync completion
+  SYNC_WAITED=0
+  while [[ $SYNC_WAITED -lt 300 ]]; do
+    sleep 5
+    SYNC_WAITED=$((SYNC_WAITED + 5))
+    
+    SYNC_STATUS=$(curl -sf "http://localhost:$API_PORT/api/repos/$REPO/sync/status" 2>/dev/null || echo '{}')
+    SYNC_IN_PROGRESS=$(echo "$SYNC_STATUS" | jq -r '.in_progress // true')
+    CACHED_PR_COUNT=$(echo "$SYNC_STATUS" | jq -r '.pr_count // 0')
+    
+    if [[ "$SYNC_IN_PROGRESS" == "false" ]]; then
+      SYNC_END=$(date +%s)
+      ok "Sync complete — $CACHED_PR_COUNT PRs synced ($(($SYNC_END - $SYNC_START))s)"
+      log "SYNC COMPLETE pr_count=$CACHED_PR_COUNT (took $(($SYNC_END - $SYNC_START))s)"
+      break
+    fi
+    
+    if [[ $((SYNC_WAITED % 30)) -eq 0 ]]; then
+      info "Still syncing... ($SYNC_WAITED seconds, $CACHED_PR_COUNT PRs so far)"
+    fi
+  done
+  
+  if [[ "$SYNC_IN_PROGRESS" == "true" ]]; then
+    fail "Sync did not complete within 300 seconds"
+  fi
+fi
 echo ""
 
 # Step 2: Analyze with cached data
