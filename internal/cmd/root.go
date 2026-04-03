@@ -477,6 +477,13 @@ func RegisterReportCommand() {
 			}
 			exporter.AddSection(graphSection)
 
+			planSection, err := report.LoadPlanSection(inputDir, repo)
+			if err != nil {
+				log.Warn("failed to load plan section", "error", err)
+				return fmt.Errorf("failed to load plan data: %w", err)
+			}
+			exporter.AddSection(planSection)
+
 			// Generate PDF bytes
 			pdfBytes, err := exporter.Export()
 			if err != nil {
