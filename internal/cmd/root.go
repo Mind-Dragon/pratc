@@ -461,6 +461,14 @@ func RegisterReportCommand() {
 			}
 			exporter.AddSection(metrics)
 
+			// Add cluster analysis section
+			clusterSection, err := report.LoadClusterSection(inputDir, repo)
+			if err != nil {
+				log.Warn("failed to load cluster section", "error", err)
+				return fmt.Errorf("failed to load cluster data: %w", err)
+			}
+			exporter.AddSection(clusterSection)
+
 			// Add graph section with real structure visualization
 			graphSection, err := report.LoadGraphSection(inputDir, repo)
 			if err != nil {
