@@ -434,10 +434,10 @@ func RegisterReportCommand() {
 				return fmt.Errorf("missing required input files: %v", missingFiles)
 			}
 
-			// Create PDF with minimal cover section
+			// Create PDF exporter
 			exporter := report.NewPDFExporter(repo, "prATC Scalability Report")
 
-			// Add cover section with placeholder data
+			// Add cover section
 			cover := &report.CoverSection{
 				Repo:        repo,
 				Title:       "Scalability Analysis Report",
@@ -445,6 +445,14 @@ func RegisterReportCommand() {
 				Summary:     "This report provides an overview of pull request metrics, clustering analysis, and merge recommendations.",
 			}
 			exporter.AddSection(cover)
+
+			// Add executive summary section
+			summary, err := report.LoadSummarySection(inputDir, repo)
+			if err != nil {
+				log.Warn("failed to load summary section", "error", err)
+				return fmt.Errorf("failed to load summary data: %w", err)
+			}
+			exporter.AddSection(summary)
 
 			// Generate PDF bytes
 			pdfBytes, err := exporter.Export()
