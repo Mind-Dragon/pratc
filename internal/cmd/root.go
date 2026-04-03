@@ -21,6 +21,7 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/logger"
 	"github.com/jeffersonnunn/pratc/internal/planning"
 	"github.com/jeffersonnunn/pratc/internal/repo"
+	"github.com/jeffersonnunn/pratc/internal/report"
 	"github.com/jeffersonnunn/pratc/internal/settings"
 	prsync "github.com/jeffersonnunn/pratc/internal/sync"
 	"github.com/jeffersonnunn/pratc/internal/types"
@@ -420,7 +421,32 @@ func RegisterReportCommand() {
 			log := logger.FromContext(ctx)
 
 			log.Info("starting report", "repo", repo, "input_dir", inputDir, "output", output, "format", format)
-			fmt.Fprintln(cmd.OutOrStdout(), "report command not yet implemented")
+
+			// Create PDF with minimal cover section
+			exporter := report.NewPDFExporter(repo, "prATC Scalability Report")
+
+			// Add cover section with placeholder data
+			cover := &report.CoverSection{
+				Repo:        repo,
+				Title:       "Scalability Analysis Report",
+				GeneratedAt: time.Now(),
+				Summary:     "This report provides an overview of pull request metrics, clustering analysis, and merge recommendations.",
+			}
+			exporter.AddSection(cover)
+
+			// Generate PDF bytes
+			pdfBytes, err := exporter.Export()
+			if err != nil {
+				return fmt.Errorf("failed to generate PDF: %w", err)
+			}
+
+			// Write to output file
+			if err := os.WriteFile(output, pdfBytes, 0644); err != nil {
+				return fmt.Errorf("failed to write PDF file: %w", err)
+			}
+
+			log.Info("report generated successfully", "output", output, "size_bytes", len(pdfBytes))
+			fmt.Fprintf(cmd.OutOrStdout(), "PDF report generated: %s (%d bytes)\n", output, len(pdfBytes))
 			return nil
 		},
 	}
