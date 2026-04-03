@@ -3,8 +3,10 @@ package report
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/go-pdf/fpdf"
@@ -91,65 +93,239 @@ func (s *CoverSection) Render(pdf *fpdf.Fpdf) {
 	pdf.MultiCell(180, 6, s.Summary, "", "L", false)
 }
 
-// ScalabilityMetrics holds metrics data for the report.
-type ScalabilityMetrics struct {
-	TotalPRs        int
-	OpenPRs         int
-	AverageAgeDays  float64
-	SyncThroughput  float64 // PRs per minute
-	ConflictDensity float64 // conflicts per PR
-	ClusterCount    int
-	DuplicateCount  int
-	StalePRCount    int
+// MetricsDashboard holds all metrics from analyze, graph, and plan artifacts.
+type MetricsDashboard struct {
+	// From analyze.json
+	TotalPRs       int
+	ClusterCount   int
+	DuplicateCount int
+	OverlapCount   int
+	ConflictCount  int
+	StalePRCount   int
+
+	// From graph.json
+	GraphNodes int
+	GraphEdges int
+
+	// From plan.json
+	SelectedCount  int
+	RejectedCount  int
+	TargetPRs      int
+	CandidateCount int
 }
 
-// MetricsSection renders the scalability metrics section.
+// MetricsSection renders a visual dashboard of key metrics.
 type MetricsSection struct {
-	Metrics ScalabilityMetrics
+	Dashboard   MetricsDashboard
+	Repo        string
+	GeneratedAt time.Time
 }
 
-// Render draws the metrics section.
+// Render draws the metrics dashboard section.
 func (s *MetricsSection) Render(pdf *fpdf.Fpdf) {
 	pdf.AddPage()
-	pdf.SetFont("Arial", "B", 16)
-	pdf.SetXY(15, 20)
-	pdf.Cell(180, 10, "Scalability Metrics")
 
-	s.renderTable(pdf)
+	// Header with gradient-style background
+	pdf.SetFillColor(26, 82, 118) // dark blue
+	pdf.Rect(0, 0, 210, 35, "F")
+
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetFont("Arial", "B", 20)
+	pdf.SetXY(15, 12)
+	pdf.Cell(180, 12, "Metrics Dashboard")
+
+	// Repository info below header
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFont("Arial", "", 10)
+	pdf.SetXY(15, 38)
+	pdf.Cell(180, 6, fmt.Sprintf("Repository: %s | Generated: %s", s.Repo, s.GeneratedAt.Format(time.RFC1123)))
+
+	// Main metrics grid (3 columns)
+	s.renderMainMetrics(pdf)
+
+	// Secondary metrics section
+	s.renderSecondaryMetrics(pdf)
+
+	// Plan summary box
+	s.renderPlanSummary(pdf)
 }
 
-// renderTable draws the metrics in a table layout.
-func (s *MetricsSection) renderTable(pdf *fpdf.Fpdf) {
-	// Header
-	pdf.SetFillColor(230, 230, 230)
-	pdf.SetFont("Arial", "B", 11)
-	pdf.SetXY(15, 35)
-	pdf.CellFormat(90, 10, "Metric", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(90, 10, "Value", "1", 1, "L", true, 0, "")
+// renderMainMetrics draws the primary metrics in a 3-column grid.
+func (s *MetricsSection) renderMainMetrics(pdf *fpdf.Fpdf) {
+	y := 55.0
 
-	// Rows
-	pdf.SetFont("Arial", "", 11)
-	rows := []struct {
+	// Header for main metrics
+	pdf.SetFont("Arial", "B", 14)
+	pdf.SetXY(15, y)
+	pdf.Cell(180, 8, "Key Metrics")
+
+	y += 12
+
+	// Define box dimensions
+	boxWidth := 58.0
+	boxHeight := 25.0
+	gap := 2.0
+	startX := 15.0
+
+	// Row 1: Total PRs, Clusters, Conflicts
+	metrics1 := []struct {
 		label string
-		value string
+		value int
+		color struct{ r, g, b int }
 	}{
-		{"Total PRs", fmt.Sprintf("%d", s.Metrics.TotalPRs)},
-		{"Open PRs", fmt.Sprintf("%d", s.Metrics.OpenPRs)},
-		{"Average Age (days)", fmt.Sprintf("%.1f", s.Metrics.AverageAgeDays)},
-		{"Sync Throughput (PRs/min)", fmt.Sprintf("%.2f", s.Metrics.SyncThroughput)},
-		{"Conflict Density (conflicts/PR)", fmt.Sprintf("%.3f", s.Metrics.ConflictDensity)},
-		{"Cluster Count", fmt.Sprintf("%d", s.Metrics.ClusterCount)},
-		{"Duplicate Groups", fmt.Sprintf("%d", s.Metrics.DuplicateCount)},
-		{"Stale PRs", fmt.Sprintf("%d", s.Metrics.StalePRCount)},
+		{"Total PRs", s.Dashboard.TotalPRs, struct{ r, g, b int }{52, 152, 219}},
+		{"PR Clusters", s.Dashboard.ClusterCount, struct{ r, g, b int }{155, 89, 182}},
+		{"Conflict Pairs", s.Dashboard.ConflictCount, struct{ r, g, b int }{231, 76, 60}},
 	}
 
-	y := 45.0
-	for _, row := range rows {
-		pdf.SetXY(15, y)
-		pdf.CellFormat(90, 8, row.label, "1", 0, "L", false, 0, "")
-		pdf.CellFormat(90, 8, row.value, "1", 1, "L", false, 0, "")
-		y += 8
+	for i, m := range metrics1 {
+		x := startX + float64(i)*(boxWidth+gap)
+		s.renderMetricBox(pdf, x, y, boxWidth, boxHeight, m.label, m.value, m.color.r, m.color.g, m.color.b)
 	}
+
+	y += boxHeight + 10
+
+	// Row 2: Duplicates, Overlaps, Stale
+	metrics2 := []struct {
+		label string
+		value int
+		color struct{ r, g, b int }
+	}{
+		{"Duplicate Groups", s.Dashboard.DuplicateCount, struct{ r, g, b int }{241, 196, 15}},
+		{"Overlap Groups", s.Dashboard.OverlapCount, struct{ r, g, b int }{230, 126, 34}},
+		{"Stale PRs", s.Dashboard.StalePRCount, struct{ r, g, b int }{127, 140, 141}},
+	}
+
+	for i, m := range metrics2 {
+		x := startX + float64(i)*(boxWidth+gap)
+		s.renderMetricBox(pdf, x, y, boxWidth, boxHeight, m.label, m.value, m.color.r, m.color.g, m.color.b)
+	}
+}
+
+// renderMetricBox draws a single metric box with colored background.
+func (s *MetricsSection) renderMetricBox(pdf *fpdf.Fpdf, x, y, w, h float64, label string, value int, r, g, b int) {
+	// Background
+	pdf.SetFillColor(r, g, b)
+	pdf.Rect(x, y, w, h, "F")
+
+	// Label (top, smaller)
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetFont("Arial", "", 9)
+	pdf.SetXY(x+3, y+2)
+	pdf.CellFormat(w-6, 6, label, "", 0, "C", false, 0, "")
+
+	// Value (center, large and bold)
+	pdf.SetFont("Arial", "B", 18)
+	pdf.SetXY(x+3, y+10)
+	pdf.CellFormat(w-6, 12, fmt.Sprintf("%d", value), "", 0, "C", false, 0, "")
+}
+
+// renderSecondaryMetrics draws graph and structural metrics.
+func (s *MetricsSection) renderSecondaryMetrics(pdf *fpdf.Fpdf) {
+	y := 155.0
+
+	// Section header
+	pdf.SetFont("Arial", "B", 14)
+	pdf.SetXY(15, y)
+	pdf.Cell(180, 8, "Dependency Graph")
+
+	y += 12
+
+	// Graph metrics side-by-side
+	pdf.SetFillColor(44, 62, 80)
+	pdf.SetTextColor(255, 255, 255)
+
+	// Nodes box
+	pdf.Rect(15, y, 88, 30, "F")
+	pdf.SetFont("Arial", "", 10)
+	pdf.SetXY(18, y+3)
+	pdf.Cell(82, 6, "Total Nodes")
+	pdf.SetFont("Arial", "B", 20)
+	pdf.SetXY(18, y+12)
+	pdf.Cell(82, 14, fmt.Sprintf("%d", s.Dashboard.GraphNodes))
+
+	// Edges box
+	pdf.Rect(107, y, 88, 30, "F")
+	pdf.SetXY(110, y+3)
+	pdf.Cell(82, 6, "Total Edges")
+	pdf.SetFont("Arial", "B", 20)
+	pdf.SetXY(110, y+12)
+	pdf.Cell(82, 14, fmt.Sprintf("%d", s.Dashboard.GraphEdges))
+
+	// Edge-to-node ratio
+	y += 35
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFont("Arial", "", 10)
+	pdf.SetXY(15, y)
+
+	var edgeRatio float64
+	if s.Dashboard.GraphNodes > 0 {
+		edgeRatio = float64(s.Dashboard.GraphEdges) / float64(s.Dashboard.GraphNodes)
+	}
+	pdf.Cell(180, 6, fmt.Sprintf("Edge Density: %.2f edges per node", edgeRatio))
+}
+
+// renderPlanSummary draws the merge plan summary box.
+func (s *MetricsSection) renderPlanSummary(pdf *fpdf.Fpdf) {
+	y := 205.0
+
+	// Section header
+	pdf.SetFont("Arial", "B", 14)
+	pdf.SetXY(15, y)
+	pdf.Cell(180, 8, "Merge Plan Summary")
+
+	y += 12
+
+	// Background for plan summary
+	pdf.SetFillColor(236, 240, 241)
+	pdf.Rect(15, y, 180, 55, "F")
+	pdf.SetDrawColor(52, 73, 94)
+	pdf.Rect(15, y, 180, 55, "D")
+
+	// Plan metrics in rows
+	pdf.SetTextColor(0, 0, 0)
+
+	// Row 1: Target vs Selected
+	pdf.SetFont("Arial", "", 11)
+	pdf.SetXY(20, y+8)
+	pdf.CellFormat(60, 10, "Target PRs:", "0", 0, "R", false, 0, "")
+	pdf.SetFont("Arial", "B", 14)
+	pdf.CellFormat(40, 10, fmt.Sprintf("%d", s.Dashboard.TargetPRs), "0", 0, "L", false, 0, "")
+
+	pdf.SetFont("Arial", "", 11)
+	pdf.SetXY(100, y+8)
+	pdf.CellFormat(60, 10, "Selected:", "0", 0, "R", false, 0, "")
+	pdf.SetFont("Arial", "B", 14)
+	pdf.SetTextColor(39, 174, 96) // green
+	pdf.CellFormat(40, 10, fmt.Sprintf("%d", s.Dashboard.SelectedCount), "0", 0, "L", false, 0, "")
+
+	// Row 2: Candidate pool
+	y += 12
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFont("Arial", "", 11)
+	pdf.SetXY(20, y+8)
+	pdf.CellFormat(60, 10, "Candidate Pool:", "0", 0, "R", false, 0, "")
+	pdf.SetFont("Arial", "B", 14)
+	pdf.CellFormat(40, 10, fmt.Sprintf("%d", s.Dashboard.CandidateCount), "0", 0, "L", false, 0, "")
+
+	pdf.SetFont("Arial", "", 11)
+	pdf.SetXY(100, y+8)
+	pdf.CellFormat(60, 10, "Rejected:", "0", 0, "R", false, 0, "")
+	pdf.SetFont("Arial", "B", 14)
+	pdf.SetTextColor(231, 76, 60) // red
+	pdf.CellFormat(40, 10, fmt.Sprintf("%d", s.Dashboard.RejectedCount), "0", 0, "L", false, 0, "")
+
+	// Row 3: Selection rate
+	y += 12
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFont("Arial", "", 10)
+	pdf.SetXY(20, y+8)
+
+	var selectionRate float64
+	if s.Dashboard.CandidateCount > 0 {
+		selectionRate = float64(s.Dashboard.SelectedCount) / float64(s.Dashboard.CandidateCount) * 100
+	}
+	pdf.CellFormat(160, 10, fmt.Sprintf("Selection Rate: %.1f%% (%d of %d candidates)", selectionRate, s.Dashboard.SelectedCount, s.Dashboard.CandidateCount), "0", 0, "C", false, 0, "")
 }
 
 // PoolCompositionData holds merge plan data for the report.
@@ -388,9 +564,103 @@ func (e *PDFExporter) Export() ([]byte, error) {
 	return e.composer.Compose()
 }
 
-// SectionFromAnalysis creates a metrics section from analysis response.
-func SectionFromAnalysis(metrics ScalabilityMetrics) *MetricsSection {
-	return &MetricsSection{Metrics: metrics}
+// LoadMetricsSection loads metrics from all JSON artifact files.
+func LoadMetricsSection(inputDir, repo string) (*MetricsSection, error) {
+	section := &MetricsSection{
+		Repo:        repo,
+		GeneratedAt: time.Now(),
+		Dashboard:   MetricsDashboard{},
+	}
+
+	// Load analyze.json
+	analyzePath := inputDir + "/step-2-analyze.json"
+	analyzeData, err := os.ReadFile(analyzePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read analyze file: %w", err)
+	}
+
+	var analyzeResult struct {
+		Counts struct {
+			TotalPRs        int `json:"total_prs"`
+			ClusterCount    int `json:"cluster_count"`
+			DuplicateGroups int `json:"duplicate_groups"`
+			OverlapGroups   int `json:"overlap_groups"`
+			ConflictPairs   int `json:"conflict_pairs"`
+			StalePRs        int `json:"stale_prs"`
+		} `json:"counts"`
+		GeneratedAt string `json:"generatedAt"`
+	}
+
+	if err := json.Unmarshal(analyzeData, &analyzeResult); err != nil {
+		return nil, fmt.Errorf("failed to parse analyze JSON: %w", err)
+	}
+
+	section.Dashboard.TotalPRs = analyzeResult.Counts.TotalPRs
+	section.Dashboard.ClusterCount = analyzeResult.Counts.ClusterCount
+	section.Dashboard.DuplicateCount = analyzeResult.Counts.DuplicateGroups
+	section.Dashboard.OverlapCount = analyzeResult.Counts.OverlapGroups
+	section.Dashboard.ConflictCount = analyzeResult.Counts.ConflictPairs
+	section.Dashboard.StalePRCount = analyzeResult.Counts.StalePRs
+
+	// Parse generatedAt timestamp
+	if analyzeResult.GeneratedAt != "" {
+		if t, err := time.Parse(time.RFC3339, analyzeResult.GeneratedAt); err == nil {
+			section.GeneratedAt = t
+		}
+	}
+
+	// Load graph.json
+	graphPath := inputDir + "/step-4-graph.json"
+	graphData, err := os.ReadFile(graphPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read graph file: %w", err)
+	}
+
+	var graphResult struct {
+		Nodes []struct {
+			PRNumber int `json:"pr_number"`
+		} `json:"nodes"`
+		Edges []struct {
+			Source int `json:"source"`
+			Target int `json:"target"`
+		} `json:"edges"`
+	}
+
+	if err := json.Unmarshal(graphData, &graphResult); err != nil {
+		return nil, fmt.Errorf("failed to parse graph JSON: %w", err)
+	}
+
+	section.Dashboard.GraphNodes = len(graphResult.Nodes)
+	section.Dashboard.GraphEdges = len(graphResult.Edges)
+
+	// Load plan.json
+	planPath := inputDir + "/step-5-plan.json"
+	planData, err := os.ReadFile(planPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read plan file: %w", err)
+	}
+
+	var planResult struct {
+		Selected []struct {
+			PRNumber int `json:"pr_number"`
+		} `json:"selected"`
+		Rejections []struct {
+			PRNumber int `json:"pr_number"`
+		} `json:"rejections"`
+		Target            int `json:"target"`
+		CandidatePoolSize int `json:"candidatePoolSize"`
+	}
+
+	if err := json.Unmarshal(planData, &planResult); err != nil {
+		return nil, fmt.Errorf("failed to parse plan JSON: %w", err)
+	}
+
+	section.Dashboard.SelectedCount = len(planResult.Selected)
+	section.Dashboard.RejectedCount = len(planResult.Rejections)
+	section.Dashboard.TargetPRs = planResult.Target
+	section.Dashboard.CandidateCount = planResult.CandidatePoolSize
+
+	return section, nil
 }
 
 // SectionFromPlan creates a pool composition section from plan response.

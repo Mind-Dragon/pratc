@@ -454,6 +454,13 @@ func RegisterReportCommand() {
 			}
 			exporter.AddSection(summary)
 
+			metrics, err := report.LoadMetricsSection(inputDir, repo)
+			if err != nil {
+				log.Warn("failed to load metrics section", "error", err)
+				return fmt.Errorf("failed to load metrics data: %w", err)
+			}
+			exporter.AddSection(metrics)
+
 			// Generate PDF bytes
 			pdfBytes, err := exporter.Export()
 			if err != nil {

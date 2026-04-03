@@ -18,16 +18,22 @@ func TestPDFComposer_Compose(t *testing.T) {
 
 	// Add metrics section
 	composer.AddSection(&MetricsSection{
-		Metrics: ScalabilityMetrics{
-			TotalPRs:        100,
-			OpenPRs:         75,
-			AverageAgeDays:  5.5,
-			SyncThroughput:  10.5,
-			ConflictDensity: 0.15,
-			ClusterCount:    8,
-			DuplicateCount:  3,
-			StalePRCount:    12,
+		Dashboard: MetricsDashboard{
+			TotalPRs:       100,
+			ClusterCount:   8,
+			DuplicateCount: 3,
+			OverlapCount:   5,
+			ConflictCount:  15,
+			StalePRCount:   12,
+			GraphNodes:     45,
+			GraphEdges:     67,
+			SelectedCount:  20,
+			RejectedCount:  80,
+			TargetPRs:      20,
+			CandidateCount: 100,
 		},
+		Repo:        "owner/repo",
+		GeneratedAt: time.Now(),
 	})
 
 	// Add pool composition section
@@ -99,27 +105,6 @@ func TestPDFExporter_Export(t *testing.T) {
 
 	if len(pdfBytes) == 0 {
 		t.Fatal("Export() returned empty byte slice")
-	}
-}
-
-func TestSectionFromAnalysis(t *testing.T) {
-	metrics := ScalabilityMetrics{
-		TotalPRs:        500,
-		OpenPRs:         300,
-		AverageAgeDays:  7.2,
-		SyncThroughput:  50.0,
-		ConflictDensity: 0.05,
-		ClusterCount:    12,
-		DuplicateCount:  5,
-		StalePRCount:    20,
-	}
-
-	section := SectionFromAnalysis(metrics)
-	if section == nil {
-		t.Fatal("SectionFromAnalysis returned nil")
-	}
-	if section.Metrics.TotalPRs != 500 {
-		t.Errorf("expected TotalPRs 500, got %d", section.Metrics.TotalPRs)
 	}
 }
 
