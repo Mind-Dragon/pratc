@@ -41,9 +41,15 @@ echo ""
 # Singleton Server Management
 # =============================================================================
 
+server_is_pratc() {
+  local port="$1"
+  local response=$(curl -sf --connect-timeout 2 "http://localhost:$port/healthz" 2>&1)
+  [[ "$response" == *"version"* ]] && return 0 || return 1
+}
+
 server_is_responsive() {
   local port="$1"
-  curl -sf --connect-timeout 2 "http://localhost:$port/healthz" > /dev/null 2>&1
+  server_is_pratc "$port"
 }
 
 kill_server_on_port() {
