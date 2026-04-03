@@ -422,6 +422,18 @@ func RegisterReportCommand() {
 
 			log.Info("starting report", "repo", repo, "input_dir", inputDir, "output", output, "format", format)
 
+			// Validate input directory and required files
+			if err := report.ValidateInputDir(inputDir); err != nil {
+				log.Warn("input directory validation failed", "error", err)
+				return fmt.Errorf("invalid input directory: %w", err)
+			}
+
+			missingFiles := report.ValidateRequiredFiles(inputDir)
+			if len(missingFiles) > 0 {
+				log.Warn("missing required files", "missing", missingFiles)
+				return fmt.Errorf("missing required input files: %v", missingFiles)
+			}
+
 			// Create PDF with minimal cover section
 			exporter := report.NewPDFExporter(repo, "prATC Scalability Report")
 
