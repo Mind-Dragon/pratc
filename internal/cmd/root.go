@@ -461,6 +461,14 @@ func RegisterReportCommand() {
 			}
 			exporter.AddSection(metrics)
 
+			// Add graph section with real structure visualization
+			graphSection, err := report.LoadGraphSection(inputDir, repo)
+			if err != nil {
+				log.Warn("failed to load graph section", "error", err)
+				return fmt.Errorf("failed to load graph data: %w", err)
+			}
+			exporter.AddSection(graphSection)
+
 			// Generate PDF bytes
 			pdfBytes, err := exporter.Export()
 			if err != nil {
