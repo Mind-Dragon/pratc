@@ -37,17 +37,71 @@ echo ""
 
 [[ -x "$BIN" ]] || fail "Binary not found: $BIN"
 
-# Start API server
-info "Starting API server on port $API_PORT..."
-"$BIN" serve --port="$API_PORT" --repo="$REPO" &
-SERVER_PID=$!
-sleep 3
-trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+# =============================================================================
+# Singleton Server Management
+# =============================================================================
 
-if ! curl -sf "http://localhost:$API_PORT/healthz" > /dev/null 2>&1; then
-  fail "API server failed to start"
-fi
-ok "API server running on port $API_PORT"
+server_is_responsive() {
+  local port="$1"
+  curl -sf --connect-timeout 2 "http://localhost:$port/healthz" > /dev/null 2>&1
+}
+
+kill_server_on_port() {
+  local port="$1"
+  local pid=$(lsof -ti:"$port" 2>/dev/null || true)
+  if [[ -n "$pid" ]]; then
+    kill -9 "$pid" 2>/dev/null || true
+    sleep 1
+  fi
+}
+
+start_or_reuse_server() {
+  local port="$1"
+  
+  if server_is_responsive "$port"; then
+    warn "Server already running on port $port — reusing"
+    SERVER_WAS_STARTED=false
+    ok "Reusing existing server on port $port"
+    return 0
+  fi
+  
+  local existing_pid=$(lsof -ti:"$port" 2>/dev/null || true)
+  if [[ -n "$existing_pid" ]]; then
+    warn "Stale process on port $port (PID $existing_pid) — killing"
+    kill_server_on_port "$port"
+  fi
+  
+  info "Starting API server on port $port..."
+  "$BIN" serve --port="$port" --repo="$REPO" &
+  SERVER_PID=$!
+  SERVER_WAS_STARTED=true
+  
+  local waited=0
+  while [[ $waited -lt 10 ]]; do
+    if server_is_responsive "$port"; then
+      ok "API server started on port $port"
+      return 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+    info "Waiting for server to start... ($waited/10s)"
+  done
+  
+  fail "API server failed to start on port $port"
+}
+
+cleanup_server() {
+  if [[ "$SERVER_WAS_STARTED" == "true" ]]; then
+    info "Shutting down server (PID $SERVER_PID)..."
+    kill $SERVER_PID 2>/dev/null || true
+  else
+    info "Server was pre-existing — leaving running"
+  fi
+}
+
+trap 'cleanup_server' EXIT
+
+start_or_reuse_server "$API_PORT"
 
 # Step 1: Sync skipped (using cached PRs)
 info "Step 1/5: Syncing $REPO (SKIPPED — using cached PRs)..."
