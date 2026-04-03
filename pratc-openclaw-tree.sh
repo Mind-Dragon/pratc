@@ -97,11 +97,11 @@ start_or_reuse_server() {
 }
 
 cleanup_server() {
-  if [[ "$SERVER_WAS_STARTED" == "true" ]]; then
-    info "Shutting down server (PID $SERVER_PID)..."
-    kill $SERVER_PID 2>/dev/null || true
+  info "Server left running for reuse by subsequent runs"
+  if [[ -n "${SERVER_PID:-}" ]]; then
+    log "SERVER PRESERVED pid=$SERVER_PID"
   else
-    info "Server was pre-existing — leaving running"
+    log "SERVER PRESERVED (pre-existing)"
   fi
 }
 
