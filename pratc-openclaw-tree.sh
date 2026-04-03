@@ -139,7 +139,7 @@ else
   
   # Poll for sync completion
   SYNC_WAITED=0
-  while [[ $SYNC_WAITED -lt 300 ]]; do
+  while [[ $SYNC_WAITED -lt 600 ]]; do
     sleep 5
     SYNC_WAITED=$((SYNC_WAITED + 5))
     
@@ -160,7 +160,7 @@ else
   done
   
   if [[ "$SYNC_IN_PROGRESS" == "true" ]]; then
-    fail "Sync did not complete within 300 seconds"
+    fail "Sync did not complete within 600 seconds"
   fi
 fi
 echo ""
