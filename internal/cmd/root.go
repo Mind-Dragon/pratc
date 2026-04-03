@@ -405,6 +405,35 @@ func RegisterGraphCommand() {
 	rootCmd.AddCommand(command)
 }
 
+func RegisterReportCommand() {
+	var repo string
+	var inputDir string
+	var output string
+	var format string
+
+	command := &cobra.Command{
+		Use:   "report",
+		Short: "Generate a PDF report from analysis artifacts",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
+			log := logger.FromContext(ctx)
+
+			log.Info("starting report", "repo", repo, "input_dir", inputDir, "output", output, "format", format)
+			fmt.Fprintln(cmd.OutOrStdout(), "report command not yet implemented")
+			return nil
+		},
+	}
+	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
+	command.Flags().StringVar(&inputDir, "input-dir", "", "Input directory containing JSON artifacts")
+	command.Flags().StringVar(&output, "output", "", "Output PDF file path")
+	command.Flags().StringVar(&format, "format", "pdf", "Output format: pdf|json")
+	_ = command.MarkFlagRequired("repo")
+	_ = command.MarkFlagRequired("input-dir")
+	_ = command.MarkFlagRequired("output")
+	rootCmd.AddCommand(command)
+}
+
 func RegisterPlanCommand() {
 	var repo string
 	var target int

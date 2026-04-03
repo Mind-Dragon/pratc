@@ -1,52 +1,13 @@
 {
-  "active_plan": "/home/agent/pratc/.sisyphus/plans/automatic-rate-limit-management.md",
-  "started_at": "2026-04-02T20:52:31.408Z",
+  "active_plan": "/home/agent/pratc/.sisyphus/plans/pdf-report-final-step.md",
+  "started_at": "2026-04-03T00:29:04.154Z",
   "session_ids": [
-    "ses_2b1ccdd36ffeO5kpXGmFv9BNma",
-    "ses_2b0055327fferNiFHBmtyyE8js",
-    "ses_2b00352caffeGowjjlo9XlmkFg",
-    "ses_2b003256dffektU75N8IWU9XDH",
-    "ses_2b002ec7fffeN9l9DO1L5MaDHe",
-    "ses_2afff2f2effeAZGMR4iiuOE1oC",
-    "ses_2afff59d8ffec1ufCqK6ti2iKb",
-    "ses_2afffaeefffeOALBmkRX0maKDM",
-    "ses_2afff7d7bffekJ04FpoBocbRQY",
-    "ses_2affa940dffeS3eSAkNF2Z9VBm",
-    "ses_2affa6fa9ffefZg8axhDKOyqEf",
-    "ses_2affa6ec0ffelaqhkT2FJYz90i",
-    "ses_2affa8112ffe2V08OOfNJ3mAZd",
-    "ses_2affa5652ffeZyeEZYUvrReJSI",
-    "ses_2affa0f02ffeYsgVwbl4fg0RIT",
-    "ses_2affa3528ffeq8zfzFl42LIJT5",
-    "ses_2affa07f6ffeQY5UKjQzppwXiV",
-    "ses_2affa64adffequG2M8JhEtYmQT",
-    "ses_2affa988fffe2Yhl2E6MBoKFzK",
-    "ses_2affaca57ffe36QTV2QosdRu3W",
-    "ses_2affa3542ffeUeb96ziMl1Y1CX",
-    "ses_2afde4817ffeMm5hpEZHLTcCzO",
-    "ses_2afdaf8c6ffeu0UZu8O6jpVYH0",
-    "ses_2afdb2d64ffex8MyiLOWAv6DZd",
-    "ses_2afda7f5bffeNjo8IUvfHG7Pec",
-    "ses_2afdab43fffeHxYLvJWijUN027",
-    "ses_2afd6a1d3ffen5VyjQI4MuBSvN",
-    "ses_2afd6ced5ffe79NMqJcdoNuBa3",
-    "ses_2afd65dccffet2qGK6TLJEcE5a",
-    "ses_2afce96faffeWPpSYx1bdbzOqP",
-    "ses_2afce6940ffeK47vQrjLOahqM9",
-    "ses_2afce405fffeCGKzvPvLHSesE4",
-    "ses_2afcebeaeffeplZEQFotni0Bxl"
+    "ses_2af733aafffecEuuyvzogv76Sh",
+    "ses_2af3fb838ffeWBP8F2pSd99Tko",
+    "ses_2af3f7a2cffeLeVozvfmul6dNB",
+    "ses_2af3f1b52ffei6uys4RQYa6r3f"
   ],
-  "plan_name": "automatic-rate-limit-management",
+  "plan_name": "pdf-report-final-step",
   "agent": "atlas",
-  "task_sessions": {
-    "final-wave:f1": {
-      "task_key": "final-wave:f1",
-      "task_label": "F1",
-      "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "ses_2afde4817ffeMm5hpEZHLTcCzO",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-02T21:39:56.209Z"
-    }
-  }
+  "task_sessions": {}
 }
