@@ -164,6 +164,34 @@ log "FINAL_OMNI_COMPLETE selected=$SELECTED_FINAL stages=$STAGES (took $((FINAL_
 ok "Final plan: $SELECTED_FINAL PRs in $STAGES stages ($(($FINAL_END - $FINAL_START))s)"
 echo ""
 
+# Step 6: Generate PDF report
+info "Step 6/6: Generating PDF report..."
+REPORT_OUTPUT="$OUTPUT_DIR/report.pdf"
+max_retries=3
+retry_count=0
+report_success=false
+
+while [[ $retry_count -lt $max_retries ]]; do
+  if "$BIN" report --repo="$REPO" --input-dir="$OUTPUT_DIR" --output="$REPORT_OUTPUT" --format=pdf 2>/dev/null; then
+    ok "Report generated successfully"
+    log "REPORT GENERATION SUCCESS path=$REPORT_OUTPUT"
+    report_success=true
+    break
+  else
+    retry_count=$((retry_count + 1))
+    if [[ $retry_count -lt $max_retries ]]; then
+      warn "Report generation failed (attempt $retry_count/$max_retries), retrying..."
+      log "REPORT GENERATION FAILED attempt=$retry_count retrying=true"
+      sleep 2
+    else
+      warn "Report generation failed after $max_retries attempts - preserving other artifacts"
+      log "REPORT GENERATION FAILED attempts=$max_retries preserving_artifacts=true"
+    fi
+  fi
+done
+
+echo ""
+
 # Summary
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
@@ -183,8 +211,14 @@ echo "  Total PRs analyzed: $TOTAL"
 echo "  Batches run:       $BATCH_NUM (batch size $BATCH_SIZE)"
 echo "  Final selected:     $SELECTED_FINAL"
 echo "  Total duration:    ${DURATION_MIN}m ${DURATION_SEC}s"
+if [[ "$report_success" == "true" ]]; then
+  echo "  PDF report:        $REPORT_OUTPUT"
+fi
 echo ""
 echo "View results:"
 echo "  jq '.counts'           $OUTPUT_DIR/analyze-full.json"
 echo "  jq '.selected'         $OUTPUT_DIR/plan-final.json"
 echo "  cat                     $OUTPUT_DIR/run.log"
+if [[ "$report_success" == "true" ]]; then
+  echo "  PDF report:          $REPORT_OUTPUT"
+fi
