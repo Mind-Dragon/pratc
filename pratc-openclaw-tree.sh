@@ -117,12 +117,25 @@ recover_stuck_sync() {
 
   warn "Attempting sync recovery..."
 
-  # Step 1: Kill current server
+  # Step 1: Kill ALL processes on port
   info "Stopping stuck server..."
-  local pid=$(lsof -ti:"$port" 2>/dev/null || true)
-  if [[ -n "$pid" ]]; then
-    kill -9 "$pid" 2>/dev/null || true
-    sleep 2
+  local pids=$(lsof -ti:"$port" 2>/dev/null || true)
+  if [[ -n "$pids" ]]; then
+    echo "$pids" | xargs kill -9 2>/dev/null || true
+    # Wait for port to be actually free
+    local waited=0
+    while [[ $waited -lt 10 ]]; do
+      if ! lsof -i:"$port" > /dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+      waited=$((waited + 1))
+    done
+    if [[ $waited -ge 10 ]]; then
+      warn "Port $port still in use after 10s - forcing kill"
+      echo "$pids" | xargs kill -9 2>/dev/null || true
+      sleep 3
+    fi
   fi
 
   # Step 2: Clear sync cache
@@ -179,7 +192,15 @@ else
   info "Running sync for $REPO..."
   
   SYNC_START=$(date +%s)
-  curl -sf "http://localhost:$API_PORT/api/repos/$REPO/sync" -X POST 2>/dev/null || fail "Failed to trigger sync"
+  SYNC_RESP=$(curl -sf "http://localhost:$API_PORT/api/repos/$REPO/sync" -X POST 2>&1) || fail "Failed to trigger sync"
+  
+  # Check if sync response indicates rate limit
+  if echo "$SYNC_RESP" | grep -q "rate.limit\|retry_after\|secondary.limit"; then
+    RATE_LIMITED=true
+    RETRY_AFTER=$(echo "$SYNC_RESP" | jq -r '.retry_after // .retry_after_seconds // "unknown"')
+    warn "GitHub rate limit detected (retry_after: ${RETRY_AFTER}s)"
+    log "SYNC RATE_LIMITED retry_after=$RETRY_AFTER"
+  fi
   
   # Poll for sync completion
   SYNC_WAITED=0
@@ -217,7 +238,14 @@ else
         curl -sf "http://localhost:$API_PORT/api/repos/$REPO/sync" -X POST 2>/dev/null || fail "Failed to trigger sync after recovery"
         continue
       else
-        fail "Sync stuck even after recovery - manual intervention required"
+        if [[ $CACHED_PR_COUNT -gt 0 ]]; then
+          warn "Sync rate-limited — using $CACHED_PR_COUNT cached PRs (data may be stale)"
+          log "SYNC RATE_LIMITED using_cached=true pr_count=$CACHED_PR_COUNT"
+          USE_CACHED_DATA=true
+          break
+        else
+          fail "No cached data available and rate-limited. Run manual sync after rate limit resets: pratc sync --repo=$REPO"
+        fi
       fi
     fi
     
@@ -234,7 +262,13 @@ else
   done
   
   if [[ "$SYNC_IN_PROGRESS" == "true" ]]; then
-    fail "Sync did not complete within 600 seconds"
+    if [[ $CACHED_PR_COUNT -gt 0 ]]; then
+      warn "Sync timed out — using $CACHED_PR_COUNT cached PRs (data may be stale)"
+      log "SYNC TIMED_OUT using_cached=true pr_count=$CACHED_PR_COUNT"
+      USE_CACHED_DATA=true
+    else
+      fail "Sync did not complete within 600 seconds and no cached data available"
+    fi
   fi
 fi
 echo ""
@@ -243,7 +277,22 @@ echo ""
 info "Step 2/5: Analyzing cached PRs..."
 log "ANALYZE START"
 ANALYZE_START=$(date +%s)
-RESPONSE=$(curl -sf "http://localhost:$API_PORT/api/repos/$REPO/analyze?use_cache_first=true" 2>&1)
+if [[ "${USE_CACHED_DATA:-false}" == "true" ]]; then
+  warn "Using stale cached data (rate-limited sync)"
+  # Find most recent successful analyze output from previous runs
+  LATEST_ANALYZE=$(ls -t "$SCRIPT_DIR/.pratc-tree/"*/step-2-analyze.json 2>/dev/null | head -1)
+
+  if [[ -n "$LATEST_ANALYZE" ]] && [[ -s "$LATEST_ANALYZE" ]]; then
+    warn "Using previous analyze output: $LATEST_ANALYZE"
+    cp "$LATEST_ANALYZE" "$OUTPUT_DIR/analyze-full.json"
+    RESPONSE=$(cat "$OUTPUT_DIR/analyze-full.json")
+    log "ANALYZE FROM CACHE source=$LATEST_ANALYZE"
+  else
+    fail "No cached analyze output available. Run full sync when rate limit resets."
+  fi
+else
+  RESPONSE=$(curl -sf "http://localhost:$API_PORT/api/repos/$REPO/analyze?use_cache_first=true" 2>&1)
+fi
 ANALYZE_END=$(date +%s)
 
 if [[ -z "$RESPONSE" ]]; then
