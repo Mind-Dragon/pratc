@@ -107,6 +107,50 @@ cleanup_server() {
 
 trap 'cleanup_server' EXIT
 
+# =============================================================================
+# Sync Recovery Function
+# =============================================================================
+
+recover_stuck_sync() {
+  local port="$1"
+  local repo="$2"
+
+  warn "Attempting sync recovery..."
+
+  # Step 1: Kill current server
+  info "Stopping stuck server..."
+  local pid=$(lsof -ti:"$port" 2>/dev/null || true)
+  if [[ -n "$pid" ]]; then
+    kill -9 "$pid" 2>/dev/null || true
+    sleep 2
+  fi
+
+  # Step 2: Clear sync cache
+  info "Clearing sync cache..."
+  rm -rf /home/agent/.pratc/sync_cache 2>/dev/null || true
+  # Also clear any stale lock files
+  rm -f /tmp/pratc-sync-*.lock 2>/dev/null || true
+
+  # Step 3: Restart server
+  info "Restarting server..."
+  "$BIN" serve --port="$port" --repo="$repo" &
+  SERVER_PID=$!
+  SERVER_WAS_STARTED=true
+
+  # Wait for server ready
+  local waited=0
+  while [[ $waited -lt 15 ]]; do
+    if curl -sf --connect-timeout 2 "http://localhost:$port/healthz" 2>/dev/null | grep -q "version"; then
+      ok "Server restarted (PID: $SERVER_PID)"
+      return 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  fail "Server failed to restart after recovery"
+}
+
 start_or_reuse_server "$API_PORT"
 
 # Step 1: Check sync status and sync if needed
@@ -141,6 +185,7 @@ else
   SYNC_WAITED=0
   LAST_PROGRESS=0
   STUCK_COUNT=0
+  RECOVERY_ATTEMPT=0
   
   while [[ $SYNC_WAITED -lt 600 ]]; do
     sleep 5
@@ -159,9 +204,21 @@ else
       LAST_PROGRESS=$CURRENT_PROGRESS
     fi
     
-    # Fail if stuck for 10 consecutive polls (50 seconds)
+    # Detect stuck sync and attempt recovery
     if [[ $STUCK_COUNT -ge 10 ]]; then
-      fail "Sync stuck at ${CURRENT_PROGRESS}% progress for 50 seconds - server may be rate-limited or erroring"
+      if [[ $RECOVERY_ATTEMPT -eq 0 ]]; then
+        warn "Sync stuck at ${CURRENT_PROGRESS}% progress for 50 seconds — attempting recovery..."
+        recover_stuck_sync "$API_PORT" "$REPO"
+        RECOVERY_ATTEMPT=1
+        STUCK_COUNT=0
+        LAST_PROGRESS=0
+        SYNC_WAITED=0
+        # Retry sync
+        curl -sf "http://localhost:$API_PORT/api/repos/$REPO/sync" -X POST 2>/dev/null || fail "Failed to trigger sync after recovery"
+        continue
+      else
+        fail "Sync stuck even after recovery - manual intervention required"
+      fi
     fi
     
     if [[ "$SYNC_IN_PROGRESS" == "false" ]]; then
