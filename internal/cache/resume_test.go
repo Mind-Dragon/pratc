@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -132,4 +133,191 @@ func TestResumeSyncJobClearsPauseFields(t *testing.T) {
 	if !resumed.Progress.LastBudgetCheck.IsZero() {
 		t.Fatalf("expected last budget check cleared, got %s", resumed.Progress.LastBudgetCheck)
 	}
+}
+
+// Test 1: Invalid jobID in PauseSyncJob
+// Verifies that PauseSyncJob returns an error when called with a non-existent job ID
+func TestPauseSyncJobInvalidJobID(t *testing.T) {
+	store, err := Open(":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory store: %v", err)
+	}
+	defer store.Close()
+
+	// Create a valid job first
+	repo := "test/repo"
+	job, err := store.CreateSyncJob(repo)
+	if err != nil {
+		t.Fatalf("failed to create sync job: %v", err)
+	}
+
+	// Delete the job to simulate a stale/invalid ID scenario
+	// (In real usage, this would be a fake ID or a job that was deleted)
+	_, err = store.db.Exec("DELETE FROM sync_jobs WHERE id = ?", job.ID)
+	if err != nil {
+		t.Fatalf("failed to delete sync job: %v", err)
+	}
+
+	// Try to pause the deleted job
+	pauseTime := time.Now().Add(1 * time.Hour)
+	err = store.PauseSyncJob(job.ID, pauseTime, "rate limit")
+
+	// Expected behavior: returns an error indicating the job doesn't exist
+	if err == nil {
+		t.Fatal("expected error when pausing non-existent job, got nil")
+	}
+
+	// Error should mention lookup failure
+	if !strings.Contains(err.Error(), "lookup sync job repo after pause") && !strings.Contains(err.Error(), "no rows") {
+		t.Fatalf("expected error about job lookup, got: %v", err)
+	}
+}
+
+// Test 2: Invalid jobID in ResumeSyncJobByID
+// Verifies that ResumeSyncJobByID returns an error when called with a non-existent job ID
+func TestResumeSyncJobByIDInvalidJobID(t *testing.T) {
+	store, err := Open(":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory store: %v", err)
+	}
+	defer store.Close()
+
+	// Try to resume a job with a fake ID that doesn't exist
+	fakeJobID := "non-existent-job-id-12345"
+	err = store.ResumeSyncJobByID(fakeJobID)
+
+	// Expected behavior: returns an error indicating the job doesn't exist
+	if err == nil {
+		t.Fatal("expected error when resuming non-existent job, got nil")
+	}
+
+	// Error should indicate no job found
+	if !strings.Contains(err.Error(), "no job found with ID") {
+		t.Fatalf("expected error 'no job found with ID', got: %v", err)
+	}
+}
+
+// Test 3: Idempotency - double pause
+// Documents behavior when pausing an already-paused job
+func TestPauseSyncJobIdempotency(t *testing.T) {
+	store, err := Open(":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory store: %v", err)
+	}
+	defer store.Close()
+
+	repo := "test/repo"
+	job, err := store.CreateSyncJob(repo)
+	if err != nil {
+		t.Fatalf("failed to create sync job: %v", err)
+	}
+
+	// First pause
+	firstPauseTime := time.Now().Add(1 * time.Hour)
+	firstReason := "first rate limit"
+	if err := store.PauseSyncJob(job.ID, firstPauseTime, firstReason); err != nil {
+		t.Fatalf("failed to pause sync job first time: %v", err)
+	}
+
+	// Verify first pause worked
+	got, err := store.GetSyncJob(job.ID)
+	if err != nil {
+		t.Fatalf("failed to get sync job after first pause: %v", err)
+	}
+	if got.Status != SyncJobStatusPaused {
+		t.Fatalf("expected status %s after first pause, got %s", SyncJobStatusPaused, got.Status)
+	}
+
+	// Second pause (idempotency test)
+	secondPauseTime := time.Now().Add(2 * time.Hour)
+	secondReason := "second rate limit"
+	err = store.PauseSyncJob(job.ID, secondPauseTime, secondReason)
+
+	// Current behavior: No error returned, job remains paused with updated fields
+	// This is acceptable - the job stays paused, and the pause fields are updated
+	if err != nil {
+		t.Fatalf("unexpected error on second pause: %v", err)
+	}
+
+	// Verify job is still paused
+	got, err = store.GetSyncJob(job.ID)
+	if err != nil {
+		t.Fatalf("failed to get sync job after second pause: %v", err)
+	}
+	if got.Status != SyncJobStatusPaused {
+		t.Fatalf("expected status %s after second pause, got %s", SyncJobStatusPaused, got.Status)
+	}
+
+	// Verify the pause fields were updated with the second pause values
+	pausedJobs, err := store.ListPausedSyncJobs()
+	if err != nil {
+		t.Fatalf("failed to list paused jobs: %v", err)
+	}
+	if len(pausedJobs) != 1 {
+		t.Fatalf("expected 1 paused job, got %d", len(pausedJobs))
+	}
+
+	// The second pause should have updated the fields
+	if pausedJobs[0].Progress.PauseReason != secondReason {
+		t.Fatalf("expected pause reason %q after second pause, got %q", secondReason, pausedJobs[0].Progress.PauseReason)
+	}
+
+	// Job remains paused - idempotency achieved through state consistency
+	t.Log("Idempotency behavior: Second pause succeeds, updates pause fields, job remains paused")
+}
+
+// Test 4: Idempotency - double resume
+// Documents behavior when resuming an already-resumed (in-progress) job
+func TestResumeSyncJobByIDIdempotency(t *testing.T) {
+	store, err := Open(":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory store: %v", err)
+	}
+	defer store.Close()
+
+	repo := "test/repo"
+	job, err := store.CreateSyncJob(repo)
+	if err != nil {
+		t.Fatalf("failed to create sync job: %v", err)
+	}
+
+	// Pause the job first
+	pauseTime := time.Now().Add(-24 * time.Hour)
+	if err := store.PauseSyncJob(job.ID, pauseTime, "rate limited"); err != nil {
+		t.Fatalf("failed to pause sync job: %v", err)
+	}
+
+	// First resume
+	if err := store.ResumeSyncJobByID(job.ID); err != nil {
+		t.Fatalf("failed to resume sync job first time: %v", err)
+	}
+
+	// Verify job is now in-progress
+	got, err := store.GetSyncJob(job.ID)
+	if err != nil {
+		t.Fatalf("failed to get sync job after first resume: %v", err)
+	}
+	if got.Status != SyncJobStatusInProgress {
+		t.Fatalf("expected status %s after first resume, got %s", SyncJobStatusInProgress, got.Status)
+	}
+
+	// Second resume (idempotency test) - job is already in-progress, not paused
+	err = store.ResumeSyncJobByID(job.ID)
+
+	// Current behavior: Succeeds (no error) because the UPDATE doesn't check status
+	// The job status is set to in_progress again (no-op), rowsAffected = 1
+	if err != nil {
+		t.Fatalf("unexpected error on second resume: %v", err)
+	}
+
+	// Verify job is still in-progress (state unchanged)
+	got, err = store.GetSyncJob(job.ID)
+	if err != nil {
+		t.Fatalf("failed to get sync job after second resume: %v", err)
+	}
+	if got.Status != SyncJobStatusInProgress {
+		t.Fatalf("expected status %s to remain unchanged, got %s", SyncJobStatusInProgress, got.Status)
+	}
+
+	t.Log("Idempotency behavior: Second resume succeeds (no-op), job remains in-progress")
 }
