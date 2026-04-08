@@ -108,6 +108,15 @@
       "agent": "Sisyphus-Junior",
       "category": "visual-engineering",
       "updated_at": "2026-04-08T23:50:23.594Z"
+    },
+    "todo:17": {
+      "task_key": "todo:17",
+      "task_label": "17",
+      "task_title": "Build Timeline component (Web)",
+      "session_id": "ses_2907cf080ffehJj2a8wOU8Qumo",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-04-08T23:57:27.508Z"
     }
   }
 }
