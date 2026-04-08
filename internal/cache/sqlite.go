@@ -593,6 +593,20 @@ func (s *Store) resumeSyncJob(jobID, repo string) error {
 		}
 	}()
 
+	var linkedJobID string
+	if err := tx.QueryRow(`SELECT job_id FROM sync_progress WHERE repo = ?`, repo).Scan(&linkedJobID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("sync progress linkage missing for repo %q", repo)
+		}
+		return fmt.Errorf("lookup sync progress linkage for resume: %w", err)
+	}
+	if linkedJobID == "" {
+		return fmt.Errorf("sync progress linkage missing for repo %q", repo)
+	}
+	if linkedJobID != jobID {
+		return fmt.Errorf("sync progress linkage mismatch for repo %q: linked job %q, expected %q", repo, linkedJobID, jobID)
+	}
+
 	result, err := tx.Exec(`
 		UPDATE sync_jobs
 		SET status = ?, error_message = ?, updated_at = ?
@@ -616,6 +630,12 @@ func (s *Store) resumeSyncJob(jobID, repo string) error {
 		WHERE repo = ?
 	`, now, repo); err != nil {
 		return fmt.Errorf("clear paused sync fields: %w", err)
+	}
+
+	if rowsAffected, err := result.RowsAffected(); err != nil {
+		return fmt.Errorf("check sync job rows affected: %w", err)
+	} else if rowsAffected == 0 {
+		return fmt.Errorf("no job found with ID %s", jobID)
 	}
 
 	if err = tx.Commit(); err != nil {
@@ -774,7 +794,7 @@ func (s *Store) GetPausedSyncJobByRepo(repo string) (SyncJob, error) {
 	rows, err := s.db.Query(`
 		SELECT j.id, j.repo, j.status, j.error_message, COALESCE(j.last_sync_at, ''), j.created_at, j.updated_at,
 		       COALESCE(p.cursor, ''), COALESCE(p.processed_prs, 0), COALESCE(p.total_prs, 0),
-		       COALESCE(p.next_scheduled_at, ''), p.estimated_requests,
+		       COALESCE(p.next_scheduled_at, ''), COALESCE(p.estimated_requests, 0),
 		       COALESCE(p.scheduled_resume_at, ''), COALESCE(p.pause_reason, ''), COALESCE(p.last_budget_check, '')
 		FROM sync_jobs j
 		LEFT JOIN sync_progress p ON j.repo = p.repo

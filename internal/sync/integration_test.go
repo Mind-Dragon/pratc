@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -10,6 +11,192 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
 )
+
+type syncJobSnapshot struct {
+	Status            string
+	JobID             string
+	ErrorMessage      string
+	NextScheduledAt   string
+	ScheduledResumeAt string
+	PauseReason       string
+	LastBudgetCheck   string
+}
+
+func openIntegrationStore(t *testing.T) (*cache.Store, string) {
+	t.Helper()
+
+	dbPath := filepath.Join(t.TempDir(), "sync.db")
+	store, err := cache.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to open integration store: %v", err)
+	}
+
+	return store, dbPath
+}
+
+func loadSyncJobSnapshot(t *testing.T, store *cache.Store, jobID string) syncJobSnapshot {
+	t.Helper()
+
+	var snapshot syncJobSnapshot
+	err := store.DB().QueryRow(`
+		SELECT
+			j.status,
+			COALESCE(p.job_id, ''),
+			COALESCE(j.error_message, ''),
+			COALESCE(p.next_scheduled_at, ''),
+			COALESCE(p.scheduled_resume_at, ''),
+			COALESCE(p.pause_reason, ''),
+			COALESCE(p.last_budget_check, '')
+		FROM sync_jobs j
+		LEFT JOIN sync_progress p ON p.repo = j.repo
+		WHERE j.id = ?
+	`, jobID).Scan(
+		&snapshot.Status,
+		&snapshot.JobID,
+		&snapshot.ErrorMessage,
+		&snapshot.NextScheduledAt,
+		&snapshot.ScheduledResumeAt,
+		&snapshot.PauseReason,
+		&snapshot.LastBudgetCheck,
+	)
+	if err != nil {
+		t.Fatalf("failed to load sync job snapshot: %v", err)
+	}
+
+	return snapshot
+}
+
+func assertSnapshot(t *testing.T, got syncJobSnapshot, wantStatus, wantJobID string) {
+	t.Helper()
+
+	if got.Status != wantStatus {
+		t.Fatalf("expected status %s, got %s", wantStatus, got.Status)
+	}
+	if got.JobID != wantJobID {
+		t.Fatalf("expected job linkage %s, got %s", wantJobID, got.JobID)
+	}
+}
+
+func TestIntegration_PauseResumeRestartLifecycle(t *testing.T) {
+	t.Parallel()
+
+	store, dbPath := openIntegrationStore(t)
+	defer store.Close()
+
+	repo := "test/repo"
+	job, err := store.CreateSyncJob(repo)
+	if err != nil {
+		t.Fatalf("failed to create sync job: %v", err)
+	}
+
+	resetAt := time.Now().UTC().Add(-1 * time.Hour).Truncate(time.Second)
+	budget := ratelimit.NewBudgetManager()
+	budget.RecordResponse(0, resetAt.Unix())
+	guard := NewRateLimitGuard(budget, ratelimit.NewMetrics(), store, job.ID)
+
+	chunkSize, err := guard.CheckBudget(repo, 100)
+	if err == nil {
+		t.Fatal("expected budget exhaustion to pause sync job, got nil")
+	}
+	if chunkSize != 0 {
+		t.Fatalf("expected chunk size 0 after pause, got %d", chunkSize)
+	}
+
+	paused := loadSyncJobSnapshot(t, store, job.ID)
+	assertSnapshot(t, paused, string(cache.SyncJobStatusPaused), job.ID)
+	wantResumeAt := resetAt.Add(15 * time.Second).Format(time.RFC3339)
+	if paused.NextScheduledAt != wantResumeAt {
+		t.Fatalf("expected next scheduled time %s, got %s", wantResumeAt, paused.NextScheduledAt)
+	}
+	if paused.ScheduledResumeAt != wantResumeAt {
+		t.Fatalf("expected scheduled resume time %s, got %s", wantResumeAt, paused.ScheduledResumeAt)
+	}
+	if paused.PauseReason != "rate limit budget exhausted" {
+		t.Fatalf("expected pause reason to persist, got %q", paused.PauseReason)
+	}
+	if paused.LastBudgetCheck == "" {
+		t.Fatal("expected last budget check to persist")
+	}
+
+	if err := store.Close(); err != nil {
+		t.Fatalf("failed to close store before restart: %v", err)
+	}
+	store, err = cache.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to reopen store after restart: %v", err)
+	}
+	defer store.Close()
+
+	restarted := loadSyncJobSnapshot(t, store, job.ID)
+	assertSnapshot(t, restarted, string(cache.SyncJobStatusPaused), job.ID)
+	if restarted.NextScheduledAt != wantResumeAt || restarted.ScheduledResumeAt != wantResumeAt {
+		t.Fatalf("expected restart to preserve pause schedule, got %+v", restarted)
+	}
+
+	resumed, err := ResumeJob(store, repo)
+	if err != nil {
+		t.Fatalf("expected resume after restart to succeed, got %v", err)
+	}
+	if resumed.Status != cache.SyncJobStatusInProgress {
+		t.Fatalf("expected resumed job to be in_progress, got %s", resumed.Status)
+	}
+
+	after := loadSyncJobSnapshot(t, store, job.ID)
+	assertSnapshot(t, after, string(cache.SyncJobStatusInProgress), job.ID)
+	if after.NextScheduledAt != "" || after.ScheduledResumeAt != "" || after.PauseReason != "" || after.LastBudgetCheck != "" {
+		t.Fatalf("expected pause fields to clear after resume, got %+v", after)
+	}
+	if after.ErrorMessage != "" {
+		t.Fatalf("expected error message to clear after resume, got %q", after.ErrorMessage)
+	}
+}
+
+func TestIntegration_ResumeFailsWithMissingJobLinkage(t *testing.T) {
+	t.Parallel()
+
+	store, _ := openIntegrationStore(t)
+	defer store.Close()
+
+	repo := "test/repo"
+	job, err := store.CreateSyncJob(repo)
+	if err != nil {
+		t.Fatalf("failed to create sync job: %v", err)
+	}
+
+	pauseAt := time.Now().UTC().Add(-time.Hour)
+	if err := store.PauseSyncJob(job.ID, pauseAt, "rate limit budget exhausted"); err != nil {
+		t.Fatalf("failed to pause sync job: %v", err)
+	}
+
+	if _, err := store.DB().Exec(`UPDATE sync_progress SET job_id = ? WHERE repo = ?`, "stale-job-linkage", repo); err != nil {
+		t.Fatalf("failed to corrupt sync progress linkage: %v", err)
+	}
+
+	missing := loadSyncJobSnapshot(t, store, job.ID)
+	if missing.Status != string(cache.SyncJobStatusPaused) {
+		t.Fatalf("expected job to remain paused, got %s", missing.Status)
+	}
+	if missing.JobID != "stale-job-linkage" {
+		t.Fatalf("expected corrupted linkage to persist, got %s", missing.JobID)
+	}
+	if missing.NextScheduledAt == "" || missing.ScheduledResumeAt == "" || missing.PauseReason != "rate limit budget exhausted" || missing.LastBudgetCheck == "" {
+		t.Fatalf("expected paused progress to remain persisted, got %+v", missing)
+	}
+
+	_, err = ResumeJob(store, repo)
+	if err == nil {
+		t.Fatal("expected resume to fail when sync_progress linkage is missing, got nil")
+	}
+	if !strings.Contains(err.Error(), "linkage") {
+		t.Fatalf("expected explicit linkage error, got: %v", err)
+	}
+
+	after := loadSyncJobSnapshot(t, store, job.ID)
+	assertSnapshot(t, after, string(cache.SyncJobStatusPaused), "stale-job-linkage")
+	if after.PauseReason != "rate limit budget exhausted" {
+		t.Fatalf("expected paused state to remain unchanged, got %+v", after)
+	}
+}
 
 // TestIntegration_FullPauseResumeCycle tests the full flow: create job → pause → scheduler resumes → job is in_progress.
 func TestIntegration_FullPauseResumeCycle(t *testing.T) {
