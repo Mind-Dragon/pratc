@@ -194,9 +194,10 @@ func TestCacheSyncJobLifecycle(t *testing.T) {
 	}
 
 	if err := store.UpdateSyncJobProgress(job.ID, SyncProgress{
-		Cursor:       "cursor-2",
-		ProcessedPRs: 25,
-		TotalPRs:     100,
+		Cursor:          "cursor-2",
+		ProcessedPRs:    25,
+		TotalPRs:        100,
+		LastBudgetCheck: mustParseTime(t, "2026-03-12T14:03:30Z"),
 	}); err != nil {
 		t.Fatalf("update sync job progress: %v", err)
 	}
@@ -214,6 +215,9 @@ func TestCacheSyncJobLifecycle(t *testing.T) {
 	}
 	if got.Progress.Cursor != "cursor-2" || got.Progress.ProcessedPRs != 25 || got.Progress.TotalPRs != 100 {
 		t.Fatalf("unexpected job progress: %+v", got.Progress)
+	}
+	if got.Progress.LastBudgetCheck != mustParseTime(t, "2026-03-12T14:03:30Z") {
+		t.Fatalf("unexpected last budget check: %s", got.Progress.LastBudgetCheck)
 	}
 }
 

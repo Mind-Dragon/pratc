@@ -8,12 +8,15 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jeffersonnunn/pratc/internal/app"
 	"github.com/jeffersonnunn/pratc/internal/audit"
 	"github.com/jeffersonnunn/pratc/internal/cache"
@@ -24,6 +27,7 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/report"
 	"github.com/jeffersonnunn/pratc/internal/settings"
 	prsync "github.com/jeffersonnunn/pratc/internal/sync"
+	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
 	"github.com/jeffersonnunn/pratc/internal/types"
 	"github.com/jeffersonnunn/pratc/internal/version"
 	"github.com/spf13/cobra"
@@ -93,6 +97,15 @@ func isInvalidArgumentError(err error) bool {
 	}
 
 	return false
+}
+
+func calculateETA(done, total int, elapsed time.Duration) time.Duration {
+	if done <= 0 || total <= done {
+		return 0
+	}
+	rate := float64(done) / elapsed.Seconds()
+	remaining := total - done
+	return time.Duration(float64(remaining)/rate) * time.Second
 }
 
 func analyzeSyncDBPath() string {
@@ -244,14 +257,24 @@ func RegisterAnalyzeCommand() {
 	var forceLive bool
 	var force bool
 	var maxPRs int
+	var rateLimit int
+	var reserveBuffer int
+	var resetBuffer int
 
 	command := &cobra.Command{
 		Use:   "analyze",
 		Short: "Analyze pull requests for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
+
+			budget := ratelimit.NewBudgetManager(
+				ratelimit.WithRateLimit(rateLimit),
+				ratelimit.WithReserveBuffer(reserveBuffer),
+				ratelimit.WithResetBuffer(resetBuffer),
+			)
+			log.Info("analyze budget initialized", "budget", budget.String())
 
 			cfg := buildAnalyzeConfig(useCacheFirst, forceLive, maxPRs)
 			service := app.NewService(cfg)
@@ -267,7 +290,7 @@ func RegisterAnalyzeCommand() {
 				}
 			}
 
-			log.Info("starting analyze", "repo", repo)
+			log.Info("starting analyze", "repo", repo, "budget", budget.String())
 			response, err := service.Analyze(ctx, repo)
 			if err != nil {
 				return err
@@ -287,6 +310,9 @@ func RegisterAnalyzeCommand() {
 	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch")
 	command.Flags().BoolVar(&force, "force", false, "Compatibility flag to skip sync warning")
 	command.Flags().IntVar(&maxPRs, "max-prs", -1, "Max PRs to analyze (-1=default 1000, 0=no cap)")
+	command.Flags().IntVar(&rateLimit, "rate-limit", 5000, "GitHub API rate limit per hour")
+	command.Flags().IntVar(&reserveBuffer, "reserve-buffer", 200, "Minimum requests to keep in reserve")
+	command.Flags().IntVar(&resetBuffer, "reset-buffer", 15, "Seconds to wait after rate limit reset")
 	_ = command.Flags().MarkHidden("force")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
@@ -336,7 +362,7 @@ func RegisterClusterCommand() {
 		Use:   "cluster",
 		Short: "Cluster pull requests for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
 
@@ -367,21 +393,31 @@ func RegisterGraphCommand() {
 	var format string
 	var useCacheFirst bool
 	var maxPRs int
+	var rateLimit int
+	var reserveBuffer int
+	var resetBuffer int
 
 	command := &cobra.Command{
 		Use:   "graph",
 		Short: "Render a dependency graph for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
+
+			budget := ratelimit.NewBudgetManager(
+				ratelimit.WithRateLimit(rateLimit),
+				ratelimit.WithReserveBuffer(reserveBuffer),
+				ratelimit.WithResetBuffer(resetBuffer),
+			)
+			log.Info("graph budget initialized", "budget", budget.String())
 
 			cfg := app.Config{UseCacheFirst: useCacheFirst}
 			if maxPRs >= 0 {
 				cfg.MaxPRs = maxPRs
 			}
 			service := app.NewService(cfg)
-			log.Info("starting graph", "repo", repo)
+			log.Info("starting graph", "repo", repo, "budget", budget.String())
 			response, err := service.Graph(ctx, repo)
 			if err != nil {
 				return err
@@ -402,6 +438,9 @@ func RegisterGraphCommand() {
 	command.Flags().StringVar(&format, "format", "dot", "Output format: dot|json")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
 	command.Flags().IntVar(&maxPRs, "max-prs", -1, "Max PRs to graph (-1=default, 0=no cap)")
+	command.Flags().IntVar(&rateLimit, "rate-limit", 5000, "GitHub API rate limit per hour")
+	command.Flags().IntVar(&reserveBuffer, "reserve-buffer", 200, "Minimum requests to keep in reserve")
+	command.Flags().IntVar(&resetBuffer, "reset-buffer", 15, "Seconds to wait after rate limit reset")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
@@ -416,7 +455,7 @@ func RegisterReportCommand() {
 		Use:   "report",
 		Short: "Generate a PDF report from analysis artifacts",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
 
@@ -519,14 +558,24 @@ func RegisterPlanCommand() {
 	var includeBots bool
 	var useCacheFirst bool
 	var maxPRs int
+	var rateLimit int
+	var reserveBuffer int
+	var resetBuffer int
 
 	command := &cobra.Command{
 		Use:   "plan",
 		Short: "Generate a merge plan for a repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
+
+			budget := ratelimit.NewBudgetManager(
+				ratelimit.WithRateLimit(rateLimit),
+				ratelimit.WithReserveBuffer(reserveBuffer),
+				ratelimit.WithResetBuffer(resetBuffer),
+			)
+			log.Info("plan budget initialized", "budget", budget.String())
 
 			selectedMode, err := parseMode(mode)
 			if err != nil {
@@ -544,7 +593,7 @@ func RegisterPlanCommand() {
 				cfg.MaxPRs = 1000
 			}
 			service := app.NewService(cfg)
-			log.Info("starting plan", "repo", repo, "target", target, "mode", selectedMode)
+			log.Info("starting plan", "repo", repo, "target", target, "mode", selectedMode, "budget", budget.String())
 			response, err := service.Plan(ctx, repo, target, selectedMode)
 			if err != nil {
 				return err
@@ -569,6 +618,9 @@ func RegisterPlanCommand() {
 	command.Flags().BoolVar(&includeBots, "include-bots", false, "Include bot PRs in merge plan (default excludes bots)")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
 	command.Flags().IntVar(&maxPRs, "max-prs", -1, "Max PRs to consider (-1=default 1000, 0=no cap)")
+	command.Flags().IntVar(&rateLimit, "rate-limit", 5000, "GitHub API rate limit per hour")
+	command.Flags().IntVar(&reserveBuffer, "reserve-buffer", 200, "Minimum requests to keep in reserve")
+	command.Flags().IntVar(&resetBuffer, "reset-buffer", 15, "Seconds to wait after rate limit reset")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
@@ -582,7 +634,7 @@ func RegisterServeCommand() {
 		Use:   "serve",
 		Short: "Serve the prATC API",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
 			log.Info("starting server", "port", port, "repo", repo)
@@ -599,49 +651,186 @@ func RegisterSyncCommand() {
 	var repo string
 	var watch bool
 	var interval time.Duration
+	var rateLimit int
+	var reserveBuffer int
+	var resetBuffer int
+	var showProgress bool
 
 	command := &cobra.Command{
 		Use:   "sync",
 		Short: "Sync repository metadata and refs",
+		Long: `Sync repository metadata and refs with rate-limit-aware scheduling.
+
+The sync command fetches PR metadata and git refs from GitHub, respecting
+rate limits and automatically pausing/resuming when budget is exhausted.
+
+Examples:
+  # One-time sync
+  pratc sync --repo=owner/repo
+
+  # Watch mode with progress display
+  pratc sync --repo=owner/repo --watch --interval=5m --progress
+
+  # Custom rate limit configuration
+  pratc sync --repo=owner/repo --rate-limit=5000 --reserve-buffer=300`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
 
-			manager := newRepoSyncManager("", "")
-			log.Info("starting sync", "repo", repo)
-			if err := manager.Start(repo); err != nil {
-				return err
-			}
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
 
-			if !watch {
-				return writeJSON(cmd, map[string]any{"started": true, "repo": repo})
-			}
+			sigChan := make(chan os.Signal, 1)
+			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+			go func() {
+				select {
+				case sig := <-sigChan:
+					log.Info("received shutdown signal", "signal", sig.String())
+					cancel()
+				case <-ctx.Done():
+				}
+			}()
 
-			if interval <= 0 {
-				return fmt.Errorf("invalid value for --interval: must be greater than 0")
-			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "watching sync for %s every %s\n", repo, interval)
+			budget := ratelimit.NewBudgetManager(
+				ratelimit.WithRateLimit(rateLimit),
+				ratelimit.WithReserveBuffer(reserveBuffer),
+				ratelimit.WithResetBuffer(resetBuffer),
+			)
 
-			// Start the rate limit scheduler in watch mode
 			dbPath := strings.TrimSpace(os.Getenv("PRATC_DB_PATH"))
 			if dbPath == "" {
 				home, _ := os.UserHomeDir()
 				dbPath = filepath.Join(home, ".pratc", "pratc.db")
 			}
-			store, _ := cache.Open(dbPath)
+			store, err := cache.Open(dbPath)
+			if err != nil {
+				return fmt.Errorf("open cache store: %w", err)
+			}
+			defer store.Close()
+
+			metrics := ratelimit.NewMetrics()
+			innerRunner := prsync.NewDefaultRunner(nil, "", store)
+
+			log.Info("starting sync", "repo", repo, "budget", budget.String())
+
+			job, err := store.CreateSyncJob(repo)
+			if err != nil {
+				return fmt.Errorf("create sync job: %w", err)
+			}
+
+			guard := prsync.NewRateLimitGuard(budget, metrics, store, job.ID)
+			runner := prsync.NewRateLimitRunner(innerRunner, guard, store, repo)
+
+			startTime := time.Now()
+			var lastProgress cache.SyncProgress
+			emit := func(eventType string, payload map[string]any) {
+				if eventType != "progress" {
+					return
+				}
+				done, hasDone := payload["done"].(int)
+				total, hasTotal := payload["total"].(int)
+				if !hasDone || !hasTotal || total <= 0 {
+					return
+				}
+				lastProgress.ProcessedPRs = done
+				lastProgress.TotalPRs = total
+				_ = store.UpdateSyncJobProgress(job.ID, lastProgress)
+
+				if !showProgress && !watch {
+					return
+				}
+				percent := (done * 100) / total
+				elapsed := time.Since(startTime)
+				eta := calculateETA(done, total, elapsed)
+				fmt.Fprintf(cmd.OutOrStdout(), "\r[%3d%%] %d/%d PRs | Elapsed: %s | ETA: %s | Budget: %s",
+					percent, done, total, elapsed.Round(time.Second), eta.Round(time.Second), budget.String())
+			}
+
+			syncErr := runner.Run(ctx, repo, emit)
+
+			if showProgress || watch {
+				fmt.Fprintln(cmd.OutOrStdout())
+			}
+
+			if syncErr != nil {
+				if strings.Contains(syncErr.Error(), "rate limit budget exhausted") {
+					resumeAt := budget.ResetAt().Add(time.Duration(resetBuffer) * time.Second)
+					fmt.Fprintf(cmd.OutOrStdout(), "Sync paused due to rate limits. Will resume after %s\n", resumeAt.Format(time.RFC3339))
+					return writeJSON(cmd, map[string]any{
+						"started":   true,
+						"repo":      repo,
+						"status":    "paused",
+						"job_id":    job.ID,
+						"resume_at": resumeAt.Format(time.RFC3339),
+						"budget":    budget.String(),
+					})
+				}
+				_ = store.MarkSyncJobFailed(job.ID, syncErr.Error())
+				return syncErr
+			}
+
+			_ = store.MarkSyncJobComplete(job.ID, time.Now().UTC())
+
+			if !watch {
+				return writeJSON(cmd, map[string]any{
+					"started": true,
+					"repo":    repo,
+					"status":  "completed",
+					"job_id":  job.ID,
+					"budget":  budget.String(),
+					"metrics": metrics.Snapshot(),
+				})
+			}
+
+			if interval <= 0 {
+				return fmt.Errorf("invalid value for --interval: must be greater than 0")
+			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "Watch mode enabled. Syncing %s every %s\n", repo, interval)
+			fmt.Fprintf(cmd.OutOrStdout(), "Press Ctrl+C to stop.\n\n")
+
 			scheduler := prsync.NewScheduler(store, prsync.WithCheckInterval(30*time.Second))
-			go scheduler.Run(cmd.Context())
+			if err := scheduler.Start(ctx); err != nil {
+				return fmt.Errorf("start scheduler: %w", err)
+			}
+			defer scheduler.Stop()
 
 			ticker := time.NewTicker(interval)
 			defer ticker.Stop()
+
 			for {
 				select {
 				case <-ctx.Done():
+					fmt.Fprintln(cmd.OutOrStdout(), "\nSync watch stopped.")
 					return nil
 				case <-ticker.C:
-					if err := manager.Start(repo); err != nil {
-						return err
+					if pausedJob, ok, _ := store.ResumeSyncJob(repo); ok {
+						log.Info("resuming paused sync job", "job_id", pausedJob.ID)
+						job = pausedJob
+					} else {
+						newJob, err := store.CreateSyncJob(repo)
+						if err != nil {
+							log.Error("failed to create sync job", "error", err)
+							continue
+						}
+						job = newJob
+					}
+
+					startTime = time.Now()
+					fmt.Fprintf(cmd.OutOrStdout(), "\n[%s] Starting sync...\n", time.Now().Format(time.RFC3339))
+
+					if err := runner.Run(ctx, repo, emit); err != nil {
+						if strings.Contains(err.Error(), "rate limit budget exhausted") {
+							resumeAt := budget.ResetAt().Add(time.Duration(resetBuffer) * time.Second)
+							fmt.Fprintf(cmd.OutOrStdout(), "Sync paused. Will auto-resume after %s\n", resumeAt.Format(time.RFC3339))
+						} else {
+							log.Error("sync failed", "error", err)
+							fmt.Fprintf(cmd.OutOrStdout(), "Sync error: %v\n", err)
+						}
+					} else {
+						_ = store.MarkSyncJobComplete(job.ID, time.Now().UTC())
+						fmt.Fprintf(cmd.OutOrStdout(), "Sync completed. Next sync in %s\n", interval)
 					}
 				}
 			}
@@ -649,8 +838,12 @@ func RegisterSyncCommand() {
 	}
 
 	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
-	command.Flags().BoolVar(&watch, "watch", false, "Run sync in watch mode")
+	command.Flags().BoolVar(&watch, "watch", false, "Run sync in watch mode with automatic resume")
 	command.Flags().DurationVar(&interval, "interval", 5*time.Minute, "Watch mode interval")
+	command.Flags().IntVar(&rateLimit, "rate-limit", 5000, "GitHub API rate limit per hour")
+	command.Flags().IntVar(&reserveBuffer, "reserve-buffer", 200, "Minimum requests to keep in reserve")
+	command.Flags().IntVar(&resetBuffer, "reset-buffer", 15, "Seconds to wait after rate limit reset")
+	command.Flags().BoolVar(&showProgress, "progress", false, "Show progress with ETA")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
@@ -1686,7 +1879,7 @@ func RegisterMirrorCommand() {
 		Use:   "list",
 		Short: "List all synced repos",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
 			log.Info("listing mirrors", "base_dir", baseDir)
@@ -1699,7 +1892,7 @@ func RegisterMirrorCommand() {
 		Short: "Show detailed stats for a mirror",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
 			log.Info("mirror info", "repo", args[0])
@@ -1711,7 +1904,7 @@ func RegisterMirrorCommand() {
 		Use:   "prune",
 		Short: "Remove mirrors for repos no longer tracked",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
 			log.Info("pruning mirrors", "base_dir", baseDir)
@@ -1793,7 +1986,7 @@ func RegisterMirrorCommand() {
 		Use:   "clean",
 		Short: "Remove ALL mirrors (nuclear option)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
 			log.Info("cleaning all mirrors", "base_dir", baseDir)
@@ -1830,7 +2023,7 @@ func RegisterMirrorCommand() {
 		Short: "Migrate a legacy mirror into the current location",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
 			log.Info("migrating mirror", "repo", args[0])

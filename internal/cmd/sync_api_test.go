@@ -43,7 +43,7 @@ func (f *fakeRepoSyncAPI) Stream(repo string, w http.ResponseWriter, _ *http.Req
 
 type testMetadataSource struct{ err error }
 
-func (m testMetadataSource) SyncRepo(_ context.Context, _ string, progress func(done, total int)) (prsync.MetadataSnapshot, error) {
+func (m testMetadataSource) SyncRepo(_ context.Context, _ string, progress func(done, total int), onCursor func(cursor string, processed int)) (prsync.MetadataSnapshot, error) {
 	if progress != nil {
 		progress(1, 1)
 	}

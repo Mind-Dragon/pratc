@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-03-24T16:15:37Z",
+  "timestamp": "2026-04-06T16:34:57Z",
   "hostname": "heimdall2",
   "repository": "opencode-ai/opencode",
   "fixture_repository": "opencode-ai/opencode",
@@ -8,29 +8,29 @@
   "benchmark_type": "slo_warm_cache",
   "commands": {
     "analyze": {
-      "duration_seconds": 0.063,
+      "duration_seconds": 0.598,
       "slo_threshold_seconds": 300,
       "exit_code": 0,
       "status": "PASS"
     },
     "cluster": {
-      "duration_seconds": 0.013,
+      "duration_seconds": 0.383,
       "slo_threshold_seconds": 180,
-      "exit_code": 1,
-      "status": "FAIL"
+      "exit_code": 0,
+      "status": "PASS"
     },
     "graph": {
-      "duration_seconds": 0.013,
+      "duration_seconds": 0.430,
       "slo_threshold_seconds": 120,
-      "exit_code": 1,
-      "status": "FAIL"
+      "exit_code": 0,
+      "status": "PASS"
     },
     "plan": {
-      "duration_seconds": 0.013,
+      "duration_seconds": 0.384,
       "slo_threshold_seconds": 90,
-      "exit_code": 1,
-      "status": "FAIL"
+      "exit_code": 0,
+      "status": "PASS"
     }
   },
-  "overall_status": "FAIL"
+  "overall_status": "PASS"
 }

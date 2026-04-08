@@ -1,0 +1,24 @@
+prATC Analysis Summary
+=====================
+
+Repository: openclaw/openclaw
+Started: 2026-04-03 00:44:38
+Completed: 2026-04-03 00:44:58
+
+Analysis Results:
+- Total PRs analyzed: 100
+- Clusters found: 18
+- Conflicts detected: 
+- Graph nodes: 100
+- Graph edges: 297
+- Plan selected: 10 PRs
+- Plan rejections: 90
+
+Files:
+  step-1-sync.json     — Sync metadata
+  step-2-analyze.json  — Full analysis with clusters, conflicts
+  step-3-cluster.json  — Clustering results  
+  step-4-graph.json    — Dependency graph data
+  step-5-plan.json     — Merge plan with ordering
+  summary.txt          — Human-readable summary
+  run.log              — Execution log

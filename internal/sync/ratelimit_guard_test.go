@@ -89,14 +89,10 @@ func TestRateLimitGuardCheckBudget(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			metrics := ratelimit.NewMetrics()
 
-			budget := ratelimit.BudgetManager{
-				Limit:       5000,
-				Remaining:   tt.budgetRemaining,
-				ResetTime:   time.Now().Add(1 * time.Hour),
-				LastUpdated: time.Now(),
-			}
+			budget := ratelimit.NewBudgetManager()
+			budget.RecordResponse(tt.budgetRemaining, time.Now().Add(1*time.Hour).Unix())
 
-			guard := NewRateLimitGuard(&budget, metrics, store)
+			guard := NewRateLimitGuard(budget, metrics, store, "test/repo")
 
 			chunkSize, err := guard.CheckBudget("test/repo", tt.estimatedRequests)
 
@@ -189,14 +185,10 @@ func TestRateLimitGuardMetrics(t *testing.T) {
 	}
 
 	metrics := ratelimit.NewMetrics()
-	budget := ratelimit.BudgetManager{
-		Limit:       5000,
-		Remaining:   500,
-		ResetTime:   time.Now().Add(1 * time.Hour),
-		LastUpdated: time.Now(),
-	}
+	budget := ratelimit.NewBudgetManager()
+	budget.RecordResponse(500, time.Now().Add(1*time.Hour).Unix())
 
-	guard := NewRateLimitGuard(&budget, metrics, store)
+	guard := NewRateLimitGuard(budget, metrics, store, "test/repo")
 
 	_, _ = guard.CheckBudget("test/repo", 100)
 

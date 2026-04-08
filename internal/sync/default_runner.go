@@ -44,22 +44,75 @@ func NewRunner(worker Worker, jobRecorder JobRecorder, jobID string) *DefaultRun
 }
 
 func (r *DefaultRunner) Run(ctx context.Context, repo string, emit func(eventType string, payload map[string]any)) error {
+	cacheStore := r.worker.CacheStore
+	metadataProcessed := 0
+	metadataTotal := 0
+	currentCursor := ""
 	result, err := r.worker.SyncJob(ctx, repo, func(stage string, done, total int) {
-		if emit == nil {
+		if stage == "metadata" {
+			metadataProcessed = done
+			if total > 0 {
+				metadataTotal = total
+			}
+		} else if stage == "mirror_fetch" && metadataTotal <= 0 && metadataProcessed > 0 {
+			metadataTotal = metadataProcessed
+		}
+
+		if emit != nil {
+			emit("progress", map[string]any{
+				"stage": stage,
+				"done":  done,
+				"total": total,
+				"repo":  repo,
+			})
+		}
+
+		if cacheStore == nil || r.jobID == "" {
 			return
 		}
-		emit("progress", map[string]any{
-			"stage": stage,
-			"done":  done,
-			"total": total,
-			"repo":  repo,
-		})
+
+		progress := cache.SyncProgress{ProcessedPRs: done, TotalPRs: total}
+		progress.LastBudgetCheck = time.Now().UTC()
+		switch stage {
+		case "metadata":
+			progress.TotalPRs = 0
+		case "mirror_fetch":
+			if metadataTotal > 0 {
+				progress.TotalPRs = metadataTotal
+			}
+		case "complete":
+			if metadataTotal > 0 {
+				progress.TotalPRs = metadataTotal
+			}
+		}
+		_ = cacheStore.UpdateSyncJobProgress(r.jobID, progress)
+	}, func(cursor string, processed int) {
+		currentCursor = cursor
+		if cacheStore != nil && r.jobID != "" {
+			_ = cacheStore.SaveCursor(r.jobID, cursor, processed, metadataTotal)
+		}
 	})
 	if err != nil {
 		if r.jobRecorder != nil && r.jobID != "" {
 			_ = r.jobRecorder.MarkSyncJobFailed(r.jobID, err.Error())
 		}
 		return err
+	}
+
+	if cacheStore != nil && r.jobID != "" {
+		finalTotal := metadataTotal
+		if finalTotal <= 0 {
+			finalTotal = metadataProcessed
+		}
+		if finalTotal <= 0 && result != nil {
+			finalTotal = result.SyncedPRs
+		}
+		if finalTotal > 0 {
+			_ = cacheStore.UpdateSyncJobProgress(r.jobID, cache.SyncProgress{
+				ProcessedPRs: finalTotal,
+				TotalPRs:     finalTotal,
+			})
+		}
 	}
 
 	if r.jobRecorder != nil && r.jobID != "" {
@@ -69,6 +122,7 @@ func (r *DefaultRunner) Run(ctx context.Context, repo string, emit func(eventTyp
 	}
 
 	_ = result
+	_ = currentCursor
 	return nil
 }
 
@@ -117,7 +171,7 @@ type githubMetadataSource struct {
 	cacheStore *cache.Store
 }
 
-func (g githubMetadataSource) SyncRepo(ctx context.Context, repoID string, progress func(done, total int)) (MetadataSnapshot, error) {
+func (g githubMetadataSource) SyncRepo(ctx context.Context, repoID string, progress func(done, total int), onCursor func(cursor string, processed int)) (MetadataSnapshot, error) {
 	if g.client == nil {
 		return MetadataSnapshot{}, fmt.Errorf("github client is required")
 	}
@@ -125,6 +179,7 @@ func (g githubMetadataSource) SyncRepo(ctx context.Context, repoID string, progr
 	opts := gh.PullRequestListOptions{
 		PerPage:  100,
 		Progress: progress,
+		OnCursor: onCursor,
 	}
 
 	if g.cacheStore != nil {

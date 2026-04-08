@@ -114,6 +114,7 @@ Entry point for all operations. Uses Cobra for command structure.
 | `cluster` | ML clustering only | `--repo`, `--format` |
 | `graph` | Dependency graph | `--repo`, `--format` (dot/json) |
 | `plan` | Merge planning | `--repo`, `--target`, `--mode`, `--dry-run` |
+| `report` | Generate PDF report | `--repo`, `--input-dir`, `--output`, `--format` |
 | `serve` | Start API server | `--port`, `--repo` |
 | `sync` | GitHub sync | `--repo`, `--watch`, `--interval` |
 | `audit` | Query audit log | `--limit`, `--format` |

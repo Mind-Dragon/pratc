@@ -54,7 +54,7 @@ type fakeMetadata struct {
 	err      error
 }
 
-func (f fakeMetadata) SyncRepo(_ context.Context, _ string, progress func(done, total int)) (MetadataSnapshot, error) {
+func (f fakeMetadata) SyncRepo(_ context.Context, _ string, progress func(done, total int), onCursor func(cursor string, processed int)) (MetadataSnapshot, error) {
 	if progress != nil {
 		progress(1, 3)
 		progress(3, 3)
@@ -79,7 +79,7 @@ func TestSyncJobSuccess(t *testing.T) {
 	progressStages := []string{}
 	result, err := worker.SyncJob(context.Background(), "octo/repo", func(stage string, done, total int) {
 		progressStages = append(progressStages, stage)
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("sync job failed: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestSyncJobPropagatesMetadataError(t *testing.T) {
 		MirrorFactory: func(context.Context, string) (Mirror, error) { return &fakeMirror{}, nil },
 		Metadata:      fakeMetadata{err: errors.New("boom")},
 	}
-	_, err := worker.SyncJob(context.Background(), "octo/repo", nil)
+	_, err := worker.SyncJob(context.Background(), "octo/repo", nil, nil)
 	if err == nil {
 		t.Fatalf("expected metadata error")
 	}
@@ -112,7 +112,7 @@ func TestSyncJobPropagatesMetadataError(t *testing.T) {
 func TestWatchRejectsInvalidInterval(t *testing.T) {
 	t.Parallel()
 	worker := Worker{}
-	err := worker.Watch(context.Background(), "octo/repo", 0, nil)
+	err := worker.Watch(context.Background(), "octo/repo", 0, nil, nil)
 	if err == nil {
 		t.Fatalf("expected interval validation error")
 	}

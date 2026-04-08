@@ -16,7 +16,7 @@ type Mirror interface {
 }
 
 type MetadataSource interface {
-	SyncRepo(ctx context.Context, repo string, progress func(done, total int)) (MetadataSnapshot, error)
+	SyncRepo(ctx context.Context, repo string, progress func(done, total int), onCursor func(cursor string, processed int)) (MetadataSnapshot, error)
 }
 
 type MirrorFactory func(ctx context.Context, repo string) (Mirror, error)
@@ -44,7 +44,7 @@ type Worker struct {
 	Now           func() time.Time
 }
 
-func (w Worker) SyncJob(ctx context.Context, repo string, progress func(stage string, done, total int)) (*SyncResult, error) {
+func (w Worker) SyncJob(ctx context.Context, repo string, progress func(stage string, done, total int), onCursor func(cursor string, processed int)) (*SyncResult, error) {
 	if w.MirrorFactory == nil {
 		return nil, fmt.Errorf("mirror factory is required")
 	}
@@ -60,7 +60,7 @@ func (w Worker) SyncJob(ctx context.Context, repo string, progress func(stage st
 		if progress != nil {
 			progress("metadata", done, total)
 		}
-	})
+	}, onCursor)
 	if err != nil {
 		return nil, fmt.Errorf("sync metadata: %w", err)
 	}
@@ -102,7 +102,19 @@ func (w Worker) SyncJob(ctx context.Context, repo string, progress func(stage st
 	return result, nil
 }
 
-func (w Worker) Watch(ctx context.Context, repo string, interval time.Duration, progress func(stage string, done, total int)) error {
+func (w Worker) ResumeSyncJob(ctx context.Context, repo string, progress func(stage string, done, total int), onCursor func(cursor string, processed int)) (*SyncResult, error) {
+	if w.CacheStore == nil {
+		return nil, fmt.Errorf("cache store is required")
+	}
+
+	if _, err := cache.ResumeSyncJob(w.CacheStore, repo); err != nil {
+		return nil, fmt.Errorf("resume sync job: %w", err)
+	}
+
+	return w.SyncJob(ctx, repo, progress, onCursor)
+}
+
+func (w Worker) Watch(ctx context.Context, repo string, interval time.Duration, progress func(stage string, done, total int), onCursor func(cursor string, processed int)) error {
 	if interval <= 0 {
 		return fmt.Errorf("interval must be positive")
 	}
@@ -110,7 +122,7 @@ func (w Worker) Watch(ctx context.Context, repo string, interval time.Duration, 
 	defer ticker.Stop()
 
 	for {
-		if _, err := w.SyncJob(ctx, repo, progress); err != nil {
+		if _, err := w.SyncJob(ctx, repo, progress, onCursor); err != nil {
 			return err
 		}
 		select {

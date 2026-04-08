@@ -79,3 +79,57 @@ func TestGetPausedSyncJobByRepo(t *testing.T) {
 		t.Errorf("expected status %s, got %s", SyncJobStatusPaused, gotJob.Status)
 	}
 }
+
+func TestResumeSyncJobClearsPauseFields(t *testing.T) {
+	store, err := Open(":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory store: %v", err)
+	}
+	defer store.Close()
+
+	repo := "test/repo"
+	job, err := store.CreateSyncJob(repo)
+	if err != nil {
+		t.Fatalf("failed to create sync job: %v", err)
+	}
+
+	if err := store.UpdateSyncJobProgress(job.ID, SyncProgress{
+		Cursor:       "cursor-1",
+		ProcessedPRs: 12,
+		TotalPRs:     34,
+	}); err != nil {
+		t.Fatalf("failed to update progress: %v", err)
+	}
+
+	pastTime := time.Now().Add(-24 * time.Hour)
+	if err := store.PauseSyncJob(job.ID, pastTime, "rate limited"); err != nil {
+		t.Fatalf("failed to pause sync job: %v", err)
+	}
+
+	resumed, err := ResumeSyncJob(store, repo)
+	if err != nil {
+		t.Fatalf("failed to resume sync job: %v", err)
+	}
+
+	if resumed.Status != SyncJobStatusInProgress {
+		t.Fatalf("expected status %s, got %s", SyncJobStatusInProgress, resumed.Status)
+	}
+	if resumed.Error != "" {
+		t.Fatalf("expected error cleared, got %q", resumed.Error)
+	}
+	if resumed.Progress.Cursor != "cursor-1" || resumed.Progress.ProcessedPRs != 12 || resumed.Progress.TotalPRs != 34 {
+		t.Fatalf("expected progress preserved, got %+v", resumed.Progress)
+	}
+	if !resumed.Progress.NextScheduledAt.IsZero() {
+		t.Fatalf("expected next scheduled time cleared, got %s", resumed.Progress.NextScheduledAt)
+	}
+	if !resumed.Progress.ScheduledResumeAt.IsZero() {
+		t.Fatalf("expected scheduled resume cleared, got %s", resumed.Progress.ScheduledResumeAt)
+	}
+	if resumed.Progress.PauseReason != "" {
+		t.Fatalf("expected pause reason cleared, got %q", resumed.Progress.PauseReason)
+	}
+	if !resumed.Progress.LastBudgetCheck.IsZero() {
+		t.Fatalf("expected last budget check cleared, got %s", resumed.Progress.LastBudgetCheck)
+	}
+}

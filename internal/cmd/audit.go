@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jeffersonnunn/pratc/internal/audit"
 	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/logger"
@@ -23,7 +24,7 @@ func RegisterAuditCommand() {
 		Use:   "audit",
 		Short: "Query audit log entries",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			requestID := fmt.Sprintf("%d", time.Now().UnixNano())
+			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
 

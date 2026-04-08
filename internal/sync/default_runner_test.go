@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jeffersonnunn/pratc/internal/cache"
 )
 
 func TestDefaultWorkerMirrorFactoryInitializesMirror(t *testing.T) {
@@ -113,4 +115,76 @@ func TestDefaultWorkerNowFunction(t *testing.T) {
 	if timeDiff < -time.Second || timeDiff > time.Second {
 		t.Errorf("expected Now to be close to current time, got %v, expected ~%v", now, expectedNow)
 	}
+}
+
+func TestCursorPersistenceDuringSync(t *testing.T) {
+	t.Parallel()
+
+	store, err := cache.Open("file::cursor_test?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("failed to open in-memory store: %v", err)
+	}
+	defer store.Close()
+
+	repo := "test/repo"
+	job, err := store.CreateSyncJob(repo)
+	if err != nil {
+		t.Fatalf("failed to create sync job: %v", err)
+	}
+
+	cursorUpdates := []string{"cursor-1", "cursor-2", "cursor-3"}
+	updateIndex := 0
+	mockMetadata := &mockMetadataSource{
+		onCursor: func(cursor string, processed int) {
+			if updateIndex < len(cursorUpdates) {
+				cursorUpdates[updateIndex] = cursor
+				updateIndex++
+			}
+		},
+	}
+
+	worker := Worker{
+		MirrorFactory: func(context.Context, string) (Mirror, error) {
+			return &fakeMirror{}, nil
+		},
+		Metadata:   mockMetadata,
+		CacheStore: store,
+		Now:        func() time.Time { return time.Now().UTC() },
+	}
+
+	runner := NewRunner(worker, dbJobRecorder{}, job.ID)
+
+	ctx := context.Background()
+	cursorsReceived := []string{}
+	_, err = runner.worker.SyncJob(ctx, repo, func(stage string, done, total int) {
+	}, func(cursor string, processed int) {
+		cursorsReceived = append(cursorsReceived, cursor)
+	})
+
+	if err != nil {
+		t.Fatalf("sync job failed: %v", err)
+	}
+
+	if len(cursorsReceived) == 0 {
+		t.Error("expected cursor updates to be received")
+	}
+}
+
+type mockMetadataSource struct {
+	onCursor func(cursor string, processed int)
+}
+
+func (m *mockMetadataSource) SyncRepo(ctx context.Context, repo string, progress func(done, total int), onCursor func(cursor string, processed int)) (MetadataSnapshot, error) {
+	if onCursor != nil {
+		onCursor("cursor-1", 10)
+		onCursor("cursor-2", 20)
+		onCursor("cursor-3", 30)
+	}
+	if m.onCursor != nil {
+		onCursor = m.onCursor
+	}
+	return MetadataSnapshot{
+		OpenPRs:   []int{1, 2, 3},
+		SyncedPRs: 3,
+	}, nil
 }

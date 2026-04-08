@@ -21,11 +21,14 @@ type MergedPR struct {
 }
 
 type SyncProgress struct {
-	Cursor            string
-	ProcessedPRs      int
-	TotalPRs          int
-	NextScheduledAt   time.Time
-	EstimatedRequests int
+	Cursor            string    `json:"cursor"`
+	ProcessedPRs      int       `json:"processed_prs"`
+	TotalPRs          int       `json:"total_prs"`
+	NextScheduledAt   time.Time `json:"next_scheduled_at"`
+	EstimatedRequests int       `json:"estimated_requests"`
+	ScheduledResumeAt time.Time `json:"scheduled_resume_at"`
+	PauseReason       string    `json:"pause_reason"`
+	LastBudgetCheck   time.Time `json:"last_budget_check"`
 }
 
 type SyncJobStatus string
@@ -46,6 +49,11 @@ type SyncJob struct {
 	Error      string
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+}
+
+// IsPaused returns true if the job status is paused.
+func (j SyncJob) IsPaused() bool {
+	return j.Status == SyncJobStatusPaused
 }
 
 type PRRecord = types.PR

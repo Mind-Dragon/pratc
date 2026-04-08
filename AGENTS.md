@@ -95,6 +95,7 @@ make docker-down   # docker-compose down --remove-orphans
 - Never commit GITHUB_PAT, OPENROUTER_API_KEY, or other secrets
 - Never leave `main` red; post-merge verification is mandatory
 - Never self-expand task scope without coordinator approval
+- Never use port 8080 for prATC — reserved port range is **7400–7500** (default: 7400)
 - v0.1 scope: no GitHub App/OAuth/webhooks, no ML feedback loops, no gRPC, no auto PR actions
 
 ## Go Conventions (All internal/ packages)
@@ -104,6 +105,7 @@ make docker-down   # docker-compose down --remove-orphans
 - Tests: table-driven with `t.Run` subtests, no testify/assert
 - `init()`: only in `cmd/pratc/` for cobra registration, never in `internal/`
 - Sorting: stable + deterministic (PR number tiebreaker everywhere)
+- Ports: default API port 7400, reserved range 7400–7500, never 8080
 
 ## Scope Guardrails
 Must have: rate-limit-aware GitHub client, pre-filter pipeline, dry-run default, audit logging.

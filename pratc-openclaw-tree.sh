@@ -5,14 +5,13 @@
 #
 # Usage: ./pratc-openclaw-tree.sh [target] [batch_size] [api_port]
 #
-# Defaults: target=20, batch_size=50, api_port=8080
-
+# Defaults: target=20, batch_size=50, api_port=7400
 set -euo pipefail
 
 REPO="${REPO:-openclaw/openclaw}"
 TARGET="${1:-20}"
 BATCH_SIZE="${2:-50}"
-API_PORT="${3:-8080}"
+API_PORT="${3:-7400}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$SCRIPT_DIR/bin/pratc"
@@ -307,7 +306,8 @@ echo ""
 
 # Step 3: Extract all PR numbers
 info "Step 3/5: Extracting PR numbers..."
-ALL_PRS=$(echo "$RESPONSE" | jq -r '[.. | select(.number?) | .number] | unique | sort' 2>/dev/null)
+# Keep as JSON array for subsequent jq operations (do NOT use -r flag)
+ALL_PRS=$(echo "$RESPONSE" | jq '[.. | select(.number?) | .number] | unique | sort' 2>/dev/null)
 PR_COUNT=$(echo "$ALL_PRS" | jq 'length')
 if [[ "$PR_COUNT" -eq 0 ]] || [[ -z "$ALL_PRS" ]]; then
   fail "Could not extract PR numbers from analyze response"
@@ -316,7 +316,7 @@ ok "Extracted $PR_COUNT unique PR numbers"
 log "TOTAL_PRS=$PR_COUNT"
 
 # Convert to comma-separated for omni API
-ALL_PRS_LIST=$(echo "$ALL_PRS" | jq -r '. | join(",")')
+ALL_PRS_LIST=$(echo "$ALL_PRS" | jq -r 'join(",")')
 echo "$ALL_PRS_LIST" > "$OUTPUT_DIR/all-prs.txt"
 echo "PR_COUNT=$PR_COUNT" > "$OUTPUT_DIR/pr-count.txt"
 echo ""
@@ -335,7 +335,7 @@ for START in $(seq 0 "$BATCH_SIZE" "$((PR_COUNT - 1))"); do
   if [[ $END -ge $PR_COUNT ]]; then END=$((PR_COUNT - 1)); fi
 
   # Get PR numbers for this batch (0-indexed positions)
-  BATCH_PRS=$(echo "$ALL_PRS" | jq -r ".[$START:$((END + 1))] | join(',')")
+  BATCH_PRS=$(echo "$ALL_PRS" | jq --argjson s "$START" --argjson e "$((END + 1))" -r '.[$s:$e] | join(" OR ")')
   BATCH_COUNT=$(echo "$BATCH_PRS" | tr ',' '\n' | wc -l)
 
   info "Batch $BATCH_NUM: positions $START-$END ($BATCH_COUNT PRs)"

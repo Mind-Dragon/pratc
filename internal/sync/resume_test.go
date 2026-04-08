@@ -1,11 +1,66 @@
 package sync
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
 )
+
+func TestWorkerResumeSyncJob(t *testing.T) {
+	store, err := cache.Open(":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory cache: %v", err)
+	}
+	defer store.Close()
+
+	repo := "test/repo"
+	job, err := store.CreateSyncJob(repo)
+	if err != nil {
+		t.Fatalf("failed to create sync job: %v", err)
+	}
+
+	pastTime := time.Now().UTC().Add(-10 * time.Minute)
+	if err := store.PauseSyncJob(job.ID, pastTime, "rate limit exceeded"); err != nil {
+		t.Fatalf("failed to pause sync job: %v", err)
+	}
+
+	worker := Worker{
+		CacheStore: store,
+		MirrorFactory: func(context.Context, string) (Mirror, error) {
+			return &fakeMirror{drift: map[int]string{}}, nil
+		},
+		Metadata: fakeMetadata{snapshot: MetadataSnapshot{
+			OpenPRs:       []int{1},
+			ClosedPRs:     nil,
+			RemotePRHeads: map[int]string{1: "abc"},
+			SyncedPRs:     1,
+		}},
+	}
+
+	result, err := worker.ResumeSyncJob(context.Background(), repo, nil, nil)
+	if err != nil {
+		t.Fatalf("expected resume sync job to succeed, got error: %v", err)
+	}
+	if result == nil || result.Repo != repo {
+		t.Fatalf("unexpected sync result: %+v", result)
+	}
+
+	resumedJob, err := store.GetSyncJob(job.ID)
+	if err != nil {
+		t.Fatalf("failed to get resumed sync job: %v", err)
+	}
+	if resumedJob.Status != cache.SyncJobStatusInProgress {
+		t.Fatalf("expected status %s, got %s", cache.SyncJobStatusInProgress, resumedJob.Status)
+	}
+	if resumedJob.Error != "" {
+		t.Fatalf("expected error cleared, got %q", resumedJob.Error)
+	}
+	if resumedJob.Progress.PauseReason != "" || !resumedJob.Progress.ScheduledResumeAt.IsZero() || !resumedJob.Progress.NextScheduledAt.IsZero() {
+		t.Fatalf("expected pause fields cleared, got %+v", resumedJob.Progress)
+	}
+}
 
 func TestResumeJob(t *testing.T) {
 	t.Run("resume of overdue paused job succeeds", func(t *testing.T) {

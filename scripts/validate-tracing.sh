@@ -56,7 +56,7 @@ UUID_REGEX='[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
 extract_request_id() {
     local line="$1"
     # Match "request_id":"UUID" pattern
-    echo "$line" | grep -o '"request_id":"'"$UUID_REGEX"'"' 2>/dev/null | sed 's/"request_id":"\(.*\)"/\1/' | head -1
+    echo "$line" | grep -oE '"request_id":"'"$UUID_REGEX"'"' 2>/dev/null | sed 's/"request_id":"\(.*\)"/\1/' | head -1
 }
 
 # Check if a string is a valid UUID v4
@@ -118,7 +118,7 @@ function validate_go_cli_tracing() {
     # Parse Go request IDs from output using grep
     # JSON log lines contain "request_id":"UUID" pattern
     local go_ids
-    go_ids=$(echo "$output" | grep -o '"request_id":"'"$UUID_REGEX"'"' 2>/dev/null | sed 's/"request_id":"\(.*\)"/\1/' || true)
+    go_ids=$(echo "$output" | grep -oE '"request_id":"'"$UUID_REGEX"'"' 2>/dev/null | sed 's/"request_id":"\(.*\)"/\1/' || true)
 
     # Convert to array
     while IFS= read -r id; do
@@ -136,7 +136,7 @@ function validate_go_cli_tracing() {
 
     # Show unique request IDs found
     local unique_go_ids
-    printf -v unique_go_ids '%s\n' "${GO_REQUEST_IDS[@]}" | sort -u
+    unique_go_ids=$(printf '%s\n' "${GO_REQUEST_IDS[@]}" | sort -u)
     log_info "Unique Go request IDs: $(echo "$unique_go_ids" | wc -l)"
 
     # Verify all Go request IDs are valid UUIDs

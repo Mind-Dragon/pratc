@@ -1,35 +1,23 @@
 {
-  "active_plan": "/home/agent/pratc/.sisyphus/plans/pdf-report-final-step.md",
-  "started_at": "2026-04-03T00:29:04.154Z",
+  "active_plan": "/home/agent/pratc/.sisyphus/plans/rate-limit-recovery-hardening.md",
+  "started_at": "2026-04-08T20:05:32.779Z",
   "session_ids": [
-    "ses_2af733aafffecEuuyvzogv76Sh",
-    "ses_2af3fb838ffeWBP8F2pSd99Tko",
-    "ses_2af3f7a2cffeLeVozvfmul6dNB",
-    "ses_2af3f1b52ffei6uys4RQYa6r3f",
-    "ses_2af39d7a5ffe2eUpmhYBqBltut",
-    "ses_2af3733bdffezMXpfdch8hn7qA",
-    "ses_2af334fbeffeU3Wo08C417YXGm",
-    "ses_2af295d3dffe3CiNDdixi4e0Au",
-    "ses_2af0cdb1affeA4pTuaHanEO0W9",
-    "ses_2af06b92effe9nUZMPtZCGXf7s",
-    "ses_2af03f3d6ffej5TML93lhQMN5D",
-    "ses_2aefa3d3bffeDt0WFAB4qO2vE5",
-    "ses_2aef638bdffeU6ipDGqYMkBZiR",
-    "ses_2aef69219ffeY5MEi10AiWEpz7",
-    "ses_2aef6091effeB7JGdR4M0TK8dY",
-    "ses_2aef5cf35ffeKFj1Jea370KOlk",
-    "ses_2ac9c5483ffe9QeHvslW0N7VIB",
-    "ses_2ac8ce993ffetCAEkEv31BAu84",
-    "ses_2ac803b25fferR7FkMPzeopFbG",
-    "ses_2ac7e9c42ffeGuXVXKk0RhzIcB",
-    "ses_2ac7376ecffe5qVJE9SNfhDnYO",
-    "ses_2ac443d64ffeaLpN78mYaQ2O0Z",
-    "ses_2ac25c5f0ffeLeTZ9KZGp3WLMh",
-    "ses_2ac217dc7ffeYJwvbb1Vkw9nBF",
-    "ses_2ac1667e1ffem7eMVQol2met5T",
-    "ses_2ac12f944ffeZ2PlTOjRy1meNY"
+    "ses_291c17c3affe8e4ugmsqViKHou"
   ],
-  "plan_name": "pdf-report-final-step",
+  "session_origins": {
+    "ses_291c17c3affe8e4ugmsqViKHou": "direct"
+  },
+  "plan_name": "rate-limit-recovery-hardening",
   "agent": "atlas",
-  "task_sessions": {}
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Confirm identifier contract and all affected call paths",
+      "session_id": "ses_29149bac8ffe2Hg54Qk1dtVZgt",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-08T20:11:07.186Z"
+    }
+  }
 }

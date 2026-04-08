@@ -45,10 +45,10 @@ func TestIntegration_FullPauseResumeCycle(t *testing.T) {
 			t.Fatalf("expected 1 paused job, got %d", len(pausedJobs))
 		}
 
-		// Create scheduler and run checkAndResume
+		// Create scheduler and run CheckAndResume
 		scheduler := NewScheduler(store)
-		if err := scheduler.checkAndResume(context.Background()); err != nil {
-			t.Fatalf("checkAndResume failed: %v", err)
+		if err := scheduler.CheckAndResume(context.Background()); err != nil {
+			t.Fatalf("CheckAndResume failed: %v", err)
 		}
 
 		// Verify job is no longer paused
@@ -91,10 +91,10 @@ func TestIntegration_FullPauseResumeCycle(t *testing.T) {
 			t.Fatalf("failed to pause sync job: %v", err)
 		}
 
-		// Create scheduler and run checkAndResume
+		// Create scheduler and run CheckAndResume
 		scheduler := NewScheduler(store)
-		if err := scheduler.checkAndResume(context.Background()); err != nil {
-			t.Fatalf("checkAndResume failed: %v", err)
+		if err := scheduler.CheckAndResume(context.Background()); err != nil {
+			t.Fatalf("CheckAndResume failed: %v", err)
 		}
 
 		// Verify job is still paused (not overdue)
@@ -148,15 +148,11 @@ func TestIntegration_GuardBlocksOnExhaustedBudget(t *testing.T) {
 		}
 
 		// Create BudgetManager with 0 remaining (exhausted budget)
-		budget := &ratelimit.BudgetManager{
-			Limit:       5000,
-			Remaining:   0,
-			ResetTime:   time.Now().Add(1 * time.Hour),
-			LastUpdated: time.Now(),
-		}
+		budget := ratelimit.NewBudgetManager()
+		budget.RecordResponse(0, time.Now().Add(1*time.Hour).Unix())
 
 		metrics := ratelimit.NewMetrics()
-		guard := NewRateLimitGuard(budget, metrics, store)
+		guard := NewRateLimitGuard(budget, metrics, store, "test/repo")
 
 		chunkSize, err := guard.CheckBudget("test/repo", 100)
 
@@ -226,15 +222,11 @@ func TestIntegration_GuardBlocksOnExhaustedBudget(t *testing.T) {
 		}
 
 		// Create BudgetManager with sufficient remaining budget
-		budget := &ratelimit.BudgetManager{
-			Limit:       5000,
-			Remaining:   500,
-			ResetTime:   time.Now().Add(1 * time.Hour),
-			LastUpdated: time.Now(),
-		}
+		budget := ratelimit.NewBudgetManager()
+		budget.RecordResponse(500, time.Now().Add(1*time.Hour).Unix())
 
 		metrics := ratelimit.NewMetrics()
-		guard := NewRateLimitGuard(budget, metrics, store)
+		guard := NewRateLimitGuard(budget, metrics, store, "test/repo")
 
 		chunkSize, err := guard.CheckBudget("test/repo", 100)
 
@@ -366,7 +358,7 @@ func TestIntegration_ChunkSizeCalculation(t *testing.T) {
 		// With reserve buffer of 200, available = 4800
 		// At 1 request per PR, chunk = min(totalPRs, 4800/1) = min(100, 4800) = 100
 
-		chunkSize := ratelimit.CalculateChunkSize(100, budget.Remaining, 200, ratelimit.WithRequestsPerPR(1))
+		chunkSize := ratelimit.CalculateChunkSize(100, budget.Remaining(), 200, ratelimit.WithRequestsPerPR(1))
 		if chunkSize != 100 {
 			t.Errorf("expected chunk size 100, got %d", chunkSize)
 		}
@@ -376,11 +368,11 @@ func TestIntegration_ChunkSizeCalculation(t *testing.T) {
 		t.Parallel()
 
 		budget := ratelimit.NewBudgetManager()
-		budget.Remaining = 250 // Below reserve buffer + some
+		budget.RecordResponse(250, time.Now().Add(1*time.Hour).Unix()) // Below reserve buffer + some
 
 		// With 250 remaining and 200 reserve, available = 50
 		// At 3 requests per PR (default), chunk = min(100, 50/3) = 16
-		chunkSize := ratelimit.CalculateChunkSize(100, budget.Remaining, 200, ratelimit.WithRequestsPerPR(3))
+		chunkSize := ratelimit.CalculateChunkSize(100, budget.Remaining(), 200, ratelimit.WithRequestsPerPR(3))
 		if chunkSize != 16 {
 			t.Errorf("expected chunk size 16, got %d", chunkSize)
 		}
@@ -390,9 +382,9 @@ func TestIntegration_ChunkSizeCalculation(t *testing.T) {
 		t.Parallel()
 
 		budget := ratelimit.NewBudgetManager()
-		budget.Remaining = 0
+		budget.RecordResponse(0, time.Now().Add(1*time.Hour).Unix())
 
-		chunkSize := ratelimit.CalculateChunkSize(100, budget.Remaining, 200, ratelimit.WithRequestsPerPR(1))
+		chunkSize := ratelimit.CalculateChunkSize(100, budget.Remaining(), 200, ratelimit.WithRequestsPerPR(1))
 		if chunkSize != 0 {
 			t.Errorf("expected chunk size 0 for exhausted budget, got %d", chunkSize)
 		}
@@ -405,7 +397,7 @@ func TestIntegration_ChunkSizeCalculation(t *testing.T) {
 		// Budget has plenty but totalPRs is smaller
 		// available = 5000 - 200 = 4800
 		// chunk = min(10, 4800/3) = min(10, 1600) = 10
-		chunkSize := ratelimit.CalculateChunkSize(10, budget.Remaining, 200, ratelimit.WithRequestsPerPR(3))
+		chunkSize := ratelimit.CalculateChunkSize(10, budget.Remaining(), 200, ratelimit.WithRequestsPerPR(3))
 		if chunkSize != 10 {
 			t.Errorf("expected chunk size 10 (limited by totalPRs), got %d", chunkSize)
 		}
@@ -425,7 +417,7 @@ func TestIntegration_ChunkSizeCalculation(t *testing.T) {
 		}
 
 		// Set below reserve
-		budget.Remaining = 150
+		budget.RecordResponse(150, time.Now().Add(1*time.Hour).Unix())
 		if budget.CanAfford(100) {
 			t.Error("expected CanAfford(100) to be false with 150 remaining (below 200 reserve)")
 		}
@@ -469,7 +461,7 @@ func TestIntegration_ChunkSizeCalculation(t *testing.T) {
 		// Budget with 5000 remaining
 		budget := ratelimit.NewBudgetManager()
 		metrics := ratelimit.NewMetrics()
-		guard := NewRateLimitGuard(&budget, metrics, store)
+		guard := NewRateLimitGuard(budget, metrics, store, "test/repo")
 
 		chunkSize, err := guard.CheckBudget("test/repo", 100)
 

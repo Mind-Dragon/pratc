@@ -1,0 +1,10 @@
+Github Pull Request Air Traffic Control v1.0.0 2026-04-03T00:32:43+02:00 by Jefferson Nunn
+Using Config from: settings=./pratc-settings.db (default) | cache=/home/agent/.pratc/pratc.db
+⚠️  No recent sync data found for openclaw/openclaw
+   Estimated GitHub API calls: ~20005 (based on 6646 open PRs)
+   Sync in progress — background sync job started.
+   Recommended workflow:
+   1) pratc sync --repo=openclaw/openclaw
+   2) pratc analyze --repo=openclaw/openclaw
+   Tip: use 'pratc sync --repo=openclaw/openclaw --watch' to monitor progress.
+

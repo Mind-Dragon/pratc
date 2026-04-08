@@ -955,6 +955,45 @@ interface OperationTelemetry {
 | `pratc sync --repo=X` | `POST /api/repos/X/sync` | Async trigger |
 | `pratc sync --repo=X --watch` | `GET /api/repos/X/sync/stream` | SSE stream |
 
+### CLI-Only Commands
+
+The following commands are available via CLI only and do not have corresponding API endpoints:
+
+#### `pratc report`
+
+Generate a PDF report from analysis artifacts.
+
+**Required Input Files:**
+The report command expects the following JSON files in the input directory (typically from previous analysis steps):
+- `step-2-analyze.json` - Analysis results from `pratc analyze`
+- `step-3-cluster.json` - Clustering results from `pratc cluster`
+- `step-4-graph.json` - Graph results from `pratc graph`
+- `step-5-plan.json` - Plan results from `pratc plan`
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--repo` | string | *(required)* | Repository in `owner/repo` format |
+| `--input-dir` | string | `.` | Directory containing analysis JSON files |
+| `--output` | string | `pratc-report.pdf` | Output file path for the generated PDF |
+| `--format` | string | `pdf` | Output format (currently only `pdf` supported) |
+
+**Usage Example:**
+
+```bash
+# Generate report from default input directory
+pratc report --repo=owner/repo
+
+# Generate report with custom input/output paths
+pratc report --repo=owner/repo --input-dir=./analysis-results --output=./reports/weekly.pdf
+```
+
+**Retry Behavior:**
+- The report command implements a retry mechanism with **3 attempts** on transient failures
+- Warnings are emitted on failure but do not block execution (warn-on-failure policy)
+- This ensures report generation is resilient to temporary I/O or rendering issues
+
 ---
 
 ## Performance SLOs

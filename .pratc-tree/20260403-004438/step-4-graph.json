@@ -1,0 +1,2391 @@
+{
+  "repo": "openclaw/openclaw",
+  "generatedAt": "2026-04-02T22:44:58Z",
+  "nodes": [
+    {
+      "pr_number": 4964,
+      "title": "fix: strip null-valued optional parameters from tool calls for provider compatibility",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 5649,
+      "title": "fix(security): harden file permissions and header merging",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 6457,
+      "title": "fix(telegram): register commands for group scope + preserve topic thread params",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 7113,
+      "title": "feat(providers): add CommonStack provider support",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 7295,
+      "title": "feat(provider) Add Key-less AI Integration via Puter",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 9905,
+      "title": "fix: require provider prefix for models set without alias (#5790)",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 10195,
+      "title": "docs: add Hostinger installation guide",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 10356,
+      "title": "TTS: add Typecast provider (emotion presets, audio tuning, Asian language voices)",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 10383,
+      "title": "feat(hooks): add agentId to hook mappings",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 10579,
+      "title": "feat(skills): auto-discover project-scoped skills from .claude/skills and .agents/skills",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 10836,
+      "title": "feat(session_status): include ISO-8601 and Unix timestamps for scheduling (fixes #10841)",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 11185,
+      "title": "fix #11150 - [Bug]: Exec tool schema host default ignores tools.exec.host config",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 11602,
+      "title": "fix(config): skip stale legacy config files when openclaw.json exists",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 12033,
+      "title": "feat(docker): add linux/riscv64 image to Docker release",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 12296,
+      "title": "security: persistence-only secret redaction for session transcripts",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 12581,
+      "title": "feat(hooks): emit session prune lifecycle event",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 12582,
+      "title": "feat(hooks): emit gateway shutdown lifecycle events",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 12584,
+      "title": "feat(hooks): wire outbound message lifecycle hooks",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 12975,
+      "title": "Config Builder: align with existing OpenClaw web UI stack",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 13246,
+      "title": "feat: inject agent/session context as environment variables in exec commands",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 13665,
+      "title": "feat(web-search): add SearXNG as a search provider",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 13686,
+      "title": "Add opt-in rate limiting and token-based budgets for external API calls (#13615)",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 13820,
+      "title": "feat(agents): retry empty-stream once before fallback",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 14308,
+      "title": "fix(sandbox): pass docker.env config to container creation",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 14432,
+      "title": "System prompt: add guidance for spawning background sub-agents",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 14544,
+      "title": "feat: add before_context_send plugin hook",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 15591,
+      "title": "Fix repo name and link. Still named clawdbot-formal-models.",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 15768,
+      "title": "feat(slack): Add queue position indicators for message queues",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 15841,
+      "title": "Add Silent Ingest for Group Chat Messages",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 15956,
+      "title": "feat(signal): enhanced inbound handling, unsend, polls, and poll voting",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 16019,
+      "title": "fix(plugins): add postinstall patch for ESM-only package exports",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 16028,
+      "title": "feat/before-tool-result",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 16085,
+      "title": "Signal: add REST API support for containerized deployments",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 16251,
+      "title": "docs: remove note about personal single-user access from trusted proxy auth guidance",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 16307,
+      "title": "fix: surface billing/auth FailoverErrors as user-friendly messages",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 16544,
+      "title": "refactor(test): structural MockFn for harness exports",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 16554,
+      "title": "fix(agent): prevent session deadlock on timeout during tool execution",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 16565,
+      "title": "feat(a2a): implement agent_call and debate_call tools with response routing",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 16779,
+      "title": "feat: add `openclaw sessions scrub` command and doctor check for secret leaks",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 16831,
+      "title": "feat(status): group cron sessions for readability",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 17098,
+      "title": "docs: add xCloud hosting guide",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 17529,
+      "title": "feat(cron): add preCheck gate to skip jobs when nothing changed",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 17636,
+      "title": "Build: add runtime-only build target",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 17684,
+      "title": "fix(skills): update notion skill for API 2025-09-03",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 17702,
+      "title": "feat: crash-loop detection and last-known-good config rollback",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 17749,
+      "title": "feat(agents): Adds RLM harness: infinite context window (for some tasks)",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 18196,
+      "title": "feat(security): add client-side skill security enforcement",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 18716,
+      "title": "msteams: fix DM image delivery + user target routing",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 18778,
+      "title": "Discord: Discord canvas!",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 18810,
+      "title": "feat(hooks): wire before_tool_call/after_tool_call with veto support",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 18823,
+      "title": "revert(browser): remove extraArgs config",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 18831,
+      "title": "feat(tui): add light theme support for light terminal backgrounds",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 18860,
+      "title": "feat(agents): expose tools and their schemas via new after_tools_resolved hook [AI-assisted]",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 18889,
+      "title": "feat(hooks): add agent and tool lifecycle boundaries",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 18915,
+      "title": "fix(telegram): pass video width/height to sendVideo to prevent portra…",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19042,
+      "title": "Security: add URL allowlist for web_search and web_fetch",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19073,
+      "title": "feat(voice-call): streaming TTS, barge-in, silence filler, hangup, and voice agent config",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 19199,
+      "title": "feat: add MegaNova AI as built-in provider",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19270,
+      "title": "fix: retry event-driven heartbeats blocked by requests-in-flight",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19307,
+      "title": "docs: add Google (Gemini) provider documentation",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 19311,
+      "title": "feat: add github-copilot gpt-5.3-codex with xhigh support (AI-assisted)",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 19325,
+      "title": "feat: support messages.mediaLocalRoots for custom media directories",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19328,
+      "title": "Fix: preserve modelOverride in agent handler (#5369)",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19362,
+      "title": "feat(discord): clean up sessions when channel is deleted",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19379,
+      "title": "feat: increase Brave search MAX_SEARCH_COUNT to 20 (AI-assisted)",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19401,
+      "title": "fix(ui): prevent precision loss when coercing large numeric strings in config form",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19449,
+      "title": "fix: preserve .env during package/plugin updates",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 19479,
+      "title": "fix(telegram): skip redundant final edit in partial streaming mode",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 19482,
+      "title": "fix(agents): only seed HEARTBEAT.md on brand-new workspaces",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19565,
+      "title": "feat: add agent lifecycle hook events (session, message, error)",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19644,
+      "title": "feat(docker): add init script support via /openclaw-init.d/",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 19665,
+      "title": "feat(telegram): native sendMessageDraft streaming (Bot API 9.3)",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19755,
+      "title": "fix(security): OC-32 enforce content size limit in agents.files.set to prevent disk exhaustion DoS",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19756,
+      "title": "fix(security): OC-101 refresh token rotation enforcement — Aether AI Agent",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19785,
+      "title": "fix(gateway): support query parameter tokens for webhooks",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 19818,
+      "title": "docs: add IC Sovereign Persistent Memory to community plugins",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 19823,
+      "title": "fix(browser): stability improvements for headless Chrome",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19841,
+      "title": "feat: add Amazon Bedrock as first-class onboarding provider",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19878,
+      "title": "fix: Handle compaction when fallback model has smaller context window",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 19882,
+      "title": "fix(discord): register select menu handlers (unique customId)",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 19917,
+      "title": "feat(discord): allow disabling intermediate status reactions",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19927,
+      "title": "fix(agents): replace hardcoded Anthropic model IDs with pattern matching",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 19932,
+      "title": "feat(agents): suppressPreToolText config + onBlockReply buffering",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 20058,
+      "title": "feat(voice-call): add Twilio non-US region support (region/edge config)",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 20067,
+      "title": "feat(plugins): add before_agent_reply hook (claiming pattern)",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 20112,
+      "title": "Update AGENTS.md - use adequate token for staying silent in group chats",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 20130,
+      "title": "docs: add awesome-openclaw-agents to Community section",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 20146,
+      "title": "fix(agents): use label and model in subagent completion announce",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 20149,
+      "title": "fix(memory): expose index concurrency as config option",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 20177,
+      "title": "fix(security): block command substitution in unquoted heredoc bodies",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 20183,
+      "title": "fix(memory): index reset session transcripts",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 20188,
+      "title": "fix: Update sessionFile path when rolling to new session in cron jobs",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 20241,
+      "title": "fix(memory-lancedb): consolidate preference keyword/category detection (EN+CS+CJK)",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 20319,
+      "title": "fix(whisper-skill): set execute bit on transcribe.sh (fixes #9303)",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 20347,
+      "title": "fix(webchat): resolve streaming scroll race condition",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 20405,
+      "title": "feat(ui): KaTeX math rendering, collapsible tool cards, image attach button \u0026 LaTeX→Unicode for channels",
+      "cluster_id": "",
+      "ci_status": "failure"
+    },
+    {
+      "pr_number": 20413,
+      "title": "docs: clarify slash command authorization model and ownerAllowFrom",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 20426,
+      "title": "feat: make llm_input/llm_output modifying hooks for middleware patterns",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 20428,
+      "title": "feat: capture Anthropic rate-limit response headers to disk",
+      "cluster_id": "",
+      "ci_status": "success"
+    },
+    {
+      "pr_number": 20431,
+      "title": "fix(sessions): add session contamination guards and self-leak lock detection",
+      "cluster_id": "",
+      "ci_status": "failure"
+    }
+  ],
+  "edges": [
+    {
+      "from_pr": 10195,
+      "to_pr": 4964,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 5649,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 6457,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 7113,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 7295,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 9905,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 10356,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 10383,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 10579,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 10836,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 11185,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 11602,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 12033,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 12296,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 12581,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 12582,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 12584,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 12975,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 13246,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 13665,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 13686,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 13820,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 14308,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 14432,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 14544,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 15591,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 15768,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 15841,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 15956,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 16019,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 16028,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 16085,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 16251,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 16307,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 16544,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 16554,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 16565,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 16779,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 16831,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 17098,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 17529,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 17636,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 17684,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 17702,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 17749,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 18196,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 18716,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 18778,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 18810,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 18823,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 18831,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 18860,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 18889,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 18915,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19042,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19073,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19199,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19270,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19307,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19311,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19325,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19328,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19362,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19379,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19401,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19449,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19479,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19482,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19565,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19644,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19665,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19755,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19756,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19785,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19818,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19823,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19841,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19878,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19882,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19917,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19927,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 19932,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20058,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20067,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20112,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20130,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20146,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20149,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20177,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20183,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20188,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20241,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20319,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20347,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20405,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20413,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20426,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20428,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 10195,
+      "to_pr": 20431,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 4964,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 5649,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 6457,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 7113,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 7295,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 9905,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 10195,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 10356,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 10383,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 10579,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 10836,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 11185,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 11602,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 12033,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 12296,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 12581,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 12582,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 12584,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 12975,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 13246,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 13665,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 13686,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 13820,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 14308,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 14432,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 14544,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 15591,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 15768,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 15841,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 15956,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 16019,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 16028,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 16085,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 16251,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 16307,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 16544,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 16554,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 16565,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 16779,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 16831,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 17098,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 17529,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 17636,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 17684,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 17702,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 17749,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 18196,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 18716,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 18778,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 18810,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 18823,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 18831,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 18860,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 18889,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 18915,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19042,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19073,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19199,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19270,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19307,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19311,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19325,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19328,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19362,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19379,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19401,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19449,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19479,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19482,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19565,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19644,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19665,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19755,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19756,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19818,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19823,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19841,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19878,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19882,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19917,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19927,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 19932,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20058,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20067,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20112,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20130,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20146,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20149,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20177,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20183,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20188,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20241,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20319,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20347,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20405,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20413,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20426,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20428,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19785,
+      "to_pr": 20431,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 4964,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 5649,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 6457,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 7113,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 7295,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 9905,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 10195,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 10356,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 10383,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 10579,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 10836,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 11185,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 11602,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 12033,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 12296,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 12581,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 12582,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 12584,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 12975,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 13246,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 13665,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 13686,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 13820,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 14308,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 14432,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 14544,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 15591,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 15768,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 15841,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 15956,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 16019,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 16028,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 16085,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 16251,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 16307,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 16544,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 16554,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 16565,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 16779,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 16831,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 17098,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 17529,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 17636,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 17684,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 17702,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 17749,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 18196,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 18716,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 18778,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 18810,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 18823,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 18831,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 18860,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 18889,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 18915,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19042,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19073,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19199,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19270,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19307,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19311,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19325,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19328,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19362,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19379,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19401,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19449,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19479,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19482,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19565,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19644,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19665,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19755,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19756,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19785,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19818,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19823,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19878,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19882,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19917,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19927,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 19932,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20058,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20067,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20112,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20130,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20146,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20149,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20177,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20183,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20188,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20241,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20319,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20347,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20405,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20413,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20426,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20428,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    },
+    {
+      "from_pr": 19841,
+      "to_pr": 20431,
+      "edge_type": "depends_on",
+      "reason": "base branch \"main\" depends on head branch \"main\""
+    }
+  ],
+  "dot": "digraph pratc {\n  rankdir=LR;\n  \"PR 4964\" [label=\"PR 4964: fix: strip null-valued optional parameters from tool calls for provider compatibility\"];\n  \"PR 5649\" [label=\"PR 5649: fix(security): harden file permissions and header merging\"];\n  \"PR 6457\" [label=\"PR 6457: fix(telegram): register commands for group scope + preserve topic thread params\"];\n  \"PR 7113\" [label=\"PR 7113: feat(providers): add CommonStack provider support\"];\n  \"PR 7295\" [label=\"PR 7295: feat(provider) Add Key-less AI Integration via Puter\"];\n  \"PR 9905\" [label=\"PR 9905: fix: require provider prefix for models set without alias (#5790)\"];\n  \"PR 10195\" [label=\"PR 10195: docs: add Hostinger installation guide\"];\n  \"PR 10356\" [label=\"PR 10356: TTS: add Typecast provider (emotion presets, audio tuning, Asian language voices)\"];\n  \"PR 10383\" [label=\"PR 10383: feat(hooks): add agentId to hook mappings\"];\n  \"PR 10579\" [label=\"PR 10579: feat(skills): auto-discover project-scoped skills from .claude/skills and .agents/skills\"];\n  \"PR 10836\" [label=\"PR 10836: feat(session_status): include ISO-8601 and Unix timestamps for scheduling (fixes #10841)\"];\n  \"PR 11185\" [label=\"PR 11185: fix #11150 - [Bug]: Exec tool schema host default ignores tools.exec.host config\"];\n  \"PR 11602\" [label=\"PR 11602: fix(config): skip stale legacy config files when openclaw.json exists\"];\n  \"PR 12033\" [label=\"PR 12033: feat(docker): add linux/riscv64 image to Docker release\"];\n  \"PR 12296\" [label=\"PR 12296: security: persistence-only secret redaction for session transcripts\"];\n  \"PR 12581\" [label=\"PR 12581: feat(hooks): emit session prune lifecycle event\"];\n  \"PR 12582\" [label=\"PR 12582: feat(hooks): emit gateway shutdown lifecycle events\"];\n  \"PR 12584\" [label=\"PR 12584: feat(hooks): wire outbound message lifecycle hooks\"];\n  \"PR 12975\" [label=\"PR 12975: Config Builder: align with existing OpenClaw web UI stack\"];\n  \"PR 13246\" [label=\"PR 13246: feat: inject agent/session context as environment variables in exec commands\"];\n  \"PR 13665\" [label=\"PR 13665: feat(web-search): add SearXNG as a search provider\"];\n  \"PR 13686\" [label=\"PR 13686: Add opt-in rate limiting and token-based budgets for external API calls (#13615)\"];\n  \"PR 13820\" [label=\"PR 13820: feat(agents): retry empty-stream once before fallback\"];\n  \"PR 14308\" [label=\"PR 14308: fix(sandbox): pass docker.env config to container creation\"];\n  \"PR 14432\" [label=\"PR 14432: System prompt: add guidance for spawning background sub-agents\"];\n  \"PR 14544\" [label=\"PR 14544: feat: add before_context_send plugin hook\"];\n  \"PR 15591\" [label=\"PR 15591: Fix repo name and link. Still named clawdbot-formal-models.\"];\n  \"PR 15768\" [label=\"PR 15768: feat(slack): Add queue position indicators for message queues\"];\n  \"PR 15841\" [label=\"PR 15841: Add Silent Ingest for Group Chat Messages\"];\n  \"PR 15956\" [label=\"PR 15956: feat(signal): enhanced inbound handling, unsend, polls, and poll voting\"];\n  \"PR 16019\" [label=\"PR 16019: fix(plugins): add postinstall patch for ESM-only package exports\"];\n  \"PR 16028\" [label=\"PR 16028: feat/before-tool-result\"];\n  \"PR 16085\" [label=\"PR 16085: Signal: add REST API support for containerized deployments\"];\n  \"PR 16251\" [label=\"PR 16251: docs: remove note about personal single-user access from trusted proxy auth guidance\"];\n  \"PR 16307\" [label=\"PR 16307: fix: surface billing/auth FailoverErrors as user-friendly messages\"];\n  \"PR 16544\" [label=\"PR 16544: refactor(test): structural MockFn for harness exports\"];\n  \"PR 16554\" [label=\"PR 16554: fix(agent): prevent session deadlock on timeout during tool execution\"];\n  \"PR 16565\" [label=\"PR 16565: feat(a2a): implement agent_call and debate_call tools with response routing\"];\n  \"PR 16779\" [label=\"PR 16779: feat: add `openclaw sessions scrub` command and doctor check for secret leaks\"];\n  \"PR 16831\" [label=\"PR 16831: feat(status): group cron sessions for readability\"];\n  \"PR 17098\" [label=\"PR 17098: docs: add xCloud hosting guide\"];\n  \"PR 17529\" [label=\"PR 17529: feat(cron): add preCheck gate to skip jobs when nothing changed\"];\n  \"PR 17636\" [label=\"PR 17636: Build: add runtime-only build target\"];\n  \"PR 17684\" [label=\"PR 17684: fix(skills): update notion skill for API 2025-09-03\"];\n  \"PR 17702\" [label=\"PR 17702: feat: crash-loop detection and last-known-good config rollback\"];\n  \"PR 17749\" [label=\"PR 17749: feat(agents): Adds RLM harness: infinite context window (for some tasks)\"];\n  \"PR 18196\" [label=\"PR 18196: feat(security): add client-side skill security enforcement\"];\n  \"PR 18716\" [label=\"PR 18716: msteams: fix DM image delivery + user target routing\"];\n  \"PR 18778\" [label=\"PR 18778: Discord: Discord canvas!\"];\n  \"PR 18810\" [label=\"PR 18810: feat(hooks): wire before_tool_call/after_tool_call with veto support\"];\n  \"PR 18823\" [label=\"PR 18823: revert(browser): remove extraArgs config\"];\n  \"PR 18831\" [label=\"PR 18831: feat(tui): add light theme support for light terminal backgrounds\"];\n  \"PR 18860\" [label=\"PR 18860: feat(agents): expose tools and their schemas via new after_tools_resolved hook [AI-assisted]\"];\n  \"PR 18889\" [label=\"PR 18889: feat(hooks): add agent and tool lifecycle boundaries\"];\n  \"PR 18915\" [label=\"PR 18915: fix(telegram): pass video width/height to sendVideo to prevent portra…\"];\n  \"PR 19042\" [label=\"PR 19042: Security: add URL allowlist for web_search and web_fetch\"];\n  \"PR 19073\" [label=\"PR 19073: feat(voice-call): streaming TTS, barge-in, silence filler, hangup, and voice agent config\"];\n  \"PR 19199\" [label=\"PR 19199: feat: add MegaNova AI as built-in provider\"];\n  \"PR 19270\" [label=\"PR 19270: fix: retry event-driven heartbeats blocked by requests-in-flight\"];\n  \"PR 19307\" [label=\"PR 19307: docs: add Google (Gemini) provider documentation\"];\n  \"PR 19311\" [label=\"PR 19311: feat: add github-copilot gpt-5.3-codex with xhigh support (AI-assisted)\"];\n  \"PR 19325\" [label=\"PR 19325: feat: support messages.mediaLocalRoots for custom media directories\"];\n  \"PR 19328\" [label=\"PR 19328: Fix: preserve modelOverride in agent handler (#5369)\"];\n  \"PR 19362\" [label=\"PR 19362: feat(discord): clean up sessions when channel is deleted\"];\n  \"PR 19379\" [label=\"PR 19379: feat: increase Brave search MAX_SEARCH_COUNT to 20 (AI-assisted)\"];\n  \"PR 19401\" [label=\"PR 19401: fix(ui): prevent precision loss when coercing large numeric strings in config form\"];\n  \"PR 19449\" [label=\"PR 19449: fix: preserve .env during package/plugin updates\"];\n  \"PR 19479\" [label=\"PR 19479: fix(telegram): skip redundant final edit in partial streaming mode\"];\n  \"PR 19482\" [label=\"PR 19482: fix(agents): only seed HEARTBEAT.md on brand-new workspaces\"];\n  \"PR 19565\" [label=\"PR 19565: feat: add agent lifecycle hook events (session, message, error)\"];\n  \"PR 19644\" [label=\"PR 19644: feat(docker): add init script support via /openclaw-init.d/\"];\n  \"PR 19665\" [label=\"PR 19665: feat(telegram): native sendMessageDraft streaming (Bot API 9.3)\"];\n  \"PR 19755\" [label=\"PR 19755: fix(security): OC-32 enforce content size limit in agents.files.set to prevent disk exhaustion DoS\"];\n  \"PR 19756\" [label=\"PR 19756: fix(security): OC-101 refresh token rotation enforcement — Aether AI Agent\"];\n  \"PR 19785\" [label=\"PR 19785: fix(gateway): support query parameter tokens for webhooks\"];\n  \"PR 19818\" [label=\"PR 19818: docs: add IC Sovereign Persistent Memory to community plugins\"];\n  \"PR 19823\" [label=\"PR 19823: fix(browser): stability improvements for headless Chrome\"];\n  \"PR 19841\" [label=\"PR 19841: feat: add Amazon Bedrock as first-class onboarding provider\"];\n  \"PR 19878\" [label=\"PR 19878: fix: Handle compaction when fallback model has smaller context window\"];\n  \"PR 19882\" [label=\"PR 19882: fix(discord): register select menu handlers (unique customId)\"];\n  \"PR 19917\" [label=\"PR 19917: feat(discord): allow disabling intermediate status reactions\"];\n  \"PR 19927\" [label=\"PR 19927: fix(agents): replace hardcoded Anthropic model IDs with pattern matching\"];\n  \"PR 19932\" [label=\"PR 19932: feat(agents): suppressPreToolText config + onBlockReply buffering\"];\n  \"PR 20058\" [label=\"PR 20058: feat(voice-call): add Twilio non-US region support (region/edge config)\"];\n  \"PR 20067\" [label=\"PR 20067: feat(plugins): add before_agent_reply hook (claiming pattern)\"];\n  \"PR 20112\" [label=\"PR 20112: Update AGENTS.md - use adequate token for staying silent in group chats\"];\n  \"PR 20130\" [label=\"PR 20130: docs: add awesome-openclaw-agents to Community section\"];\n  \"PR 20146\" [label=\"PR 20146: fix(agents): use label and model in subagent completion announce\"];\n  \"PR 20149\" [label=\"PR 20149: fix(memory): expose index concurrency as config option\"];\n  \"PR 20177\" [label=\"PR 20177: fix(security): block command substitution in unquoted heredoc bodies\"];\n  \"PR 20183\" [label=\"PR 20183: fix(memory): index reset session transcripts\"];\n  \"PR 20188\" [label=\"PR 20188: fix: Update sessionFile path when rolling to new session in cron jobs\"];\n  \"PR 20241\" [label=\"PR 20241: fix(memory-lancedb): consolidate preference keyword/category detection (EN+CS+CJK)\"];\n  \"PR 20319\" [label=\"PR 20319: fix(whisper-skill): set execute bit on transcribe.sh (fixes #9303)\"];\n  \"PR 20347\" [label=\"PR 20347: fix(webchat): resolve streaming scroll race condition\"];\n  \"PR 20405\" [label=\"PR 20405: feat(ui): KaTeX math rendering, collapsible tool cards, image attach button \u0026 LaTeX→Unicode for channels\"];\n  \"PR 20413\" [label=\"PR 20413: docs: clarify slash command authorization model and ownerAllowFrom\"];\n  \"PR 20426\" [label=\"PR 20426: feat: make llm_input/llm_output modifying hooks for middleware patterns\"];\n  \"PR 20428\" [label=\"PR 20428: feat: capture Anthropic rate-limit response headers to disk\"];\n  \"PR 20431\" [label=\"PR 20431: fix(sessions): add session contamination guards and self-leak lock detection\"];\n  \"PR 10195\" -\u003e \"PR 4964\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 5649\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 6457\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 7113\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 7295\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 9905\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 10356\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 10383\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 10579\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 10836\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 11185\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 11602\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 12033\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 12296\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 12581\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 12582\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 12584\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 12975\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 13246\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 13665\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 13686\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 13820\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 14308\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 14432\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 14544\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 15591\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 15768\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 15841\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 15956\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 16019\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 16028\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 16085\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 16251\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 16307\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 16544\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 16554\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 16565\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 16779\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 16831\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 17098\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 17529\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 17636\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 17684\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 17702\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 17749\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 18196\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 18716\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 18778\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 18810\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 18823\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 18831\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 18860\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 18889\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 18915\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19042\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19073\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19199\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19270\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19307\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19311\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19325\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19328\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19362\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19379\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19401\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19449\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19479\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19482\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19565\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19644\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19665\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19755\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19756\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19785\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19818\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19823\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19841\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19878\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19882\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19917\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19927\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 19932\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20058\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20067\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20112\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20130\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20146\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20149\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20177\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20183\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20188\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20241\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20319\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20347\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20405\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20413\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20426\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20428\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 10195\" -\u003e \"PR 20431\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 4964\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 5649\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 6457\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 7113\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 7295\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 9905\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 10195\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 10356\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 10383\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 10579\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 10836\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 11185\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 11602\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 12033\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 12296\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 12581\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 12582\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 12584\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 12975\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 13246\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 13665\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 13686\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 13820\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 14308\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 14432\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 14544\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 15591\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 15768\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 15841\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 15956\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 16019\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 16028\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 16085\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 16251\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 16307\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 16544\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 16554\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 16565\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 16779\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 16831\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 17098\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 17529\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 17636\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 17684\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 17702\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 17749\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 18196\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 18716\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 18778\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 18810\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 18823\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 18831\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 18860\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 18889\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 18915\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19042\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19073\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19199\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19270\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19307\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19311\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19325\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19328\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19362\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19379\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19401\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19449\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19479\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19482\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19565\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19644\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19665\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19755\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19756\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19818\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19823\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19841\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19878\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19882\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19917\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19927\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 19932\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20058\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20067\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20112\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20130\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20146\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20149\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20177\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20183\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20188\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20241\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20319\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20347\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20405\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20413\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20426\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20428\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19785\" -\u003e \"PR 20431\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 4964\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 5649\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 6457\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 7113\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 7295\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 9905\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 10195\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 10356\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 10383\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 10579\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 10836\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 11185\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 11602\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 12033\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 12296\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 12581\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 12582\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 12584\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 12975\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 13246\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 13665\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 13686\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 13820\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 14308\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 14432\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 14544\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 15591\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 15768\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 15841\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 15956\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 16019\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 16028\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 16085\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 16251\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 16307\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 16544\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 16554\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 16565\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 16779\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 16831\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 17098\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 17529\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 17636\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 17684\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 17702\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 17749\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 18196\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 18716\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 18778\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 18810\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 18823\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 18831\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 18860\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 18889\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 18915\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19042\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19073\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19199\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19270\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19307\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19311\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19325\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19328\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19362\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19379\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19401\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19449\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19479\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19482\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19565\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19644\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19665\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19755\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19756\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19785\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19818\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19823\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19878\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19882\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19917\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19927\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 19932\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20058\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20067\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20112\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20130\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20146\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20149\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20177\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20183\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20188\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20241\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20319\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20347\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20405\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20413\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20426\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20428\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n  \"PR 19841\" -\u003e \"PR 20431\" [label=\"depends_on\" color=\"black\" style=\"solid\"];\n}\n"
+}

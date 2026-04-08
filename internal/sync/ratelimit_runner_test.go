@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
+	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
 )
 
 type mockRunner struct {
@@ -21,6 +22,8 @@ func (m *mockRunner) Run(ctx context.Context, repo string, emit func(eventType s
 
 type mockBudgetChecker struct {
 	checkBudgetFunc func(repo string, estimatedRequests int) (int, error)
+	shouldPauseFunc func() bool
+	budgetFunc      func() *ratelimit.BudgetManager
 }
 
 func (m *mockBudgetChecker) CheckBudget(repo string, estimatedRequests int) (int, error) {
@@ -28,6 +31,20 @@ func (m *mockBudgetChecker) CheckBudget(repo string, estimatedRequests int) (int
 		return m.checkBudgetFunc(repo, estimatedRequests)
 	}
 	return estimatedRequests, nil
+}
+
+func (m *mockBudgetChecker) ShouldPause() bool {
+	if m.shouldPauseFunc != nil {
+		return m.shouldPauseFunc()
+	}
+	return false
+}
+
+func (m *mockBudgetChecker) Budget() *ratelimit.BudgetManager {
+	if m.budgetFunc != nil {
+		return m.budgetFunc()
+	}
+	return nil
 }
 
 func TestRateLimitRunner_Run_BudgetOK(t *testing.T) {
@@ -126,5 +143,48 @@ func TestRateLimitRunner_Run_PartialSync(t *testing.T) {
 	}
 	if !innerCalled {
 		t.Error("expected inner runner to be called")
+	}
+}
+
+func TestRateLimitRunner_Run_ChecksPauseBeforeBudgetEstimation(t *testing.T) {
+	store, err := cache.Open(":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory store: %v", err)
+	}
+	defer store.Close()
+
+	pauseChecked := false
+	innerCalled := false
+	innerRunner := &mockRunner{
+		runFunc: func(ctx context.Context, repo string, emit func(eventType string, payload map[string]any)) error {
+			innerCalled = true
+			return nil
+		},
+	}
+
+	guard := &mockBudgetChecker{
+		shouldPauseFunc: func() bool {
+			pauseChecked = true
+			return true
+		},
+		checkBudgetFunc: func(repo string, estimatedRequests int) (int, error) {
+			if !pauseChecked {
+				t.Fatalf("expected ShouldPause to run before CheckBudget")
+			}
+			return 0, errors.New("budget exhausted")
+		},
+	}
+
+	runner := NewRateLimitRunner(innerRunner, guard, store, "test/repo")
+
+	err = runner.Run(context.Background(), "test/repo", nil)
+	if err == nil {
+		t.Fatal("expected error when budget should pause, got nil")
+	}
+	if !pauseChecked {
+		t.Fatal("expected pause check to run")
+	}
+	if innerCalled {
+		t.Fatal("expected inner runner not to be called when paused")
 	}
 }

@@ -52,6 +52,7 @@ type PullRequestListOptions struct {
 	Cursor       string
 	UpdatedSince time.Time
 	Progress     func(processed int, total int)
+	OnCursor     func(cursor string, processed int)
 	Concurrency  int
 }
 
@@ -156,6 +157,9 @@ func (c *Client) FetchPullRequests(ctx context.Context, repo string, opts PullRe
 			break
 		}
 		cursor = *response.Data.Repository.PullRequests.PageInfo.EndCursor
+		if opts.OnCursor != nil {
+			opts.OnCursor(cursor, len(prs))
+		}
 	}
 
 	return prs, nil
