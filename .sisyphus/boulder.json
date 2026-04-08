@@ -1,23 +1,23 @@
 {
-  "active_plan": "/home/agent/pratc/.sisyphus/plans/rate-limit-recovery-hardening.md",
-  "started_at": "2026-04-08T20:05:32.779Z",
+  "active_plan": "/home/agent/pratc/.sisyphus/plans/pratc-dual-dashboard.md",
+  "started_at": "2026-04-08T22:10:17Z",
   "session_ids": [
     "ses_291c17c3affe8e4ugmsqViKHou"
   ],
+  "plan_name": "pratc-dual-dashboard",
+  "worktree_path": null,
   "session_origins": {
     "ses_291c17c3affe8e4ugmsqViKHou": "direct"
   },
-  "plan_name": "rate-limit-recovery-hardening",
-  "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "Confirm identifier contract and all affected call paths",
-      "session_id": "ses_29149bac8ffe2Hg54Qk1dtVZgt",
+      "task_title": "Create internal/monitor package structure",
+      "session_id": "ses_290d75f92ffeIX0MIspizZgc7q",
       "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-04-08T20:11:07.186Z"
+      "category": "quick",
+      "updated_at": "2026-04-08T22:14:10.201Z"
     }
   }
 }
