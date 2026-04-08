@@ -54,6 +54,15 @@
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
       "updated_at": "2026-04-08T23:16:39.039Z"
+    },
+    "todo:11": {
+      "task_key": "todo:11",
+      "task_label": "11",
+      "task_title": "Implement Debug console (TUI)",
+      "session_id": "ses_2909c1139ffelZB5P4i9ukM4YE",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-08T23:20:43.271Z"
     }
   }
 }
