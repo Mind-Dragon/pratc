@@ -90,6 +90,15 @@
       "agent": "Sisyphus-Junior",
       "category": "visual-engineering",
       "updated_at": "2026-04-08T23:37:41.410Z"
+    },
+    "todo:15": {
+      "task_key": "todo:15",
+      "task_label": "15",
+      "task_title": "Implement WebSocket/SSE client connection",
+      "session_id": "ses_2908855eeffeCyO75AXr3BlHYD",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-04-08T23:44:30.497Z"
     }
   }
 }
