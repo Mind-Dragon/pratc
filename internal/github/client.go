@@ -47,6 +47,11 @@ type Client struct {
 	budget              *ratelimit.BudgetManager
 }
 
+type RateLimitStatus struct {
+	Remaining int
+	ResetAt   time.Time
+}
+
 type PullRequestListOptions struct {
 	PerPage      int
 	Cursor       string
@@ -256,6 +261,16 @@ func (c *Client) FetchPullRequestCIStatus(ctx context.Context, repo string, numb
 	}
 
 	return response.Data.Repository.PullRequest.StatusCheckRollup.State, nil
+}
+
+func (c *Client) RateLimitStatus() (RateLimitStatus, error) {
+	if c.budget == nil {
+		return RateLimitStatus{}, fmt.Errorf("rate limit budget manager is required")
+	}
+	return RateLimitStatus{
+		Remaining: c.budget.Remaining(),
+		ResetAt:   c.budget.ResetAt(),
+	}, nil
 }
 
 type PRFilesResult struct {
