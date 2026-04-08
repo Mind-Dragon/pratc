@@ -27,6 +27,15 @@
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
       "updated_at": "2026-04-08T23:00:59.478Z"
+    },
+    "todo:8": {
+      "task_key": "todo:8",
+      "task_label": "8",
+      "task_title": "Implement Jobs panel (TUI)",
+      "session_id": "ses_290a6d9bdffesz1JDr7EF57ZIW",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-08T23:09:28.719Z"
     }
   }
 }
