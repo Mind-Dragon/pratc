@@ -7,7 +7,7 @@ import (
 
 func Render(m Model) string {
 	header := getHeader()
-	footer := getFooter()
+	footer := m.getFooter()
 
 	jobsPanel := renderJobsZone(m.JobsZone)
 	timelinePanel := renderTimelineZone(m.TimelineZone)
@@ -17,12 +17,40 @@ func Render(m Model) string {
 
 	consolePanel := renderConsoleZone(m.ConsoleZone)
 
-	return fmt.Sprintf("%s\n%s\n%s\n%s",
+	var helpOverlay string
+	if m.ShowHelp {
+		helpOverlay = renderHelpOverlay()
+	}
+
+	return fmt.Sprintf("%s\n%s\n%s\n%s%s",
 		header,
 		zones,
 		consolePanel,
 		footer,
+		helpOverlay,
 	)
+}
+
+func renderHelpOverlay() string {
+	border := "+" + strings.Repeat("-", 60) + "+"
+	content := "|" + padCenter("KEYBINDINGS", 60) + "|"
+
+	var sb strings.Builder
+	sb.WriteString("\n\n")
+	sb.WriteString(border)
+	sb.WriteString("\n")
+	sb.WriteString(content)
+	sb.WriteString("\n")
+	sb.WriteString(border)
+	sb.WriteString("\n")
+
+	lines := strings.Split(HelpText(), "\n")
+	for _, line := range lines {
+		sb.WriteString("|" + padCenter(line, 60) + "|\n")
+	}
+	sb.WriteString(border)
+
+	return sb.String()
 }
 
 func renderJobsZone(z JobsZone) string {

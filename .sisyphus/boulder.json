@@ -63,6 +63,15 @@
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
       "updated_at": "2026-04-08T23:20:43.271Z"
+    },
+    "todo:12": {
+      "task_key": "todo:12",
+      "task_label": "12",
+      "task_title": "Add keyboard controls (TUI)",
+      "session_id": "ses_2909890e1ffe47ckbZjjcFlhsb",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-08T23:24:34.724Z"
     }
   }
 }
