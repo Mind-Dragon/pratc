@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -203,12 +204,13 @@ func TestPauseBehaviorWhenBudgetExhausted(t *testing.T) {
 			}
 			defer store.Close()
 
-			// Create a sync job for the guard to interact with
+			// Create a sync job with realistic jobID != repo
 			now := time.Now().UTC()
+			jobID := "test/repo-" + strconv.FormatInt(now.UnixNano(), 10)
 			_, err = store.DB().Exec(`
 				INSERT INTO sync_jobs (id, repo, status, error_message, last_sync_at, created_at, updated_at)
 				VALUES (?, ?, ?, '', '', ?, ?)
-			`, "test/repo", "test/repo", "in_progress", now.Format(time.RFC3339), now.Format(time.RFC3339))
+			`, jobID, "test/repo", "in_progress", now.Format(time.RFC3339), now.Format(time.RFC3339))
 			if err != nil {
 				t.Fatalf("failed to create sync job: %v", err)
 			}
@@ -224,7 +226,7 @@ func TestPauseBehaviorWhenBudgetExhausted(t *testing.T) {
 					next_scheduled_at = excluded.next_scheduled_at,
 					estimated_requests = excluded.estimated_requests,
 					updated_at = excluded.updated_at
-			`, "test/repo", "test/repo", now.Format(time.RFC3339))
+			`, "test/repo", jobID, now.Format(time.RFC3339))
 			if err != nil {
 				t.Fatalf("failed to create sync progress: %v", err)
 			}
@@ -236,7 +238,7 @@ func TestPauseBehaviorWhenBudgetExhausted(t *testing.T) {
 			budget.RecordResponse(tt.remaining, time.Now().Add(1*time.Hour).Unix())
 
 			metrics := ratelimit.NewMetrics()
-			guard := sync.NewRateLimitGuard(budget, metrics, store, "test/repo")
+			guard := sync.NewRateLimitGuard(budget, metrics, store, jobID)
 
 			// Test ShouldPause
 			shouldPause := guard.ShouldPause()
@@ -245,7 +247,7 @@ func TestPauseBehaviorWhenBudgetExhausted(t *testing.T) {
 			}
 
 			// Test CheckBudget
-			chunkSize, err := guard.CheckBudget("test/repo", tt.estimatedRequest)
+			chunkSize, err := guard.CheckBudget(jobID, tt.estimatedRequest)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("CheckBudget() error = %v, wantErr %v", err, tt.wantErr)
 			}

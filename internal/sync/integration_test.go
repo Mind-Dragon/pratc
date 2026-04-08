@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -121,12 +122,13 @@ func TestIntegration_GuardBlocksOnExhaustedBudget(t *testing.T) {
 		}
 		defer store.Close()
 
-		// Create a sync job so the guard can pause it
+		// Create a sync job with realistic jobID != repo
 		now := time.Now().UTC()
+		jobID := "test/repo-" + strconv.FormatInt(now.UnixNano(), 10)
 		_, err = store.DB().Exec(`
 			INSERT INTO sync_jobs (id, repo, status, error_message, last_sync_at, created_at, updated_at)
 			VALUES (?, ?, ?, '', '', ?, ?)
-		`, "test/repo", "test/repo", "in_progress", now.Format(time.RFC3339), now.Format(time.RFC3339))
+		`, jobID, "test/repo", "in_progress", now.Format(time.RFC3339), now.Format(time.RFC3339))
 		if err != nil {
 			t.Fatalf("failed to create sync job: %v", err)
 		}
@@ -142,7 +144,7 @@ func TestIntegration_GuardBlocksOnExhaustedBudget(t *testing.T) {
 				next_scheduled_at = excluded.next_scheduled_at,
 				estimated_requests = excluded.estimated_requests,
 				updated_at = excluded.updated_at
-		`, "test/repo", "test/repo", now.Format(time.RFC3339))
+		`, "test/repo", jobID, now.Format(time.RFC3339))
 		if err != nil {
 			t.Fatalf("failed to create sync progress: %v", err)
 		}
@@ -152,9 +154,9 @@ func TestIntegration_GuardBlocksOnExhaustedBudget(t *testing.T) {
 		budget.RecordResponse(0, time.Now().Add(1*time.Hour).Unix())
 
 		metrics := ratelimit.NewMetrics()
-		guard := NewRateLimitGuard(budget, metrics, store, "test/repo")
+		guard := NewRateLimitGuard(budget, metrics, store, jobID)
 
-		chunkSize, err := guard.CheckBudget("test/repo", 100)
+		chunkSize, err := guard.CheckBudget(jobID, 100)
 
 		if err == nil {
 			t.Error("expected error when budget exhausted, got nil")
@@ -170,7 +172,7 @@ func TestIntegration_GuardBlocksOnExhaustedBudget(t *testing.T) {
 		}
 		found := false
 		for _, j := range pausedJobs {
-			if j.ID == "test/repo" {
+			if j.Repo == "test/repo" {
 				found = true
 				break
 			}
@@ -195,12 +197,13 @@ func TestIntegration_GuardBlocksOnExhaustedBudget(t *testing.T) {
 		}
 		defer store.Close()
 
-		// Create a sync job
+		// Create a sync job with realistic jobID != repo
 		now := time.Now().UTC()
+		jobID := "test/repo-" + strconv.FormatInt(now.UnixNano(), 10)
 		_, err = store.DB().Exec(`
 			INSERT INTO sync_jobs (id, repo, status, error_message, last_sync_at, created_at, updated_at)
 			VALUES (?, ?, ?, '', '', ?, ?)
-		`, "test/repo", "test/repo", "in_progress", now.Format(time.RFC3339), now.Format(time.RFC3339))
+		`, jobID, "test/repo", "in_progress", now.Format(time.RFC3339), now.Format(time.RFC3339))
 		if err != nil {
 			t.Fatalf("failed to create sync job: %v", err)
 		}
@@ -216,7 +219,7 @@ func TestIntegration_GuardBlocksOnExhaustedBudget(t *testing.T) {
 				next_scheduled_at = excluded.next_scheduled_at,
 				estimated_requests = excluded.estimated_requests,
 				updated_at = excluded.updated_at
-		`, "test/repo", "test/repo", now.Format(time.RFC3339))
+		`, "test/repo", jobID, now.Format(time.RFC3339))
 		if err != nil {
 			t.Fatalf("failed to create sync progress: %v", err)
 		}
@@ -226,9 +229,9 @@ func TestIntegration_GuardBlocksOnExhaustedBudget(t *testing.T) {
 		budget.RecordResponse(500, time.Now().Add(1*time.Hour).Unix())
 
 		metrics := ratelimit.NewMetrics()
-		guard := NewRateLimitGuard(budget, metrics, store, "test/repo")
+		guard := NewRateLimitGuard(budget, metrics, store, jobID)
 
-		chunkSize, err := guard.CheckBudget("test/repo", 100)
+		chunkSize, err := guard.CheckBudget(jobID, 100)
 
 		if err != nil {
 			t.Errorf("expected no error when budget sufficient, got: %v", err)
@@ -432,12 +435,13 @@ func TestIntegration_ChunkSizeCalculation(t *testing.T) {
 		}
 		defer store.Close()
 
-		// Create a sync job
+		// Create a sync job with realistic jobID != repo
 		now := time.Now().UTC()
+		jobID := "test/repo-" + strconv.FormatInt(now.UnixNano(), 10)
 		_, err = store.DB().Exec(`
 			INSERT INTO sync_jobs (id, repo, status, error_message, last_sync_at, created_at, updated_at)
 			VALUES (?, ?, ?, '', '', ?, ?)
-		`, "test/repo", "test/repo", "in_progress", now.Format(time.RFC3339), now.Format(time.RFC3339))
+		`, jobID, "test/repo", "in_progress", now.Format(time.RFC3339), now.Format(time.RFC3339))
 		if err != nil {
 			t.Fatalf("failed to create sync job: %v", err)
 		}
@@ -453,7 +457,7 @@ func TestIntegration_ChunkSizeCalculation(t *testing.T) {
 				next_scheduled_at = excluded.next_scheduled_at,
 				estimated_requests = excluded.estimated_requests,
 				updated_at = excluded.updated_at
-		`, "test/repo", "test/repo", now.Format(time.RFC3339))
+		`, "test/repo", jobID, now.Format(time.RFC3339))
 		if err != nil {
 			t.Fatalf("failed to create sync progress: %v", err)
 		}
@@ -461,9 +465,9 @@ func TestIntegration_ChunkSizeCalculation(t *testing.T) {
 		// Budget with 5000 remaining
 		budget := ratelimit.NewBudgetManager()
 		metrics := ratelimit.NewMetrics()
-		guard := NewRateLimitGuard(budget, metrics, store, "test/repo")
+		guard := NewRateLimitGuard(budget, metrics, store, jobID)
 
-		chunkSize, err := guard.CheckBudget("test/repo", 100)
+		chunkSize, err := guard.CheckBudget(jobID, 100)
 
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
