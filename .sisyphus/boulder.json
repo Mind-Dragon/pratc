@@ -72,6 +72,15 @@
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
       "updated_at": "2026-04-08T23:24:34.724Z"
+    },
+    "todo:13": {
+      "task_key": "todo:13",
+      "task_label": "13",
+      "task_title": "Create header with budget/timer/status",
+      "session_id": "ses_29094f871ffe6V61YptR6GkRch",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-08T23:27:04.082Z"
     }
   }
 }

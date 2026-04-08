@@ -6,7 +6,7 @@ import (
 )
 
 func Render(m Model) string {
-	header := getHeader()
+	header := m.getHeader()
 	footer := m.getFooter()
 
 	jobsPanel := renderJobsZone(m.JobsZone)

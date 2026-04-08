@@ -8,17 +8,21 @@ import (
 )
 
 type Model struct {
-	JobsZone      JobsZone
-	TimelineZone  TimelineZone
-	RateLimitZone RateLimitZone
-	ConsoleZone   ConsoleZone
-	width         int
-	height        int
-	ActiveZone    Zone
-	ShowHelp      bool
-	IsPaused      bool
-	IsRestarting  bool
-	IsViewingJob  bool
+	JobsZone        JobsZone
+	TimelineZone    TimelineZone
+	RateLimitZone   RateLimitZone
+	ConsoleZone     ConsoleZone
+	width           int
+	height          int
+	ActiveZone      Zone
+	ShowHelp        bool
+	IsPaused        bool
+	IsRestarting    bool
+	IsViewingJob    bool
+	BudgetRemaining int
+	BudgetTotal     int
+	ResetInMinutes  int
+	GitHubOK        bool
 }
 
 type JobsZone struct {
@@ -57,18 +61,30 @@ func New() Model {
 			Placeholder:  "[INFO] Monitor initialized",
 			scrollOffset: 0,
 		},
-		ActiveZone: ZoneJobs,
+		ActiveZone:      ZoneJobs,
+		BudgetRemaining: 4200,
+		BudgetTotal:     5000,
+		ResetInMinutes:  43,
+		GitHubOK:        true,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
 }
+
+type tickMsg time.Time
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return m.HandleKey(msg)
+	case tickMsg:
+		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			return tickMsg(t)
+		})
 	}
 	return m, nil
 }
@@ -77,9 +93,22 @@ func (m Model) View() string {
 	return Render(m)
 }
 
-func getHeader() string {
+func (m Model) getHeader() string {
 	now := time.Now().UTC()
-	return fmt.Sprintf("prATC MONITOR [🟢 LIVE] UTC: %s", now.Format("15:04:05"))
+	githubIndicator := "✅"
+	if !m.GitHubOK {
+		githubIndicator = "⚠️"
+	}
+	return fmt.Sprintf("prATC MONITOR [🟢 LIVE] UTC: %s | Budget: %s | Resets: %dm | GitHub: %s",
+		now.Format("15:04:05"),
+		formatBudget(m.BudgetRemaining, m.BudgetTotal),
+		m.ResetInMinutes,
+		githubIndicator,
+	)
+}
+
+func formatBudget(remaining, total int) string {
+	return fmt.Sprintf("%d/%d", remaining, total)
 }
 
 func (m Model) getFooter() string {
