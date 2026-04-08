@@ -81,6 +81,15 @@
       "agent": "Sisyphus-Junior",
       "category": "quick",
       "updated_at": "2026-04-08T23:27:04.082Z"
+    },
+    "todo:14": {
+      "task_key": "todo:14",
+      "task_label": "14",
+      "task_title": "Create /monitor Next.js page route",
+      "session_id": "ses_290928112ffeYY2pUlbxAs0382",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-04-08T23:37:41.410Z"
     }
   }
 }

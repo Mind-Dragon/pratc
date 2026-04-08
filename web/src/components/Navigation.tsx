@@ -1,16 +1,19 @@
+"use client";
+
 import React from "react";
 import Link from "next/link";
-import { useRouter } from "next/router";
+import { usePathname } from "next/navigation";
 
 const navItems = [
   { href: "/", label: "Dashboard" },
   { href: "/inbox", label: "Inbox" },
   { href: "/graph", label: "Graph" },
-  { href: "/plan", label: "Plan" }
+  { href: "/plan", label: "Plan" },
+  { href: "/monitor", label: "Monitor" }
 ];
 
 export default function Navigation() {
-  const router = useRouter();
+  const pathname = usePathname();
 
   return (
     <nav className="sidebar" aria-label="Primary">
@@ -20,7 +23,7 @@ export default function Navigation() {
       </div>
       <ul>
         {navItems.map((item) => {
-          const isActive = router.pathname === item.href;
+          const isActive = pathname === item.href;
 
           return (
             <li key={item.href}>
