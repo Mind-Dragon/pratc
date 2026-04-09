@@ -199,7 +199,11 @@ type AnalysisResponse struct {
 	Conflicts               []ConflictPair      `json:"conflicts"`
 	StalenessSignals        []StalenessReport   `json:"stalenessSignals"`
 	Telemetry               *OperationTelemetry `json:"telemetry,omitempty"`
-	ReviewPayload           *ReviewResponse     `json:"review_payload,omitempty"`
+	// ReviewPayload contains agentic review results when review mode is enabled.
+	// This field is optional and omitted when nil to maintain backward compatibility.
+	// Review features are opt-in via feature flag or configuration.
+	// When disabled (nil), existing API responses continue to work without review data.
+	ReviewPayload *ReviewResponse `json:"review_payload,omitempty"`
 }
 
 type GraphResponse struct {

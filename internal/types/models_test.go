@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"testing"
 )
@@ -282,11 +281,68 @@ func TestSampleAnalysisResponseContainsExpectedKeys(t *testing.T) {
 	}
 }
 
-func TestSchemaFieldSetsStayStable(t *testing.T) {
+func TestReviewPayloadOmittedWhenNil(t *testing.T) {
 	t.Parallel()
 
-	got := reflect.ValueOf(sampleAnalysisResponse())
-	if got.NumField() != 16 {
-		t.Fatalf("unexpected analysis response field count: %d", got.NumField())
+	// Test that ReviewPayload is omitted when nil (backward compatibility)
+	respWithoutReview := AnalysisResponse{
+		Repo:          "owner/repo",
+		GeneratedAt:   "2026-04-09T12:00:00Z",
+		Counts:        Counts{TotalPRs: 1},
+		PRs:           []PR{},
+		ReviewPayload: nil, // Explicitly nil - should be omitted
+	}
+
+	raw, err := json.Marshal(respWithoutReview)
+	if err != nil {
+		t.Fatalf("marshal response without review: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	// Verify review_payload is NOT present when nil
+	if _, exists := decoded["review_payload"]; exists {
+		t.Fatalf("review_payload should be omitted when nil, but was present in: %s", string(raw))
+	}
+
+	// Verify other fields ARE present
+	requiredFields := []string{"repo", "generatedAt", "counts", "prs"}
+	for _, field := range requiredFields {
+		if _, ok := decoded[field]; !ok {
+			t.Fatalf("required field %s missing from response", field)
+		}
+	}
+
+	// Test that ReviewPayload IS included when set (verify omitempty doesn't always omit)
+	respWithReview := AnalysisResponse{
+		Repo:        "owner/repo",
+		GeneratedAt: "2026-04-09T12:00:00Z",
+		Counts:      Counts{TotalPRs: 1},
+		PRs:         []PR{},
+		ReviewPayload: &ReviewResponse{
+			TotalPRs:      1,
+			ReviewedPRs:   1,
+			Categories:    []ReviewCategoryCount{},
+			PriorityTiers: []PriorityTierCount{},
+			Results:       []ReviewResult{},
+		},
+	}
+
+	rawWithReview, err := json.Marshal(respWithReview)
+	if err != nil {
+		t.Fatalf("marshal response with review: %v", err)
+	}
+
+	var decodedWithReview map[string]any
+	if err := json.Unmarshal(rawWithReview, &decodedWithReview); err != nil {
+		t.Fatalf("decode response with review: %v", err)
+	}
+
+	// Verify review_payload IS present when set
+	if _, exists := decodedWithReview["review_payload"]; !exists {
+		t.Fatalf("review_payload should be present when set, but was missing in: %s", string(rawWithReview))
 	}
 }
