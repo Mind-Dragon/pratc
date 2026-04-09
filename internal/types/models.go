@@ -296,3 +296,32 @@ const (
 	// (e.g., conflicts, failing CI, requires rebase).
 	PriorityTierBlocked PriorityTier = "blocked"
 )
+
+// AnalyzerFinding represents a single finding from an analyzer in the agentic review system.
+// It captures the analyzer's output with version information for traceability.
+type AnalyzerFinding struct {
+	// AnalyzerName is the unique identifier for the analyzer that produced this finding.
+	AnalyzerName string `json:"analyzer_name"`
+	// AnalyzerVersion is the semantic version of the analyzer for reproducibility.
+	AnalyzerVersion string `json:"analyzer_version"`
+	// Finding is the human-readable description of what the analyzer discovered.
+	Finding string `json:"finding"`
+	// Confidence is the analyzer's confidence in this finding, ranging from 0.0 to 1.0.
+	Confidence float64 `json:"confidence"`
+}
+
+// ReviewResult represents the outcome of an agentic PR review.
+// It aggregates findings from multiple analyzers to produce a final classification
+// and priority recommendation for the PR.
+type ReviewResult struct {
+	// Category classifies the PR based on its readiness for merge and potential issues.
+	Category ReviewCategory `json:"category"`
+	// PriorityTier indicates the urgency level for reviewing and merging this PR.
+	PriorityTier PriorityTier `json:"priority_tier"`
+	// Confidence is the overall confidence in this review result, ranging from 0.0 to 1.0.
+	Confidence float64 `json:"confidence"`
+	// Reasons is a list of reason codes explaining why this classification was assigned.
+	Reasons []string `json:"reasons"`
+	// AnalyzerFindings contains detailed output from each analyzer that contributed to this result.
+	AnalyzerFindings []AnalyzerFinding `json:"analyzer_findings"`
+}
