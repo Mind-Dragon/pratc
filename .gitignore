@@ -12,7 +12,15 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+.envrc
+.direnv/
 *.local
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.der
 
 # Logs / temp
 *.log
@@ -45,6 +53,7 @@ node_modules/
 coverage/
 playwright-report/
 test-results/
+*.tsbuildinfo
 
 # Build artifacts
 build/
@@ -52,6 +61,7 @@ out/
 *.sqlite
 *.sqlite3
 *.db
+/--viewport
 
 # Fixtures cache/metadata (not committed)
 fixtures/cache/
