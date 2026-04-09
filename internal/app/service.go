@@ -19,6 +19,7 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/ml"
 	"github.com/jeffersonnunn/pratc/internal/planning"
 	"github.com/jeffersonnunn/pratc/internal/repo"
+	"github.com/jeffersonnunn/pratc/internal/review"
 	"github.com/jeffersonnunn/pratc/internal/settings"
 	"github.com/jeffersonnunn/pratc/internal/testutil"
 	"github.com/jeffersonnunn/pratc/internal/types"
@@ -292,7 +293,11 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 	}
 
 	dupStart := time.Now()
-	duplicates, overlaps := classifyDuplicates(prs)
+	var mergedPRs []review.MergedPRRecord
+	if s.cacheStore != nil {
+		mergedPRs, _ = review.FetchMergedPRs(ctx, s.cacheStore, repoName)
+	}
+	duplicates, overlaps := classifyDuplicates(prs, mergedPRs)
 	telemetry.StageLatenciesMS["duplicates_ms"] = int(time.Since(dupStart).Milliseconds())
 
 	// Attempt ML-backed duplicate detection via Voyage if configured.
@@ -960,10 +965,11 @@ func clusterKey(pr types.PR) string {
 	return strings.Join(parts, " ")
 }
 
-func classifyDuplicates(prs []types.PR) ([]types.DuplicateGroup, []types.DuplicateGroup) {
+func classifyDuplicates(prs []types.PR, mergedPRs []review.MergedPRRecord) ([]types.DuplicateGroup, []types.DuplicateGroup) {
 	duplicatesByCanonical := make(map[int]*types.DuplicateGroup)
 	overlapsByCanonical := make(map[int]*types.DuplicateGroup)
 
+	// Compare open PRs against each other
 	for i := 0; i < len(prs); i++ {
 		for j := i + 1; j < len(prs); j++ {
 			score := similarity(prs[i], prs[j])
@@ -988,6 +994,38 @@ func classifyDuplicates(prs []types.PR) ([]types.DuplicateGroup, []types.Duplica
 			group := overlapsByCanonical[canonical]
 			if group == nil {
 				group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity in overlap range"}
+				overlapsByCanonical[canonical] = group
+			}
+			group.Similarity = maxFloat(group.Similarity, score)
+			group.DuplicatePRNums = appendUniqueInt(group.DuplicatePRNums, other)
+		}
+	}
+
+	// Compare open PRs against merged PR history
+	for i := 0; i < len(prs); i++ {
+		for _, merged := range mergedPRs {
+			score := similarityWithMerged(prs[i], merged)
+			if score < overlapThreshold {
+				continue
+			}
+
+			canonical := prs[i].Number
+			other := -merged.PRNumber
+
+			if score > duplicateThreshold {
+				group := duplicatesByCanonical[canonical]
+				if group == nil {
+					group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity above duplicate threshold (compared against merged history)"}
+					duplicatesByCanonical[canonical] = group
+				}
+				group.Similarity = maxFloat(group.Similarity, score)
+				group.DuplicatePRNums = appendUniqueInt(group.DuplicatePRNums, other)
+				continue
+			}
+
+			group := overlapsByCanonical[canonical]
+			if group == nil {
+				group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity in overlap range (compared against merged history)"}
 				overlapsByCanonical[canonical] = group
 			}
 			group.Similarity = maxFloat(group.Similarity, score)
@@ -1274,6 +1312,17 @@ func similarity(left, right types.PR) float64 {
 	bodyScore := jaccard(tokenize(left.Body), tokenize(right.Body))
 	fileScore := jaccard(left.FilesChanged, right.FilesChanged)
 	if len(left.FilesChanged) == 0 && len(right.FilesChanged) == 0 {
+		fileScore = 0.5
+	}
+
+	return round((0.6*titleScore)+(0.3*fileScore)+(0.1*bodyScore), 4)
+}
+
+func similarityWithMerged(pr types.PR, merged review.MergedPRRecord) float64 {
+	titleScore := jaccard(tokenize(pr.Title), tokenize(merged.Title))
+	bodyScore := jaccard(tokenize(pr.Body), tokenize(merged.Body))
+	fileScore := jaccard(pr.FilesChanged, merged.FilesChanged)
+	if len(pr.FilesChanged) == 0 && len(merged.FilesChanged) == 0 {
 		fileScore = 0.5
 	}
 
