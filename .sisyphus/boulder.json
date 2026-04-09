@@ -207,6 +207,15 @@
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
       "updated_at": "2026-04-09T01:17:53.506Z"
+    },
+    "todo:29": {
+      "task_key": "todo:29",
+      "task_label": "29",
+      "task_title": "Web dashboard E2E tests",
+      "session_id": "ses_2902be819ffeKQJiXWGe1MI4BO",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-09T01:33:26.041Z"
     }
   }
 }
