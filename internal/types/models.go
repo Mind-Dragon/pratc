@@ -265,3 +265,18 @@ type AuditResponse struct {
 	Entries     []AuditEntryResponse `json:"entries"`
 	Count       int                  `json:"count"`
 }
+
+// ReviewCategory represents the classification of a PR review for agentic review systems.
+// It categorizes PRs based on their readiness for merge and potential issues.
+type ReviewCategory string
+
+const (
+	// ReviewCategoryMergeSafe indicates the PR is safe to merge with minimal review.
+	ReviewCategoryMergeSafe ReviewCategory = "merge_safe"
+	// ReviewCategoryDuplicate indicates the PR is a duplicate of another PR.
+	ReviewCategoryDuplicate ReviewCategory = "duplicate"
+	// ReviewCategoryProblematic indicates the PR has issues that need attention.
+	ReviewCategoryProblematic ReviewCategory = "problematic"
+	// ReviewCategoryNeedsReview indicates the PR requires standard human review.
+	ReviewCategoryNeedsReview ReviewCategory = "needs_review"
+)
