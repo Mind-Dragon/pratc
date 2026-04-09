@@ -1,8 +1,11 @@
 package review
 
 import (
+	"context"
 	"strings"
 	"time"
+
+	"github.com/jeffersonnunn/pratc/internal/cache"
 )
 
 // MergedPRRecord represents a normalized merged PR for comparison with open PRs.
@@ -115,4 +118,26 @@ func MergedPRRecordFromCache(repo string, number int, mergedAt time.Time, files 
 		MergedAt:     mergedAt,
 		Repo:         repo,
 	}
+}
+
+// FetchMergedPRs queries the merged_pr_index table from the SQLite cache and
+// returns a slice of MergedPRRecord structs. If no merged PRs are found, an
+// empty slice is returned without error.
+func FetchMergedPRs(ctx context.Context, store *cache.Store, repo string) ([]MergedPRRecord, error) {
+	mergedPRs, err := store.ListMergedPRs(repo)
+	if err != nil {
+		return nil, err
+	}
+
+	records := make([]MergedPRRecord, 0, len(mergedPRs))
+	for _, pr := range mergedPRs {
+		records = append(records, MergedPRRecordFromCache(
+			pr.Repo,
+			pr.Number,
+			pr.MergedAt,
+			pr.FilesTouched,
+		))
+	}
+
+	return records, nil
 }
