@@ -3,6 +3,7 @@ package review
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"time"
 
@@ -226,51 +227,133 @@ func (o *Orchestrator) SettingsStore() *settings.Store {
 //   - Analyzers: Invoke registered analyzers to produce findings
 //   - Aggregate: Combine analyzer results into a final ReviewResult
 //
-// This method is a skeleton implementation that returns a placeholder result.
-// Full implementation is deferred to Wave 5 (Deterministic review engine) and
-// Wave 6 (Analyzer plugins).
+// Timeout Behavior:
+//   - Each analyzer invocation is wrapped with a timeout context
+//   - Default timeout is 30 seconds (DefaultAnalyzerTimeout)
+//   - Timeout can be configured via AnalyzerConfig.Timeout
+//   - If an analyzer times out, it is skipped with a warning logged
+//   - Other analyzers continue execution
+//   - Partial results are returned if any analyzers succeed
 //
-// TODO(agentic-pr-review): Implement full pipeline
-//   - Wave 5: Deterministic classification (draft detection, conflict check, CI status)
-//   - Wave 6: Analyzer plugin invocation with timeout and error handling
-//   - Wave 6: Result aggregation from multiple analyzers
+// Deterministic Invocation Order:
+//   - Analyzers are invoked in sorted order by name to ensure reproducibility
+//   - This guarantees consistent results across multiple runs
 func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResult, error) {
 	startedAt := time.Now()
 
-	// TODO(agentic-pr-review): Implement full Review pipeline
-	//
-	// Pipeline stages:
-	// 1. Load PRs - PR data already provided in prData parameter
-	// 2. Deterministic - Apply stateless classification rules
-	//    - Draft detection (is_draft flag)
-	//    - Conflict detection (from ConflictPairs)
-	//    - Staleness classification (from Staleness report)
-	// 3. Analyzers - Invoke each registered analyzer
-	//    - Run Analyze() on each analyzer with timeout
-	//    - Handle analyzer errors gracefully (partial results)
-	// 4. Aggregate - Combine results into final ReviewResult
-	//    - Merge AnalyzerFindings from all analyzers
-	//    - Determine overall Category and PriorityTier
-	//    - Calculate aggregate Confidence
-
-	// Placeholder result - returns a minimal valid result indicating
-	// review has been processed but not fully implemented
-	placeholderResult := types.ReviewResult{
-		Category:         types.ReviewCategoryNeedsReview,
-		PriorityTier:     types.PriorityTierReviewRequired,
-		Confidence:       0.0,
-		Reasons:          []string{"placeholder"},
-		AnalyzerFindings: []types.AnalyzerFinding{},
+	// Determine timeout - use config or default
+	timeout := o.config.Timeout
+	if timeout <= 0 {
+		timeout = DefaultAnalyzerTimeout
 	}
 
+	// Clamp timeout to min/max bounds to prevent runaway analysis
+	if timeout < MinAnalyzerTimeout {
+		timeout = MinAnalyzerTimeout
+	}
+	if timeout > MaxAnalyzerTimeout {
+		timeout = MaxAnalyzerTimeout
+	}
+
+	// Get enabled analyzers
+	analyzers := o.analyzers
+	if len(analyzers) == 0 {
+		// No analyzers registered - return empty result
+		placeholderResult := types.ReviewResult{
+			Category:         types.ReviewCategoryNeedsReview,
+			PriorityTier:     types.PriorityTierReviewRequired,
+			Confidence:       0.0,
+			Reasons:          []string{"no analyzers registered"},
+			AnalyzerFindings: []types.AnalyzerFinding{},
+		}
+		return AnalyzerResult{
+			Result:           placeholderResult,
+			AnalyzerName:     "orchestrator",
+			AnalyzerVersion:  "0.1.0",
+			ProcessingTimeMs: time.Since(startedAt).Milliseconds(),
+			Error:            nil,
+			IsPartial:        false,
+			SkippedReasons:   []string{"no analyzers registered"},
+			StartedAt:        startedAt,
+			CompletedAt:      time.Now(),
+		}, nil
+	}
+
+	// Sort analyzers by name for deterministic invocation order
+	sortedAnalyzers := make([]Analyzer, len(analyzers))
+	copy(sortedAnalyzers, analyzers)
+	sort.Slice(sortedAnalyzers, func(i, j int) bool {
+		return sortedAnalyzers[i].Metadata().Name < sortedAnalyzers[j].Metadata().Name
+	})
+
+	// Collect findings from all analyzers
+	var allFindings []types.AnalyzerFinding
+	var skippedReasons []string
+
+	for _, analyzer := range sortedAnalyzers {
+		analyzerName := analyzer.Metadata().Name
+
+		// Create timeout context for this analyzer invocation
+		analyzerCtx, cancel := context.WithTimeout(ctx, timeout)
+
+		// Run analyzer
+		result, err := analyzer.Analyze(analyzerCtx, prData)
+
+		// Always cancel context to prevent context leak
+		cancel()
+
+		if err != nil {
+			// Check if this was a timeout
+			if analyzerCtx.Err() == context.DeadlineExceeded {
+				log.Printf("WARN: analyzer %q timed out after %v, skipping", analyzerName, timeout)
+				skippedReasons = append(skippedReasons, fmt.Sprintf("analyzer %q timed out after %v", analyzerName, timeout))
+			} else {
+				log.Printf("WARN: analyzer %q failed: %v, skipping", analyzerName, err)
+				skippedReasons = append(skippedReasons, fmt.Sprintf("analyzer %q failed: %v", analyzerName, err))
+			}
+			continue
+		}
+
+		// Merge findings from this analyzer
+		allFindings = append(allFindings, result.Result.AnalyzerFindings...)
+	}
+
+	// Aggregate findings into final result
+	var finalCategory types.ReviewCategory
+	var finalConfidence float64
+	var finalReasons []string
+
+	if len(allFindings) == 0 {
+		// No successful analyzers - return partial result
+		finalCategory = types.ReviewCategoryNeedsReview
+		finalConfidence = 0.0
+		finalReasons = []string{"all analyzers failed or timed out"}
+	} else {
+		// Resolve disagreement among findings
+		resolved := ResolveDisagreement(allFindings)
+		finalCategory = resolved.Category
+		finalConfidence = resolved.Confidence
+		finalReasons = resolved.Reasons
+	}
+
+	reviewResult := types.ReviewResult{
+		Category:         finalCategory,
+		PriorityTier:     types.PriorityTierReviewRequired,
+		Confidence:       finalConfidence,
+		Reasons:          finalReasons,
+		AnalyzerFindings: allFindings,
+	}
+
+	isPartial := len(skippedReasons) > 0
+
 	return AnalyzerResult{
-		Result:           placeholderResult,
+		Result:           reviewResult,
 		AnalyzerName:     "orchestrator",
 		AnalyzerVersion:  "0.1.0",
 		ProcessingTimeMs: time.Since(startedAt).Milliseconds(),
 		Error:            nil,
-		IsPartial:        false,
-		SkippedReasons:   []string{"analyzer plugins not yet implemented"},
+		IsPartial:        isPartial,
+		SkippedReasons:   skippedReasons,
 		StartedAt:        startedAt,
 		CompletedAt:      time.Now(),
 	}, nil
