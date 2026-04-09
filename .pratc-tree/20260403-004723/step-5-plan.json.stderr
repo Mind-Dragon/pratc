@@ -1,5 +1,0 @@
-Github Pull Request Air Traffic Control v1.0.0 2026-04-03T00:47:43+02:00 by Jefferson Nunn
-Using Config from: settings=./pratc-settings.db (default) | cache=/home/agent/.pratc/pratc.db
-{"time":"2026-04-03T00:47:43.445689662+02:00","level":"INFO","msg":"starting plan","request_id":"1775170063390321016","repo":"openclaw/openclaw","target":20,"mode":"combination"}
-{"time":"2026-04-03T00:47:43.600513014+02:00","level":"INFO","msg":"phase status","request_id":"1775170063390321016","phase":"cache loaded, starting analysis","pr_count":100}
-{"time":"2026-04-03T00:47:43.608807091+02:00","level":"INFO","msg":"plan operation completed","request_id":"1775170063390321016","duration_ms":163}

@@ -1,3 +1,8 @@
+# Ignore all dot directories by default (use ! to keep specific ones)
+**/.*
+!.gitignore
+!.env.example
+
 # OS / editor
 .DS_Store
 Thumbs.db
@@ -70,21 +75,3 @@ fixtures/manifest.json
 
 # Docker
 .docker/
-
-# Sisyphus
-.sisyphus/evidence/
-.sisyphus/status/
-.sisyphus/output/
-.sisyphus/drafts/
-.sisyphus/notepads/
-.sisyphus/plans/
-
-# Keep reusable prompts versioned
-!.sisyphus/prompts/
-!.sisyphus/prompts/**
-
-# Archives (plans, historical artifacts)
-.archives/
-
-# Worktrees
-.worktrees/
