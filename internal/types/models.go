@@ -280,3 +280,19 @@ const (
 	// ReviewCategoryNeedsReview indicates the PR requires standard human review.
 	ReviewCategoryNeedsReview ReviewCategory = "needs_review"
 )
+
+// PriorityTier represents the urgency/priority level for PR review and merge.
+// It helps triage PRs based on their readiness and business priority.
+type PriorityTier string
+
+const (
+	// PriorityTierFastMerge indicates the PR is ready for immediate merge
+	// (e.g., hotfixes, trivial changes, already-approved PRs).
+	PriorityTierFastMerge PriorityTier = "fast_merge"
+	// PriorityTierReviewRequired indicates the PR needs standard review
+	// before merge (normal workflow PRs).
+	PriorityTierReviewRequired PriorityTier = "review_required"
+	// PriorityTierBlocked indicates the PR has blockers preventing merge
+	// (e.g., conflicts, failing CI, requires rebase).
+	PriorityTierBlocked PriorityTier = "blocked"
+)
