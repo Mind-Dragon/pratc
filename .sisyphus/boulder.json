@@ -234,6 +234,15 @@
       "agent": "Sisyphus-Junior",
       "category": "quick",
       "updated_at": "2026-04-09T01:49:30.989Z"
+    },
+    "todo:32": {
+      "task_key": "todo:32",
+      "task_label": "32",
+      "task_title": "Documentation: dashboard-user-guide.md",
+      "session_id": "ses_2900f81afffe58t2LGDkqtU99L",
+      "agent": "Sisyphus-Junior",
+      "category": "writing",
+      "updated_at": "2026-04-09T01:53:04.873Z"
     }
   }
 }
