@@ -149,3 +149,58 @@ func TestAnalyzeReviewResultHasValidCategoryAndPriorityTier(t *testing.T) {
 		}
 	}
 }
+
+func TestAnalyzeReviewPayloadIncludesBucketCounts(t *testing.T) {
+	t.Parallel()
+
+	manifest, err := testutil.LoadManifest()
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	service := NewService(Config{
+		Now:           fixedNow,
+		IncludeReview: true,
+	})
+
+	response, err := service.Analyze(context.Background(), manifest.Repo)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+
+	if response.ReviewPayload == nil {
+		t.Fatal("expected ReviewPayload to be populated")
+	}
+
+	if len(response.ReviewPayload.Buckets) == 0 {
+		t.Fatal("expected ReviewPayload.Buckets to have entries")
+	}
+
+	expectedBuckets := map[string]bool{
+		"Merge now":                  false,
+		"Merge after focused review": false,
+		"Duplicate / superseded":     false,
+		"Problematic / quarantine":   false,
+		"Unknown / escalate":         false,
+	}
+
+	for _, bucket := range response.ReviewPayload.Buckets {
+		if _, ok := expectedBuckets[bucket.Bucket]; ok {
+			expectedBuckets[bucket.Bucket] = true
+		}
+	}
+
+	for bucket, found := range expectedBuckets {
+		if !found {
+			t.Errorf("expected bucket %q not found in ReviewPayload.Buckets", bucket)
+		}
+	}
+
+	totalFromBuckets := 0
+	for _, bucket := range response.ReviewPayload.Buckets {
+		totalFromBuckets += bucket.Count
+	}
+	if totalFromBuckets != response.ReviewPayload.ReviewedPRs {
+		t.Errorf("bucket counts sum (%d) does not match ReviewedPRs (%d)", totalFromBuckets, response.ReviewPayload.ReviewedPRs)
+	}
+}

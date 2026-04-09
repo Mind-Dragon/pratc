@@ -861,6 +861,21 @@ func writeJSON(cmd *cobra.Command, payload any) error {
 	return encoder.Encode(payload)
 }
 
+func reviewBucketLabel(category types.ReviewCategory) string {
+	switch category {
+	case types.ReviewCategoryMergeSafe:
+		return "Merge now"
+	case types.ReviewCategoryNeedsReview:
+		return "Merge after focused review"
+	case types.ReviewCategoryDuplicate:
+		return "Duplicate / superseded"
+	case types.ReviewCategoryProblematic:
+		return "Problematic / quarantine"
+	default:
+		return "Unknown / escalate"
+	}
+}
+
 func writeAnalyzeText(cmd *cobra.Command, response types.AnalysisResponse, includeReview bool) error {
 	out := cmd.OutOrStdout()
 
@@ -880,10 +895,17 @@ func writeAnalyzeText(cmd *cobra.Command, response types.AnalysisResponse, inclu
 		fmt.Fprintf(out, "Review Analysis\n")
 		fmt.Fprintf(out, "  PRs Reviewed: %d / %d\n\n", review.ReviewedPRs, review.TotalPRs)
 
-		if len(review.Categories) > 0 {
+		if len(review.Buckets) > 0 {
+			fmt.Fprintf(out, "  By Bucket:\n")
+			for _, bucket := range review.Buckets {
+				fmt.Fprintf(out, "    %-28s %d\n", bucket.Bucket+":", bucket.Count)
+			}
+			fmt.Fprintln(out)
+		} else if len(review.Categories) > 0 {
 			fmt.Fprintf(out, "  By Category:\n")
 			for _, cat := range review.Categories {
-				fmt.Fprintf(out, "    %-15s %d\n", cat.Category+":", cat.Count)
+				bucketLabel := reviewBucketLabel(types.ReviewCategory(cat.Category))
+				fmt.Fprintf(out, "    %-28s %d\n", bucketLabel+":", cat.Count)
 			}
 			fmt.Fprintln(out)
 		}
@@ -904,8 +926,9 @@ func writeAnalyzeText(cmd *cobra.Command, response types.AnalysisResponse, inclu
 			}
 			for i := 0; i < sampleCount; i++ {
 				result := review.Results[i]
+				bucketLabel := reviewBucketLabel(result.Category)
 				fmt.Fprintf(out, "    PR #%d: %s (%.0f%% confidence)\n",
-					response.PRs[i].Number, result.Category, result.Confidence*100)
+					response.PRs[i].Number, bucketLabel, result.Confidence*100)
 			}
 			if len(review.Results) > sampleCount {
 				fmt.Fprintf(out, "    ... and %d more\n", len(review.Results)-sampleCount)

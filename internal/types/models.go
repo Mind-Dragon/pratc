@@ -308,6 +308,12 @@ type ReviewCategoryCount struct {
 	Count    int    `json:"count"`
 }
 
+// BucketCount tracks the count of PRs in an operator-facing review bucket.
+type BucketCount struct {
+	Bucket string `json:"bucket"`
+	Count  int    `json:"count"`
+}
+
 // PriorityTierCount tracks the count of PRs in a specific priority tier.
 type PriorityTierCount struct {
 	Tier  string `json:"tier"`
@@ -323,6 +329,10 @@ type ReviewResponse struct {
 	ReviewedPRs int `json:"reviewed_prs"`
 	// Categories contains counts of PRs by review category (merge_safe, duplicate, problematic, needs_review).
 	Categories []ReviewCategoryCount `json:"categories"`
+	// Buckets contains counts of PRs by operator-facing review buckets:
+	// "Merge now", "Merge after focused review", "Duplicate / superseded",
+	// "Problematic / quarantine", "Unknown / escalate".
+	Buckets []BucketCount `json:"buckets"`
 	// PriorityTiers contains counts of PRs by priority tier (fast_merge, review_required, blocked).
 	PriorityTiers []PriorityTierCount `json:"priority_tiers"`
 	// Results contains individual review results for each PR.

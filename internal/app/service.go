@@ -489,13 +489,43 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 		tiers = append(tiers, types.PriorityTierCount{Tier: string(tier), Count: cnt})
 	}
 
+	buckets := buildReviewBuckets(categoryCount)
+
 	return &types.ReviewResponse{
 		TotalPRs:      len(response.PRs),
 		ReviewedPRs:   len(allResults),
 		Categories:    categories,
+		Buckets:       buckets,
 		PriorityTiers: tiers,
 		Results:       allResults,
 	}, nil
+}
+
+func buildReviewBuckets(categoryCount map[types.ReviewCategory]int) []types.BucketCount {
+	bucketLabels := map[types.ReviewCategory]string{
+		types.ReviewCategoryMergeSafe:   "Merge now",
+		types.ReviewCategoryNeedsReview: "Merge after focused review",
+		types.ReviewCategoryDuplicate:   "Duplicate / superseded",
+		types.ReviewCategoryProblematic: "Problematic / quarantine",
+	}
+
+	bucketCounts := make(map[string]int)
+	for cat, label := range bucketLabels {
+		bucketCounts[label] = categoryCount[cat]
+	}
+	bucketCounts["Unknown / escalate"] = categoryCount[types.ReviewCategory("")]
+
+	var buckets []types.BucketCount
+	for _, label := range []string{
+		"Merge now",
+		"Merge after focused review",
+		"Duplicate / superseded",
+		"Problematic / quarantine",
+		"Unknown / escalate",
+	} {
+		buckets = append(buckets, types.BucketCount{Bucket: label, Count: bucketCounts[label]})
+	}
+	return buckets
 }
 
 func (s Service) Cluster(ctx context.Context, repo string) (types.ClusterResponse, error) {

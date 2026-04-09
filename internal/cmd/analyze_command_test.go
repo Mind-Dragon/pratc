@@ -8,6 +8,7 @@ import (
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/types"
+	"github.com/spf13/cobra"
 )
 
 func TestBuildAnalyzeConfig(t *testing.T) {
@@ -153,5 +154,63 @@ func TestCheckAnalyzeSyncWarningDataUsesOpenPRCountWhenSyncIsStale(t *testing.T)
 	}
 	if !hasOpenPRCount || openPRCount != 1 {
 		t.Fatalf("expected open PR count to be available, got count=%d available=%t", openPRCount, hasOpenPRCount)
+	}
+}
+
+func TestWriteAnalyzeTextShowsReviewBucketVocabulary(t *testing.T) {
+	t.Parallel()
+
+	response := types.AnalysisResponse{
+		Repo:        "test/repo",
+		GeneratedAt: "2026-04-09T12:00:00Z",
+		Counts: types.Counts{
+			TotalPRs: 10,
+		},
+		ReviewPayload: &types.ReviewResponse{
+			TotalPRs:    10,
+			ReviewedPRs: 10,
+			Categories: []types.ReviewCategoryCount{
+				{Category: "merge_safe", Count: 3},
+				{Category: "needs_review", Count: 4},
+				{Category: "duplicate", Count: 2},
+				{Category: "problematic", Count: 1},
+			},
+			Buckets: []types.BucketCount{
+				{Bucket: "Merge now", Count: 3},
+				{Bucket: "Merge after focused review", Count: 4},
+				{Bucket: "Duplicate / superseded", Count: 2},
+				{Bucket: "Problematic / quarantine", Count: 1},
+				{Bucket: "Unknown / escalate", Count: 0},
+			},
+		},
+		PRs: []types.PR{
+			{Number: 1, Title: "PR 1"},
+			{Number: 2, Title: "PR 2"},
+		},
+	}
+
+	cmd := &cobra.Command{}
+	var buf strings.Builder
+	cmd.SetOut(&buf)
+
+	err := writeAnalyzeText(cmd, response, true)
+	if err != nil {
+		t.Fatalf("writeAnalyzeText failed: %v", err)
+	}
+
+	output := buf.String()
+
+	bucketLabels := []string{
+		"Merge now",
+		"Merge after focused review",
+		"Duplicate / superseded",
+		"Problematic / quarantine",
+		"Unknown / escalate",
+	}
+
+	for _, label := range bucketLabels {
+		if !strings.Contains(output, label) {
+			t.Errorf("expected output to contain bucket label %q, output was:\n%s", label, output)
+		}
 	}
 }
