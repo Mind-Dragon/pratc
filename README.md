@@ -72,8 +72,8 @@ pratc plan --repo=owner/repo --target=20 --dry-run=false   # Execute mode
 Start the API server.
 
 ```bash
-pratc serve --port=8080
-pratc serve --port=8080 --repo=owner/repo   # Default repo for API
+pratc serve --port=7400
+pratc serve --port=7400 --repo=owner/repo   # Default repo for API
 ```
 
 ### sync
@@ -178,27 +178,27 @@ atomic     → ID | RANGE
 
 ```bash
 # Single PR
-curl "http://localhost:8080/api/repos/owner/repo/plan/omni?selector=42"
+curl "http://localhost:7400/api/repos/owner/repo/plan/omni?selector=42"
 
 # Range of PRs (inclusive)
-curl "http://localhost:8080/api/repos/owner/repo/plan/omni?selector=1-100"
+curl "http://localhost:7400/api/repos/owner/repo/plan/omni?selector=1-100"
 
 # Multiple ranges combined with AND (intersection)
 # Selects PRs present in both ranges: {100, 101, ..., 150}
-curl "http://localhost:8080/api/repos/owner/repo/plan/omni?selector=50-150+AND+100-200"
+curl "http://localhost:7400/api/repos/owner/repo/plan/omni?selector=50-150+AND+100-200"
 # Note: URL-encode spaces as + or %20
 
 # Multiple ranges combined with OR (union)
 # Selects PRs from either range
-curl "http://localhost:8080/api/repos/owner/repo/plan/omni?selector=1-50+OR+200-250"
+curl "http://localhost:7400/api/repos/owner/repo/plan/omni?selector=1-50+OR+200-250"
 
 # Grouping with parentheses
 # Selects intersection of (1-100 OR 300-400) with 50-150
-curl "http://localhost:8080/api/repos/owner/repo/plan/omni?selector=(1-100+OR+300-400)+AND+50-150"
+curl "http://localhost:7400/api/repos/owner/repo/plan/omni?selector=(1-100+OR+300-400)+AND+50-150"
 # Result: {50, 51, ..., 100}
 
 # With custom stage size and target
-curl "http://localhost:8080/api/repos/owner/repo/plan/omni?selector=1-200&target=10&stage_size=32"
+curl "http://localhost:7400/api/repos/owner/repo/plan/omni?selector=1-200&target=10&stage_size=32"
 ```
 
 ### Response Format
@@ -235,23 +235,101 @@ pratc analyze --repo=owner/repo --format=json
 pratc config set --scope=repo --repo=owner/repo planning.target 20
 
 # 3. Use omni mode for targeted planning on a specific PR range
-curl "http://localhost:8080/api/repos/owner/repo/plan/omni?selector=50-150"
+curl "http://localhost:7400/api/repos/owner/repo/plan/omni?selector=50-150"
 ```
 
-## Web Dashboard
+## Dashboard
 
-The web dashboard runs at `http://localhost:3000`.
+prATC provides a dual dashboard system for monitoring sync operations and managing pull requests in real time. Both dashboards share the same data and update simultaneously.
 
-### Routes
+### TUI Dashboard (Terminal)
 
-| Route | Description |
-|-------|-------------|
-| `/` | ATC overview dashboard |
-| `/inbox` | PR inbox view |
-| `/triage` | Sequential triage workflow |
-| `/plan` | Merge plan panel |
-| `/graph` | Interactive dependency graph |
-| `/settings` | Configuration settings |
+A lightweight terminal-based dashboard perfect for server environments and quick checks.
+
+**Quick Start:**
+
+```bash
+# Start the TUI dashboard
+pratc monitor
+
+# Or start server with monitoring enabled
+pratc serve --port=7400 --monitor
+```
+
+**Features:**
+
+- **Three-zone layout:** Jobs panel, Timeline visualization, Rate Limit status
+- **Console logs:** Full-width log viewer with last 1,000 entries
+- **Keyboard controls:** Navigate with arrow keys, Tab to switch zones
+- **Real-time updates:** Sync job progress updates every 2 seconds
+- **Color-coded status:** Cyan (active), Green (success), Amber (warning), Red (critical)
+
+**Keyboard Shortcuts:**
+
+| Key | Action |
+|-----|--------|
+| `Tab` | Switch between zones |
+| `↑/↓` | Navigate jobs or scroll logs |
+| `←/→` | Scroll timeline |
+| `Enter` | View job details |
+| `p` | Pause monitoring |
+| `r` | Resume monitoring |
+| `s` | Restart sync |
+| `q` or `?` | Quit or toggle help |
+
+### Web Dashboard (Browser)
+
+A responsive browser-based interface ideal for daily monitoring and team visibility.
+
+**Quick Start:**
+
+```bash
+# Terminal 1: Start the API server
+pratc serve --port=7400
+
+# Terminal 2: Start the web dashboard (dev mode)
+cd web && bun run dev
+```
+
+Then open `http://localhost:3000/monitor` in your browser.
+
+**Features:**
+
+- **Responsive design:** Adapts to desktop, tablet, and mobile screens
+- **Interactive panels:** Click to expand job details, drag to scroll timeline
+- **Auto-refresh:** Jobs update every 10 seconds, rate limit every 30 seconds
+- **Log filtering:** Filter by level (Error, Warning, Info, Debug)
+- **Search functionality:** Find specific events in console logs
+
+**Layout by Screen Size:**
+
+- **Desktop (>1439px):** Three-column grid (Jobs, Timeline, Rate Limit)
+- **Tablet (768px-1439px):** Two-column grid
+- **Mobile (<768px):** Single column, stacked vertically
+
+### Dashboard Features
+
+Both dashboards provide:
+
+| Feature | Description |
+|---------|-------------|
+| **Sync Jobs** | Active sync operations with progress percentage and status |
+| **Timeline** | Activity visualization over time (15-minute intervals) |
+| **Rate Limit** | GitHub API budget status with remaining requests and reset time |
+| **Console** | Real-time system logs with color-coded severity levels |
+| **Pause/Resume** | Manual control when rate limit is critical |
+
+### Documentation
+
+- **[Dashboard User Guide](docs/dashboard-user-guide.md)** - Complete guide for TUI and Web dashboards
+- **[Monitor API Docs](docs/api/monitor-endpoints.md)** - WebSocket API for real-time updates
+
+### Screenshots
+
+*Screenshots showing the TUI three-zone layout and Web dashboard responsive design would appear here.*
+
+- **TUI Dashboard:** Terminal showing Jobs, Timeline, and Rate Limit panels with console logs below
+- **Web Dashboard:** Browser interface with interactive cards, timeline visualization, and rate limit gauge
 
 ## Docker Compose Profiles
 
@@ -300,7 +378,7 @@ Environment variables:
 
 | Variable | Description |
 |----------|-------------|
-| `PRATC_PORT` | API server port (default: 8080) |
+| `PRATC_PORT` | API server port (default: 7400) |
 | `PRATC_DB_PATH` | SQLite database path |
 | `PRATC_SETTINGS_DB` | Settings database path |
 | `PRATC_ANALYSIS_BACKEND` | Analysis backend: `local` or `remote` |
