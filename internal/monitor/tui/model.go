@@ -5,20 +5,31 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbletea"
+
+	"github.com/jeffersonnunn/pratc/internal/monitor/data"
 )
 
 type Model struct {
-	JobsZone        JobsZone
-	TimelineZone    TimelineZone
-	RateLimitZone   RateLimitZone
-	ConsoleZone     ConsoleZone
-	width           int
-	height          int
-	ActiveZone      Zone
-	ShowHelp        bool
-	IsPaused        bool
-	IsRestarting    bool
-	IsViewingJob    bool
+	// Broadcaster for receiving data updates
+	broadcaster *data.Broadcaster
+	updateChan  chan data.DataUpdate
+
+	// Panel components for real data display
+	JobsPanel      *JobsList
+	TimelinePanel  *TimelinePanel
+	RateLimitPanel *RateLimitPanel
+	ConsolePanel   *ConsolePanel
+
+	// Zone state
+	width        int
+	height       int
+	ActiveZone   Zone
+	ShowHelp     bool
+	IsPaused     bool
+	IsRestarting bool
+	IsViewingJob bool
+
+	// Legacy fields for header/footer compatibility
 	BudgetRemaining int
 	BudgetTotal     int
 	ResetInMinutes  int
@@ -44,35 +55,37 @@ type ConsoleZone struct {
 	scrollOffset int
 }
 
-func New() Model {
-	return Model{
-		JobsZone: JobsZone{
-			Placeholder: "No active jobs",
-			cursor:      0,
-		},
-		TimelineZone: TimelineZone{
-			Placeholder:  "No activity yet",
-			scrollOffset: 0,
-		},
-		RateLimitZone: RateLimitZone{
-			Placeholder: "Rate: 5000/5000",
-		},
-		ConsoleZone: ConsoleZone{
-			Placeholder:  "[INFO] Monitor initialized",
-			scrollOffset: 0,
-		},
+func New(broadcaster *data.Broadcaster) Model {
+	m := Model{
+		broadcaster:     broadcaster,
+		updateChan:      make(chan data.DataUpdate, 64),
+		JobsPanel:       NewJobsList(),
+		TimelinePanel:   NewTimelinePanel(),
+		RateLimitPanel:  NewRateLimitPanel(),
+		ConsolePanel:    NewConsolePanel(),
 		ActiveZone:      ZoneJobs,
 		BudgetRemaining: 4200,
 		BudgetTotal:     5000,
 		ResetInMinutes:  43,
 		GitHubOK:        true,
 	}
+	return m
 }
 
-func (m Model) Init() tea.Cmd {
+func (m *Model) Init() tea.Cmd {
+	if m.broadcaster != nil {
+		ch := m.broadcaster.Subscribe()
+		go m.receiveUpdates(ch)
+	}
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
+}
+
+func (m *Model) receiveUpdates(ch chan data.DataUpdate) {
+	for update := range ch {
+		m.updateChan <- update
+	}
 }
 
 type tickMsg time.Time
@@ -85,6 +98,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
 			return tickMsg(t)
 		})
+	case data.DataUpdate:
+		return m.handleDataUpdate(msg)
+	}
+	return m, nil
+}
+
+func (m *Model) handleDataUpdate(update data.DataUpdate) (tea.Model, tea.Cmd) {
+	if len(update.SyncJobs) > 0 {
+		m.JobsPanel.SetJobs(update.SyncJobs)
+	}
+	if update.RateLimit.Total > 0 {
+		m.RateLimitPanel.SetRateLimit(update.RateLimit)
+		m.BudgetRemaining = update.RateLimit.Remaining
+		m.BudgetTotal = update.RateLimit.Total
+		if !update.RateLimit.ResetTime.IsZero() {
+			m.ResetInMinutes = int(update.RateLimit.ResetTime.Sub(time.Now()).Minutes())
+		}
+		m.GitHubOK = true
+	}
+	if len(update.ActivityBuckets) > 0 {
+		m.TimelinePanel.SetBuckets(update.ActivityBuckets)
+	}
+	if len(update.RecentLogs) > 0 {
+		m.ConsolePanel.SetEntries(update.RecentLogs)
 	}
 	return m, nil
 }

@@ -85,16 +85,15 @@ func (m *Model) HandleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case ZoneJobs:
 			switch msg.Type {
 			case tea.KeyUp:
-				m.JobsZone.cursor--
-				if m.JobsZone.cursor < 0 {
-					m.JobsZone.cursor = 0
+				m.JobsPanel.cursor--
+				if m.JobsPanel.cursor < 0 {
+					m.JobsPanel.cursor = 0
 				}
 				handled = true
 			case tea.KeyDown:
-				m.JobsZone.cursor++
+				m.JobsPanel.cursor++
 				handled = true
 			case tea.KeyEnter:
-				// View job details - handled by IsViewingJob flag
 				m.IsViewingJob = true
 				handled = true
 			}
@@ -102,23 +101,30 @@ func (m *Model) HandleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case ZoneTimeline:
 			switch msg.Type {
 			case tea.KeyLeft:
-				m.TimelineZone.scrollOffset--
 				handled = true
 			case tea.KeyRight:
-				m.TimelineZone.scrollOffset++
 				handled = true
 			}
 
 		case ZoneConsole:
 			switch msg.Type {
 			case tea.KeyUp:
-				m.ConsoleZone.scrollOffset--
-				if m.ConsoleZone.scrollOffset < 0 {
-					m.ConsoleZone.scrollOffset = 0
+				m.ConsolePanel.scrollPos--
+				if m.ConsolePanel.scrollPos < 0 {
+					m.ConsolePanel.scrollPos = 0
 				}
+				m.ConsolePanel.offset = m.ConsolePanel.scrollPos
 				handled = true
 			case tea.KeyDown:
-				m.ConsoleZone.scrollOffset++
+				m.ConsolePanel.scrollPos++
+				maxScroll := len(m.ConsolePanel.entries) - m.ConsolePanel.maxLines
+				if maxScroll < 0 {
+					maxScroll = 0
+				}
+				if m.ConsolePanel.scrollPos > maxScroll {
+					m.ConsolePanel.scrollPos = maxScroll
+				}
+				m.ConsolePanel.offset = m.ConsolePanel.scrollPos
 				handled = true
 			}
 		}

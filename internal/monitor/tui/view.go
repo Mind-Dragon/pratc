@@ -9,13 +9,13 @@ func Render(m Model) string {
 	header := m.getHeader()
 	footer := m.getFooter()
 
-	jobsPanel := renderJobsZone(m.JobsZone)
-	timelinePanel := renderTimelineZone(m.TimelineZone)
-	rateLimitPanel := renderRateLimitZone(m.RateLimitZone)
+	jobsPanel := m.JobsPanel.View(28)
+	timelinePanel := m.TimelinePanel.View(38)
+	rateLimitPanel := m.RateLimitPanel.View(28)
 
 	zones := sideBySide(jobsPanel, timelinePanel, rateLimitPanel, 30, 40, 30)
 
-	consolePanel := renderConsoleZone(m.ConsoleZone)
+	consolePanel := m.ConsolePanel.View(94)
 
 	var helpOverlay string
 	if m.ShowHelp {
