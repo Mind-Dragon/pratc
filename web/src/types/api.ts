@@ -236,3 +236,33 @@ export interface ReviewResult {
   reasons: string[];
   analyzer_findings: AnalyzerFinding[];
 }
+
+export interface ReviewCategoryCount {
+  category: ReviewCategory;
+  count: number;
+}
+
+export interface PriorityTierCount {
+  tier: PriorityTier;
+  count: number;
+}
+
+export interface ReviewResponse {
+  total_prs: number;
+  reviewed_prs: number;
+  categories: ReviewCategoryCount[];
+  priority_tiers: PriorityTierCount[];
+  results: ReviewResult[];
+}
+
+export interface AnalysisResponse {
+  repo: string;
+  generatedAt: string;
+  counts: Counts;
+  clusters: PRCluster[];
+  duplicates: DuplicateGroup[];
+  overlaps: DuplicateGroup[];
+  conflicts: ConflictPair[];
+  stalenessSignals: StalenessReport[];
+  review_payload?: ReviewResponse;
+}
