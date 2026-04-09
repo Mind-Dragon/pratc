@@ -392,3 +392,38 @@ func containsIssueReference(text string) bool {
 	}
 	return false
 }
+
+// DeterminePriorityTier converts heuristic scores and review findings into a PriorityTier.
+//
+// Logic:
+//   - fast_merge: safe merge + no problems + high confidence (>= 0.8)
+//   - review_required: some concerns but mergeable (safe but low confidence or minor problems)
+//   - blocked: unsafe merge or serious problems (any blockers or problematic classification)
+//
+// Thresholds:
+//   - High confidence threshold: 0.8
+//   - Problematic confidence threshold: 0.5 (serious problems)
+func DeterminePriorityTier(safetyResult MergeSafetyResult, problemResult ProblematicPRResult) types.PriorityTier {
+	// Blocked: any blockers present means unsafe to merge
+	if !safetyResult.IsSafe || len(safetyResult.Blockers) > 0 {
+		return types.PriorityTierBlocked
+	}
+
+	// Blocked: serious problems with high confidence
+	if problemResult.IsProblematic && problemResult.Confidence >= 0.5 {
+		return types.PriorityTierBlocked
+	}
+
+	// Review required: minor problems or low confidence in safety
+	if problemResult.IsProblematic && problemResult.Confidence < 0.5 {
+		return types.PriorityTierReviewRequired
+	}
+
+	// Review required: safe but confidence below fast_merge threshold
+	if safetyResult.Confidence < 0.8 {
+		return types.PriorityTierReviewRequired
+	}
+
+	// Fast merge: safe, no problems, high confidence
+	return types.PriorityTierFastMerge
+}
