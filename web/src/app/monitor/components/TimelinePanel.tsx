@@ -13,31 +13,31 @@ interface ColorIntensity {
 function getColorForIntensity(requestCount: number): ColorIntensity {
   if (requestCount === 0) {
     return {
-      background: "rgba(185, 215, 242, 0.15)",
-      border: "rgba(185, 215, 242, 0.3)",
+      background: "rgba(0, 217, 255, 0.15)",
+      border: "rgba(0, 217, 255, 0.3)",
     };
   }
   if (requestCount < 10) {
     return {
-      background: "rgba(185, 215, 242, 0.35)",
-      border: "rgba(185, 215, 242, 0.5)",
+      background: "rgba(0, 217, 255, 0.35)",
+      border: "rgba(0, 217, 255, 0.5)",
     };
   }
   if (requestCount < 25) {
     return {
-      background: "rgba(185, 215, 242, 0.55)",
-      border: "rgba(185, 215, 242, 0.7)",
+      background: "rgba(0, 217, 255, 0.55)",
+      border: "rgba(0, 217, 255, 0.7)",
     };
   }
   if (requestCount < 50) {
     return {
-      background: "rgba(185, 215, 242, 0.75)",
-      border: "rgba(185, 215, 242, 0.9)",
+      background: "rgba(0, 217, 255, 0.75)",
+      border: "rgba(0, 217, 255, 0.9)",
     };
   }
   return {
-    background: "rgba(185, 215, 242, 0.95)",
-    border: "rgba(23, 34, 53, 0.2)",
+    background: "rgba(0, 217, 255, 0.95)",
+    border: "rgba(224, 230, 241, 0.2)",
   };
 }
 
@@ -96,7 +96,7 @@ export default function TimelinePanel() {
         <div className="sync-panel__header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
           <h3 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 600 }}>Timeline - Last 4 Hours</h3>
         </div>
-        <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--danger)" }}>
+        <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--red)" }}>
           {error}
         </p>
       </div>
@@ -109,7 +109,7 @@ export default function TimelinePanel() {
         <div className="sync-panel__header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
           <h3 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 600 }}>Timeline - Last 4 Hours</h3>
         </div>
-        <p style={{ margin: 0, fontSize: "0.85rem", color: "rgba(23,34,53,0.65)" }}>
+        <p style={{ margin: 0, fontSize: "0.85rem", color: "rgba(224,230,241,0.65)" }}>
           Connecting...
         </p>
       </div>
@@ -128,8 +128,8 @@ export default function TimelinePanel() {
       </div>
 
       {!hasData ? (
-        <div style={{ width: "100%", padding: "40px 20px", textAlign: "center", background: "rgba(185, 215, 242, 0.08)", borderRadius: 12, border: "2px dashed var(--line)" }}>
-          <p style={{ margin: 0, fontSize: "0.9rem", color: "rgba(23,34,53,0.5)" }}>
+        <div style={{ width: "100%", padding: "40px 20px", textAlign: "center", background: "rgba(0, 217, 255, 0.08)", borderRadius: 12, border: "2px dashed var(--line)" }}>
+          <p style={{ margin: 0, fontSize: "0.9rem", color: "rgba(224,230,241,0.5)" }}>
             No activity in the last 4 hours
           </p>
         </div>
@@ -173,7 +173,7 @@ export default function TimelinePanel() {
                     flex: 1,
                     textAlign: index === 0 ? "left" : index === BUCKET_COUNT - 1 ? "right" : "center",
                     fontSize: "0.72rem",
-                    color: "rgba(23,34,53,0.55)",
+                    color: "rgba(224,230,241,0.55)",
                     textTransform: "uppercase",
                     letterSpacing: "0.05em",
                   }}
@@ -186,16 +186,16 @@ export default function TimelinePanel() {
 
           <div style={{ width: "100%", display: "flex", justifyContent: "center", gap: 16, marginTop: 8, paddingTop: 12, borderTop: `1px solid var(--line)` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <div style={{ width: 16, height: 16, borderRadius: 4, background: "rgba(185, 215, 242, 0.15)", border: "1px solid rgba(185, 215, 242, 0.3)" }} />
-              <span style={{ fontSize: "0.68rem", color: "rgba(23,34,53,0.55)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Low</span>
+              <div style={{ width: 16, height: 16, borderRadius: 4, background: "rgba(0, 217, 255, 0.15)", border: "1px solid rgba(0, 217, 255, 0.3)" }} />
+              <span style={{ fontSize: "0.68rem", color: "rgba(224,230,241,0.55)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Low</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <div style={{ width: 16, height: 16, borderRadius: 4, background: "rgba(185, 215, 242, 0.55)", border: "1px solid rgba(185, 215, 242, 0.7)" }} />
-              <span style={{ fontSize: "0.68rem", color: "rgba(23,34,53,0.55)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Medium</span>
+              <div style={{ width: 16, height: 16, borderRadius: 4, background: "rgba(0, 217, 255, 0.55)", border: "1px solid rgba(0, 217, 255, 0.7)" }} />
+              <span style={{ fontSize: "0.68rem", color: "rgba(224,230,241,0.55)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Medium</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <div style={{ width: 16, height: 16, borderRadius: 4, background: "rgba(185, 215, 242, 0.95)", border: "1px solid rgba(23, 34, 53, 0.2)" }} />
-              <span style={{ fontSize: "0.68rem", color: "rgba(23,34,53,0.55)", textTransform: "uppercase", letterSpacing: "0.05em" }}>High</span>
+              <div style={{ width: 16, height: 16, borderRadius: 4, background: "rgba(0, 217, 255, 0.95)", border: "1px solid rgba(224, 230, 241, 0.2)" }} />
+              <span style={{ fontSize: "0.68rem", color: "rgba(224,230,241,0.55)", textTransform: "uppercase", letterSpacing: "0.05em" }}>High</span>
             </div>
           </div>
         </>

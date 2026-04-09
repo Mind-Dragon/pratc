@@ -84,7 +84,7 @@ func (t *TimelinePanel) renderHeatStrip() string {
 
 func (t *TimelinePanel) requestCountToBlock(count, maxCount int) string {
 	if maxCount == 0 {
-		return "\033[36m▁\033[0m"
+		return ColorCyan + "▁" + ColorReset
 	}
 
 	ratio := float64(count) / float64(maxCount)
@@ -100,13 +100,14 @@ func (t *TimelinePanel) requestCountToBlock(count, maxCount int) string {
 	blocks := []string{"▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
 
 	if level == 0 {
-		return "\033[36m▁\033[0m"
+		return ColorCyan + "▁" + ColorReset
 	}
 
+	color := GetTimelineBlockColor(level)
 	if level >= 5 {
-		return fmt.Sprintf("\033[96m%c\033[0m", rune(blocks[level][0]))
+		return color + fmt.Sprintf("%c", rune(blocks[level][0])) + ColorReset
 	}
-	return fmt.Sprintf("\033[36m%s\033[0m", blocks[level])
+	return color + blocks[level] + ColorReset
 }
 
 func (t *TimelinePanel) renderTimeLabels() string {

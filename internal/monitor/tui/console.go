@@ -139,18 +139,9 @@ func (c *ConsolePanel) formatEntry(entry data.LogEntry) string {
 
 // colorizeLevel returns ANSI-colored level string based on log level.
 func (c *ConsolePanel) colorizeLevel(level string) string {
-	switch strings.ToUpper(level) {
-	case "ERROR", "ERR":
-		return "\033[31m[ERROR]\033[0m"
-	case "WARN", "WARNING":
-		return "\033[33m[WARN]\033[0m"
-	case "DEBUG", "DBG":
-		return "\033[36m[DEBUG]\033[0m"
-	case "INFO", "INF":
-		return "\033[37m[INFO]\033[0m"
-	default:
-		return fmt.Sprintf("\033[37m[%s]\033[0m", strings.ToUpper(level))
-	}
+	color := GetLogLevelColor(level)
+	reset := ColorReset
+	return color + "[" + strings.ToUpper(level) + "]" + reset
 }
 
 // truncateRepo truncates a repo name to fit within the given width.

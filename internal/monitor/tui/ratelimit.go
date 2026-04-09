@@ -122,25 +122,19 @@ func (r *RateLimitPanel) getBlockForLevel(targetLevel, fillLevel int, color stri
 		partial := int((remainingRatio - float64(targetLevel-1)) * 4)
 		switch partial {
 		case 1:
-			return "\033[33m░\033[0m" + color
+			return ColorAmber + "░" + ColorReset + color
 		case 2:
-			return "\033[33m▒\033[0m" + color
+			return ColorAmber + "▒" + ColorReset + color
 		case 3:
-			return "\033[33m▓\033[0m" + color
+			return ColorAmber + "▓" + ColorReset + color
 		}
 	}
-	return "\033[90m░\033[0m"
+	return ColorTextMuted + "░" + ColorReset
 }
 
 // getColor returns the ANSI color code based on remaining budget.
 func (r *RateLimitPanel) getColor() string {
-	if r.remaining > 2000 {
-		return "\033[32m" // Green
-	}
-	if r.remaining >= 500 {
-		return "\033[33m" // Yellow/Amber
-	}
-	return "\033[31m" // Red
+	return GetRateLimitColor(r.remaining)
 }
 
 // renderReadout displays the current value as "remaining / total".

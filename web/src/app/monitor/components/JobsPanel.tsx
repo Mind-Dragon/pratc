@@ -19,17 +19,17 @@ function getStatusColor(status: string): string {
     case "in_progress":
     case "running":
     case "active":
-      return "var(--mint)";
+      return "var(--cyan)";
     case "paused":
     case "waiting":
-      return "#fbbf24";
+      return "var(--amber)";
     case "failed":
     case "error":
-      return "var(--danger)";
+      return "var(--red)";
     case "queued":
     case "pending":
     default:
-      return "rgba(23, 34, 53, 0.3)";
+      return "rgba(224, 230, 241, 0.3)";
   }
 }
 
@@ -67,7 +67,7 @@ function JobRow({ job }: JobRowProps) {
       className="job-row"
       style={{
         padding: "12px 14px",
-        background: "rgba(255, 255, 255, 0.6)",
+        background: "rgba(224, 230, 241, 0.06)",
         borderRadius: 10,
         border: "1px solid var(--line)",
         display: "flex",
@@ -83,7 +83,7 @@ function JobRow({ job }: JobRowProps) {
           padding: "5px 10px",
           borderRadius: 999,
           background: statusColor,
-          color: job.status.toLowerCase().includes("fail") || job.status.toLowerCase().includes("error") ? "#fff" : "var(--ink)",
+          color: job.status.toLowerCase().includes("fail") || job.status.toLowerCase().includes("error") ? "#0A0E27" : "var(--text)",
           fontSize: "0.72rem",
           fontWeight: 600,
           textTransform: "uppercase",
@@ -129,7 +129,7 @@ function JobRow({ job }: JobRowProps) {
             width: "100%",
             height: 7,
             borderRadius: 999,
-            background: "rgba(23, 34, 53, 0.08)",
+            background: "rgba(224, 230, 241, 0.08)",
             overflow: "hidden",
             position: "relative",
           }}
@@ -175,7 +175,7 @@ function JobRow({ job }: JobRowProps) {
           textAlign: "right",
           fontSize: "0.82rem",
           fontWeight: 600,
-          color: "rgba(23, 34, 53, 0.75)",
+          color: "rgba(224, 230, 241, 0.75)",
         }}
       >
         {progressPercent}%
@@ -188,7 +188,7 @@ function JobRow({ job }: JobRowProps) {
           minWidth: 70,
           textAlign: "right",
           fontSize: "0.78rem",
-          color: "rgba(23, 34, 53, 0.65)",
+          color: "rgba(224, 230, 241, 0.65)",
         }}
       >
         {formatEta(job.eta)}
@@ -245,7 +245,7 @@ export default function JobsPanel() {
           style={{
             margin: 0,
             fontSize: "0.82rem",
-            color: "var(--danger)",
+            color: "var(--red)",
           }}
         >
           {error}
@@ -263,16 +263,16 @@ export default function JobsPanel() {
             padding: "40px 20px",
           }}
         >
-          <p
-            style={{
-              margin: 0,
-              fontSize: "0.88rem",
-              color: "rgba(23, 34, 53, 0.55)",
-              textAlign: "center",
-            }}
-          >
-            No active jobs
-          </p>
+        <p
+          style={{
+            margin: 0,
+            fontSize: "0.88rem",
+            color: "rgba(224, 230, 241, 0.55)",
+            textAlign: "center",
+          }}
+        >
+          No active jobs
+        </p>
         </div>
       )}
 

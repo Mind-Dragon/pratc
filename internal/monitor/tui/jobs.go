@@ -167,20 +167,9 @@ func (j *JobsList) renderJob(job data.SyncJobView, isCursor bool, width int) str
 }
 
 func (j *JobsList) statusBadge(status string) string {
-	switch status {
-	case data.StatusActive:
-		return "\033[36m[ACTIVE]\033[0m"
-	case data.StatusPaused:
-		return "\033[33m[PAUSED]\033[0m"
-	case data.StatusFailed:
-		return "\033[31m[FAILED]\033[0m"
-	case data.StatusQueued:
-		return "\033[90m[QUEUED]\033[0m"
-	case data.StatusCompleted:
-		return "\033[32m[DONE]\033[0m"
-	default:
-		return fmt.Sprintf("\033[90m[%s]\033[0m", strings.ToUpper(status))
-	}
+	color := GetStatusColor(status)
+	reset := ColorReset
+	return color + "[" + strings.ToUpper(status) + "]" + reset
 }
 
 func (j *JobsList) renderProgressBar(progress int, status string) string {

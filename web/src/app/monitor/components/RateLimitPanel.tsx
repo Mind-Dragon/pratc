@@ -20,12 +20,12 @@ function getCountdownUntilReset(resetTime: string): CountdownTime {
 
 function getThermometerColor(remaining: number): string {
   if (remaining > 2000) {
-    return "var(--success)";
+    return "var(--green)";
   }
   if (remaining >= 500) {
-    return "#f59e0b";
+    return "var(--amber)";
   }
-  return "var(--danger)";
+  return "var(--red)";
 }
 
 function getThermometerGradient(remaining: number, total: number): string {
@@ -35,8 +35,8 @@ function getThermometerGradient(remaining: number, total: number): string {
   return `linear-gradient(180deg, 
     ${color} 0%, 
     ${color} ${100 - fillPercent}%, 
-    rgba(23, 34, 53, 0.08) ${100 - fillPercent}%, 
-    rgba(23, 34, 53, 0.08) 100%)`;
+    rgba(224, 230, 241, 0.08) ${100 - fillPercent}%, 
+    rgba(224, 230, 241, 0.08) 100%)`;
 }
 
 interface ThermometerGaugeProps {
@@ -66,7 +66,7 @@ function ThermometerGauge({ remaining, total }: ThermometerGaugeProps) {
           bottom: 24,
           borderRadius: 40,
           border: `3px solid ${color}`,
-          background: "rgba(23, 34, 53, 0.05)",
+          background: "rgba(224, 230, 241, 0.05)",
           overflow: "hidden",
         }}
       >
@@ -117,9 +117,9 @@ function ThermometerGauge({ remaining, total }: ThermometerGaugeProps) {
           width: 56,
           height: 56,
           borderRadius: "50%",
-          background: `radial-gradient(circle at 30% 30%, ${color}, ${color} 60%, rgba(23, 34, 53, 0.2) 100%)`,
+          background: `radial-gradient(circle at 30% 30%, ${color}, ${color} 60%, rgba(224, 230, 241, 0.2) 100%)`,
           border: `3px solid ${color}`,
-          boxShadow: "0 4px 12px rgba(23, 34, 53, 0.15)",
+          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
         }}
       />
     </div>
@@ -149,7 +149,7 @@ function DigitalReadout({ remaining, total }: DigitalReadoutProps) {
           fontSize: "2.2rem",
           fontWeight: 700,
           fontFamily: "'Courier New', Courier, monospace",
-          color: "var(--ink)",
+          color: "var(--text)",
           letterSpacing: "-0.02em",
         }}
       >
@@ -158,7 +158,7 @@ function DigitalReadout({ remaining, total }: DigitalReadoutProps) {
       <div
         style={{
           fontSize: "1.1rem",
-          color: "rgba(23, 34, 53, 0.55)",
+          color: "rgba(224, 230, 241, 0.55)",
           fontWeight: 500,
         }}
       >
@@ -201,7 +201,7 @@ function CountdownTimer({ resetTime }: CountdownTimerProps) {
           fontSize: "0.72rem",
           textTransform: "uppercase",
           letterSpacing: "0.08em",
-          color: "rgba(23, 34, 53, 0.55)",
+          color: "rgba(224, 230, 241, 0.55)",
         }}
       >
         Resets in
@@ -211,7 +211,7 @@ function CountdownTimer({ resetTime }: CountdownTimerProps) {
           fontSize: "1.5rem",
           fontWeight: 600,
           fontFamily: "'Courier New', Courier, monospace",
-          color: "var(--ink)",
+          color: "var(--text)",
         }}
       >
         {formattedMinutes}:{formattedSeconds}
@@ -259,7 +259,7 @@ export default function RateLimitPanel() {
           style={{
             margin: 0,
             fontSize: "0.85rem",
-            color: "var(--danger)",
+            color: "var(--red)",
           }}
         >
           {error}
@@ -302,7 +302,7 @@ export default function RateLimitPanel() {
           style={{
             margin: 0,
             fontSize: "0.85rem",
-            color: "rgba(23, 34, 53, 0.65)",
+            color: "rgba(224, 230, 241, 0.65)",
           }}
         >
           Connecting...
@@ -356,7 +356,7 @@ export default function RateLimitPanel() {
             style={{
               margin: 0,
               fontSize: "0.88rem",
-              color: "rgba(23, 34, 53, 0.55)",
+              color: "rgba(224, 230, 241, 0.55)",
               textAlign: "center",
             }}
           >
@@ -439,69 +439,69 @@ export default function RateLimitPanel() {
           borderTop: "1px solid var(--line)",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: "0.68rem",
-            color: "rgba(23, 34, 53, 0.55)",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-          }}
-        >
           <div
             style={{
-              width: 12,
-              height: 12,
-              borderRadius: 4,
-              background: "var(--success)",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: "0.68rem",
+              color: "rgba(224, 230, 241, 0.55)",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
             }}
-          />
-          &gt;2,000
-        </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: "0.68rem",
-            color: "rgba(23, 34, 53, 0.55)",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-          }}
-        >
+          >
+            <div
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 4,
+                background: "var(--green)",
+              }}
+            />
+            &gt;2,000
+          </div>
           <div
             style={{
-              width: 12,
-              height: 12,
-              borderRadius: 4,
-              background: "#f59e0b",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: "0.68rem",
+              color: "rgba(224, 230, 241, 0.55)",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
             }}
-          />
-          500-2,000
-        </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: "0.68rem",
-            color: "rgba(23, 34, 53, 0.55)",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-          }}
-        >
+          >
+            <div
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 4,
+                background: "var(--amber)",
+              }}
+            />
+            500-2,000
+          </div>
           <div
             style={{
-              width: 12,
-              height: 12,
-              borderRadius: 4,
-              background: "var(--danger)",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: "0.68rem",
+              color: "rgba(224, 230, 241, 0.55)",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
             }}
-          />
-          &lt;500
-        </div>
+          >
+            <div
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 4,
+                background: "var(--red)",
+              }}
+            />
+            &lt;500
+          </div>
       </div>
     </div>
   );

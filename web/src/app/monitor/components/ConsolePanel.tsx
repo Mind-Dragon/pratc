@@ -13,16 +13,16 @@ function formatTimestamp(timestamp: string): string {
 function getLevelColor(level: string): string {
   switch (level.toLowerCase()) {
     case "info":
-      return "rgba(23, 34, 53, 0.75)";
+      return "var(--text)";
     case "warn":
     case "warning":
-      return "#f59e0b";
+      return "var(--amber)";
     case "error":
-      return "var(--danger)";
+      return "var(--red)";
     case "debug":
-      return "#06b6d4";
+      return "var(--cyan)";
     default:
-      return "rgba(23, 34, 53, 0.75)";
+      return "var(--text)";
   }
 }
 
@@ -53,7 +53,7 @@ function LogEntryRow({ entry }: LogEntryRowProps) {
         style={{
           minWidth: 68,
           fontFamily: "'Courier New', Courier, monospace",
-          color: "rgba(23, 34, 53, 0.45)",
+          color: "rgba(224, 230, 241, 0.45)",
           fontSize: "0.78rem",
         }}
       >
@@ -82,7 +82,7 @@ function LogEntryRow({ entry }: LogEntryRowProps) {
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
-          color: "rgba(23, 34, 53, 0.55)",
+          color: "rgba(224, 230, 241, 0.55)",
           fontSize: "0.78rem",
         }}
         title={entry.repo}
@@ -95,7 +95,7 @@ function LogEntryRow({ entry }: LogEntryRowProps) {
         style={{
           flex: 1,
           minWidth: 0,
-          color: "var(--ink)",
+          color: "var(--text)",
           wordBreak: "break-word",
         }}
       >
@@ -152,7 +152,7 @@ export default function ConsolePanel() {
           style={{
             margin: 0,
             fontSize: "0.82rem",
-            color: "var(--danger)",
+            color: "var(--red)",
           }}
         >
           {error}
@@ -196,7 +196,7 @@ export default function ConsolePanel() {
           style={{
             margin: 0,
             fontSize: "0.85rem",
-            color: "rgba(23, 34, 53, 0.65)",
+            color: "rgba(224, 230, 241, 0.65)",
           }}
         >
           Connecting...
@@ -253,16 +253,16 @@ export default function ConsolePanel() {
             padding: "40px 20px",
           }}
         >
-          <p
-            style={{
-              margin: 0,
-              fontSize: "0.88rem",
-              color: "rgba(23, 34, 53, 0.55)",
-              textAlign: "center",
-            }}
-          >
-            No log entries
-          </p>
+        <p
+          style={{
+            margin: 0,
+            fontSize: "0.88rem",
+            color: "rgba(224, 230, 241, 0.55)",
+            textAlign: "center",
+          }}
+        >
+          No log entries
+        </p>
         </div>
       )}
 
