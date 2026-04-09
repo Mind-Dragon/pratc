@@ -1,5 +1,22 @@
 // Package review provides the Analyzer interface and related types for the agentic PR review system.
 //
+// Analyzer Guarantees:
+//
+//	Advisory-only: Analyzers produce recommendations, not actions. They classify PRs by
+//	category and priority tier but never trigger merges, approvals, or any automated
+//	actions. All analyzer output is for human review and decision-making.
+//
+//	Read-only: Analyzers cannot modify PR state, labels, comments, or any GitHub state.
+//	They only read PR metadata and produce analysis results. The orchestrator may
+//	apply labels based on analyzer output, but analyzers themselves are strictly read-only.
+//
+//	Stateless: Analyzers must not maintain state between invocations. Each Analyze()
+//	call is independent. Analyzers receive all necessary context via PRData and must
+//	not rely on external state, caches, or persistent storage.
+//
+//	These guarantees align with v0.1 constraints: no auto-merge, no GitHub App/OAuth/webhooks,
+//	and no automated actions. Analyzers are pure functions from PR data to recommendations.
+//
 // Timeout Policy:
 //
 //	Analyzers have configurable timeouts to prevent runaway analysis. The default
