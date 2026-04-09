@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -237,4 +238,101 @@ func copyMap(src map[string]any) map[string]any {
 		dst[k] = v
 	}
 	return dst
+}
+
+func (s *Store) GetAnalyzerConfig(ctx context.Context, repo string) (AnalyzerConfig, error) {
+	if err := validateRepoFormat(repo); err != nil {
+		return AnalyzerConfig{}, err
+	}
+
+	cfg := DefaultAnalyzerConfig()
+
+	globalSettings, err := s.List(ctx, ScopeGlobal, "")
+	if err != nil {
+		return AnalyzerConfig{}, fmt.Errorf("load global analyzer config: %w", err)
+	}
+	if raw, ok := globalSettings["analyzer_config"]; ok {
+		if globalCfg, err := parseAnalyzerConfig(raw); err == nil {
+			cfg = mergeAnalyzerConfig(cfg, globalCfg)
+		}
+	}
+
+	if repo != "" {
+		repoSettings, err := s.List(ctx, ScopeRepo, repo)
+		if err != nil {
+			return AnalyzerConfig{}, fmt.Errorf("load repo analyzer config: %w", err)
+		}
+		if raw, ok := repoSettings["analyzer_config"]; ok {
+			if repoCfg, err := parseAnalyzerConfig(raw); err == nil {
+				cfg = mergeAnalyzerConfig(cfg, repoCfg)
+			}
+		}
+	}
+
+	return cfg, nil
+}
+
+func (s *Store) SetAnalyzerConfig(ctx context.Context, repo string, cfg AnalyzerConfig) error {
+	if err := validateRepoFormat(repo); err != nil {
+		return err
+	}
+
+	scope := ScopeGlobal
+	if repo != "" {
+		scope = ScopeRepo
+	}
+
+	return s.Set(ctx, scope, repo, "analyzer_config", cfg)
+}
+
+func validateRepoFormat(repo string) error {
+	if repo == "" {
+		return nil
+	}
+	parts := strings.Split(repo, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return fmt.Errorf("invalid repo format %q: expected owner/repo", repo)
+	}
+	return nil
+}
+
+func parseAnalyzerConfig(raw any) (AnalyzerConfig, error) {
+	var cfg AnalyzerConfig
+
+	switch v := raw.(type) {
+	case AnalyzerConfig:
+		return v, nil
+	case map[string]any:
+		data, err := json.Marshal(v)
+		if err != nil {
+			return cfg, fmt.Errorf("marshal analyzer config: %w", err)
+		}
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return cfg, fmt.Errorf("unmarshal analyzer config: %w", err)
+		}
+		return cfg, nil
+	default:
+		return cfg, fmt.Errorf("unexpected analyzer config type: %T", raw)
+	}
+}
+
+func mergeAnalyzerConfig(base, override AnalyzerConfig) AnalyzerConfig {
+	result := base
+
+	if override.Enabled != base.Enabled {
+		result.Enabled = override.Enabled
+	}
+	if override.Timeout != 0 {
+		result.Timeout = override.Timeout
+	}
+	if len(override.Thresholds) > 0 {
+		if result.Thresholds == nil {
+			result.Thresholds = make(map[string]float64)
+		}
+		for k, v := range override.Thresholds {
+			result.Thresholds[k] = v
+		}
+	}
+
+	return result
 }

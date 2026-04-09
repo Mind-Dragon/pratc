@@ -12,6 +12,7 @@ var allowedKeys = map[string]struct{}{
 	"ending_pr_number":    {},
 	"max_prs":             {},
 	"github_token":        {},
+	"analyzer_config":     {},
 }
 
 // globalOnlyKeys are keys that cannot be set at repo scope.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestGetReturnsGlobalAndRepoOverrides(t *testing.T) {
@@ -99,9 +100,153 @@ func TestExportImportYAML(t *testing.T) {
 
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
-	store, err := Open("file::memory:?cache=shared")
+	store, err := Open("file::memory:")
 	if err != nil {
 		t.Fatalf("open test store: %v", err)
 	}
 	return store
+}
+
+func TestGetAnalyzerConfig_GlobalScope(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	cfg, err := store.GetAnalyzerConfig(ctx, "")
+	if err != nil {
+		t.Fatalf("get global analyzer config: %v", err)
+	}
+
+	if !cfg.Enabled {
+		t.Fatalf("expected default Enabled=true, got false")
+	}
+	if cfg.Timeout != 5*time.Minute {
+		t.Fatalf("expected default Timeout=5m, got %v", cfg.Timeout)
+	}
+	if cfg.Thresholds["duplicate"] != 0.90 {
+		t.Fatalf("expected default duplicate threshold 0.90, got %v", cfg.Thresholds["duplicate"])
+	}
+}
+
+func TestSetAndGetAnalyzerConfig_Global(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	customCfg := AnalyzerConfig{
+		Enabled: false,
+		Timeout: 10 * time.Minute,
+		Thresholds: map[string]float64{
+			"duplicate": 0.95,
+			"overlap":   0.75,
+		},
+	}
+
+	if err := store.SetAnalyzerConfig(ctx, "", customCfg); err != nil {
+		t.Fatalf("set global analyzer config: %v", err)
+	}
+
+	cfg, err := store.GetAnalyzerConfig(ctx, "")
+	if err != nil {
+		t.Fatalf("get global analyzer config: %v", err)
+	}
+
+	if cfg.Enabled != false {
+		t.Fatalf("expected Enabled=false, got true")
+	}
+	if cfg.Timeout != 10*time.Minute {
+		t.Fatalf("expected Timeout=10m, got %v", cfg.Timeout)
+	}
+	if cfg.Thresholds["duplicate"] != 0.95 {
+		t.Fatalf("expected duplicate threshold 0.95, got %v", cfg.Thresholds["duplicate"])
+	}
+	if cfg.Thresholds["overlap"] != 0.75 {
+		t.Fatalf("expected overlap threshold 0.75, got %v", cfg.Thresholds["overlap"])
+	}
+}
+
+func TestSetAndGetAnalyzerConfig_RepoScope(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	globalCfg := AnalyzerConfig{
+		Enabled: true,
+		Timeout: 5 * time.Minute,
+		Thresholds: map[string]float64{
+			"duplicate": 0.90,
+		},
+	}
+	if err := store.SetAnalyzerConfig(ctx, "", globalCfg); err != nil {
+		t.Fatalf("set global analyzer config: %v", err)
+	}
+
+	repoCfg := AnalyzerConfig{
+		Enabled: false,
+		Timeout: 15 * time.Minute,
+		Thresholds: map[string]float64{
+			"duplicate": 0.85,
+			"custom":    0.50,
+		},
+	}
+	if err := store.SetAnalyzerConfig(ctx, "octo/repo", repoCfg); err != nil {
+		t.Fatalf("set repo analyzer config: %v", err)
+	}
+
+	cfg, err := store.GetAnalyzerConfig(ctx, "octo/repo")
+	if err != nil {
+		t.Fatalf("get repo analyzer config: %v", err)
+	}
+
+	if cfg.Enabled != false {
+		t.Fatalf("expected repo Enabled=false to override global, got true")
+	}
+	if cfg.Timeout != 15*time.Minute {
+		t.Fatalf("expected repo Timeout=15m to override global, got %v", cfg.Timeout)
+	}
+	if cfg.Thresholds["duplicate"] != 0.85 {
+		t.Fatalf("expected repo duplicate threshold 0.85 to override global, got %v", cfg.Thresholds["duplicate"])
+	}
+	if cfg.Thresholds["custom"] != 0.50 {
+		t.Fatalf("expected repo custom threshold 0.50, got %v", cfg.Thresholds["custom"])
+	}
+}
+
+func TestGetAnalyzerConfig_InvalidRepoFormat(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	_, err := store.GetAnalyzerConfig(ctx, "invalid-repo-format")
+	if err == nil {
+		t.Fatalf("expected error for invalid repo format")
+	}
+	if !strings.Contains(err.Error(), "invalid repo format") {
+		t.Fatalf("expected 'invalid repo format' in error, got: %v", err)
+	}
+}
+
+func TestSetAnalyzerConfig_InvalidRepoFormat(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t)
+	defer store.Close()
+
+	ctx := context.Background()
+	cfg := DefaultAnalyzerConfig()
+
+	err := store.SetAnalyzerConfig(ctx, "invalid", cfg)
+	if err == nil {
+		t.Fatalf("expected error for invalid repo format")
+	}
+	if !strings.Contains(err.Error(), "invalid repo format") {
+		t.Fatalf("expected 'invalid repo format' in error, got: %v", err)
+	}
 }
