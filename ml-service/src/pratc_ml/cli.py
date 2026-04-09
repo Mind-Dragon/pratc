@@ -12,6 +12,16 @@ from pratc_ml.overlap import calculate_overlap
 from pratc_ml.providers import BackendConfigError
 
 
+def run_analyzer(payload: dict[str, Any]) -> dict[str, Any]:
+    """Run optional Python-backed analyzers on PRs.
+
+    Python analyzers are optional enhancements - Go remains the source of truth
+    and orchestrator for all PR decisions. This function returns empty results
+    as the actual analyzer implementations are add-ons.
+    """
+    return {"analyzers": []}
+
+
 def _handle_action(payload: dict[str, Any]) -> dict[str, Any]:
     action = payload.get("action")
     request_id = get_request_id(payload)
@@ -48,6 +58,15 @@ def _handle_action(payload: dict[str, Any]) -> dict[str, Any]:
             error(
                 request_id, "overlap calculation failed", repo=payload.get("repo"), error=str(exc)
             )
+            raise
+    if action == "analyze":
+        info(request_id, "analyzer action started", repo=payload.get("repo"))
+        try:
+            result = run_analyzer(payload)
+            info(request_id, "analyzer action completed", repo=payload.get("repo"))
+            return result
+        except Exception as exc:
+            error(request_id, "analyzer action failed", repo=payload.get("repo"), error=str(exc))
             raise
     return {"error": "unknown action", "action": action}
 

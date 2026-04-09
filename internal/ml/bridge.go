@@ -123,6 +123,36 @@ func (b *Bridge) Duplicates(ctx context.Context, repo string, prs []types.PR, du
 	return dups, overlaps, nil
 }
 
+// Analyze delegates PR analysis to the Python ML service for optional enhanced insights.
+// Go remains the source of truth and orchestrator. Python analyzers provide
+// additional insights only and are never required for core functionality.
+// Returns nil findings if the subprocess is unavailable or fails.
+func (b *Bridge) Analyze(ctx context.Context, repo string, prs []types.PR, analysisMode, requestID string) ([]types.AnalyzerFinding, error) {
+	if !b.Available() {
+		return nil, nil
+	}
+
+	payload := buildAnalyzePayload(repo, prs, analysisMode, requestID)
+	var result AnalyzerResult
+	if err := b.invoke(ctx, payload, &result); err != nil {
+		return nil, err
+	}
+
+	findings := make([]types.AnalyzerFinding, 0, len(result.Analyzers))
+	for _, group := range result.Analyzers {
+		for _, f := range group.Findings {
+			findings = append(findings, types.AnalyzerFinding{
+				AnalyzerName:    group.AnalyzerName,
+				AnalyzerVersion: group.AnalyzerVersion,
+				Finding:         f.Finding,
+				Confidence:      f.Confidence,
+			})
+		}
+	}
+
+	return findings, nil
+}
+
 func (b *Bridge) invoke(ctx context.Context, payload map[string]any, dest any) error {
 	input, err := json.Marshal(payload)
 	if err != nil {
@@ -175,6 +205,23 @@ func buildDuplicatePayload(repo string, prs []types.PR, dup, overlap float64, re
 		"prs":                mlPRs,
 		"duplicateThreshold": dup,
 		"overlapThreshold":   overlap,
+	}
+	if requestID != "" {
+		payload["request_id"] = requestID
+	}
+	return payload
+}
+
+func buildAnalyzePayload(repo string, prs []types.PR, analysisMode, requestID string) map[string]any {
+	mlPRs := make([]map[string]any, 0, len(prs))
+	for _, pr := range prs {
+		mlPRs = append(mlPRs, prToML(pr))
+	}
+	payload := map[string]any{
+		"action":       "analyze",
+		"repo":         repo,
+		"prs":          mlPRs,
+		"analysisMode": analysisMode,
 	}
 	if requestID != "" {
 		payload["request_id"] = requestID
@@ -255,4 +302,42 @@ type duplicateGroup struct {
 	DuplicatePRNums   []int   `json:"duplicate_pr_numbers"`
 	Similarity        float64 `json:"similarity"`
 	Reason            string  `json:"reason"`
+}
+
+// AnalyzerRequest is the payload sent to the Python ML service for analyzer actions.
+// Python analyzers are optional enhancements - Go remains the source of truth
+// and orchestrator for all PR decisions. Python provides additional insights only.
+type AnalyzerRequest struct {
+	Action       string     `json:"action"` // "analyze"
+	Repo         string     `json:"repo"`
+	PRs          []types.PR `json:"prs"`
+	AnalysisMode string     `json:"analysisMode"` // e.g., "standard", "security", "reliability"
+	RequestID    string     `json:"request_id,omitempty"`
+}
+
+// AnalyzerResult is the JSON response shape from the Python ML service analyzer action.
+type AnalyzerResult struct {
+	Analyzers []AnalyzerGroup `json:"analyzers"`
+}
+
+// AnalyzerGroup contains findings from a single analyzer.
+type AnalyzerGroup struct {
+	AnalyzerName    string                  `json:"analyzer_name"`
+	AnalyzerVersion string                  `json:"analyzer_version"`
+	Findings        []AnalyzerFindingResult `json:"findings"`
+}
+
+// AnalyzerFindingResult represents a single finding from an analyzer.
+type AnalyzerFindingResult struct {
+	PRNumber   int     `json:"pr_number"`
+	Finding    string  `json:"finding"`
+	Confidence float64 `json:"confidence"`
+	Category   string  `json:"category"` // security, reliability, performance, quality
+}
+
+// AnalyzerResponse is the Go representation of analyzer results,
+// suitable for merging with the Go-native analysis pipeline.
+type AnalyzerResponse struct {
+	Repo     string
+	Findings []types.AnalyzerFinding
 }
