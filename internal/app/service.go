@@ -1,3 +1,27 @@
+// Package app provides the service layer for prATC.
+//
+// v1.3 SCOPE BOUNDARIES - ADVISORY-ONLY GUARANTEE:
+//
+// This package implements v1.3 of prATC, which is strictly advisory-only.
+// The service layer NEVER performs GitHub mutations or automated actions.
+//
+// v1.3 MAY:
+//   - RECOMMEND merge actions (via ReviewPayload.NextAction)
+//   - PRIORITIZE PRs for review (via PriorityTier)
+//   - QUARANTINE problematic PRs in reports (via ReviewCategoryProblematic)
+//   - ESCALATE uncertain/high-risk PRs (via ReviewCategory)
+//
+// v1.3 MUST NOT:
+//   - Auto-merge PRs (no GitHub merge API calls)
+//   - Auto-approve PRs (no GitHub review submission)
+//   - Post review decisions back to GitHub as actions
+//   - Use GitHub Apps, OAuth flows, or webhooks
+//   - Make automated decisions without human review
+//
+// All GitHub operations are read-only: FetchPullRequests, FetchPullRequestFiles.
+// Authentication is token-based only (GITHUB_TOKEN or gh CLI auth).
+//
+// Future versions (1.4+) may introduce automation with explicit opt-in only.
 package app
 
 import (
