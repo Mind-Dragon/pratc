@@ -316,13 +316,15 @@ func RegisterAnalyzeCommand() {
 			switch strings.ToLower(format) {
 			case "json", "":
 				return writeJSON(cmd, response)
+			case "text":
+				return writeAnalyzeText(cmd, response, enableReview)
 			default:
 				return fmt.Errorf("invalid format %q for analyze", format)
 			}
 		},
 	}
 	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
-	command.Flags().StringVar(&format, "format", "json", "Output format: json")
+	command.Flags().StringVar(&format, "format", "json", "Output format: json|text")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
 	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch")
 	command.Flags().BoolVar(&force, "force", false, "Compatibility flag to skip sync warning")
@@ -982,6 +984,61 @@ func writeJSON(cmd *cobra.Command, payload any) error {
 	encoder := json.NewEncoder(cmd.OutOrStdout())
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(payload)
+}
+
+func writeAnalyzeText(cmd *cobra.Command, response types.AnalysisResponse, includeReview bool) error {
+	out := cmd.OutOrStdout()
+
+	fmt.Fprintf(out, "Repository: %s\n", response.Repo)
+	fmt.Fprintf(out, "Generated:  %s\n\n", response.GeneratedAt)
+
+	fmt.Fprintf(out, "Summary\n")
+	fmt.Fprintf(out, "  Total PRs:        %d\n", response.Counts.TotalPRs)
+	fmt.Fprintf(out, "  Clusters:         %d\n", response.Counts.ClusterCount)
+	fmt.Fprintf(out, "  Duplicate Groups: %d\n", response.Counts.DuplicateGroups)
+	fmt.Fprintf(out, "  Overlap Groups:   %d\n", response.Counts.OverlapGroups)
+	fmt.Fprintf(out, "  Conflict Pairs:   %d\n", response.Counts.ConflictPairs)
+	fmt.Fprintf(out, "  Stale PRs:        %d\n\n", response.Counts.StalePRs)
+
+	if includeReview && response.ReviewPayload != nil {
+		review := response.ReviewPayload
+		fmt.Fprintf(out, "Review Analysis\n")
+		fmt.Fprintf(out, "  PRs Reviewed: %d / %d\n\n", review.ReviewedPRs, review.TotalPRs)
+
+		if len(review.Categories) > 0 {
+			fmt.Fprintf(out, "  By Category:\n")
+			for _, cat := range review.Categories {
+				fmt.Fprintf(out, "    %-15s %d\n", cat.Category+":", cat.Count)
+			}
+			fmt.Fprintln(out)
+		}
+
+		if len(review.PriorityTiers) > 0 {
+			fmt.Fprintf(out, "  By Priority:\n")
+			for _, tier := range review.PriorityTiers {
+				fmt.Fprintf(out, "    %-15s %d\n", tier.Tier+":", tier.Count)
+			}
+			fmt.Fprintln(out)
+		}
+
+		if len(review.Results) > 0 {
+			fmt.Fprintf(out, "  Sample Findings:\n")
+			sampleCount := 5
+			if len(review.Results) < sampleCount {
+				sampleCount = len(review.Results)
+			}
+			for i := 0; i < sampleCount; i++ {
+				result := review.Results[i]
+				fmt.Fprintf(out, "    PR #%d: %s (%.0f%% confidence)\n",
+					response.PRs[i].Number, result.Category, result.Confidence*100)
+			}
+			if len(review.Results) > sampleCount {
+				fmt.Fprintf(out, "    ... and %d more\n", len(review.Results)-sampleCount)
+			}
+		}
+	}
+
+	return nil
 }
 
 func parseMode(raw string) (formula.Mode, error) {
