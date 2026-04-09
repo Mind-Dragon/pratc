@@ -325,3 +325,16 @@ type ReviewResult struct {
 	// AnalyzerFindings contains detailed output from each analyzer that contributed to this result.
 	AnalyzerFindings []AnalyzerFinding `json:"analyzer_findings"`
 }
+
+// AnalyzerMetadata provides metadata about an analyzer in the agentic review system.
+// It describes the analyzer's identity, version, category, and confidence level.
+type AnalyzerMetadata struct {
+	// Name is the unique identifier for the analyzer.
+	Name string `json:"name"`
+	// Version is the semantic version of the analyzer for reproducibility.
+	Version string `json:"version"`
+	// Category classifies the analyzer by its purpose (security, reliability, performance, quality).
+	Category string `json:"category"`
+	// Confidence is the analyzer's confidence scale, ranging from 0.0 to 1.0.
+	Confidence float64 `json:"confidence"`
+}
