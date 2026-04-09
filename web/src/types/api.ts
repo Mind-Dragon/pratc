@@ -234,6 +234,9 @@ export interface ReviewResult {
   priority_tier: PriorityTier;
   confidence: number;
   reasons: string[];
+  blockers: string[];
+  evidence_references: string[];
+  next_action: string;
   analyzer_findings: AnalyzerFinding[];
 }
 

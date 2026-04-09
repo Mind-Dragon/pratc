@@ -354,6 +354,12 @@ type ReviewResult struct {
 	Confidence float64 `json:"confidence"`
 	// Reasons is a list of reason codes explaining why this classification was assigned.
 	Reasons []string `json:"reasons"`
+	// Blockers lists the blocking issues that prevent merge or require follow-up.
+	Blockers []string `json:"blockers"`
+	// EvidenceReferences points to the evidence used to produce this review result.
+	EvidenceReferences []string `json:"evidence_references"`
+	// NextAction describes the next human action recommended for this PR.
+	NextAction string `json:"next_action"`
 	// AnalyzerFindings contains detailed output from each analyzer that contributed to this result.
 	AnalyzerFindings []AnalyzerFinding `json:"analyzer_findings"`
 }

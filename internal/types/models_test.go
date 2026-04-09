@@ -114,6 +114,12 @@ func TestTypeScriptInterfacesMirrorCanonicalFields(t *testing.T) {
 		"health_status: string;",
 		"export interface AnalysisResponse",
 		"generatedAt: string;",
+		"review_payload?: ReviewResponse;",
+		"export interface ReviewResponse",
+		"export interface ReviewResult",
+		"blockers: string[];",
+		"evidence_references: string[];",
+		"next_action: string;",
 		"stalenessSignals: StalenessReport[];",
 		"export interface PlanResponse",
 		"candidatePoolSize: number;",
@@ -327,7 +333,21 @@ func TestReviewPayloadOmittedWhenNil(t *testing.T) {
 			ReviewedPRs:   1,
 			Categories:    []ReviewCategoryCount{},
 			PriorityTiers: []PriorityTierCount{},
-			Results:       []ReviewResult{},
+			Results: []ReviewResult{{
+				Category:           ReviewCategoryMergeSafe,
+				PriorityTier:       PriorityTierFastMerge,
+				Confidence:         0.98,
+				Reasons:            []string{"high_confidence"},
+				Blockers:           []string{},
+				EvidenceReferences: []string{"diff:internal/planner/plan.go"},
+				NextAction:         "merge_now",
+				AnalyzerFindings: []AnalyzerFinding{{
+					AnalyzerName:    "security",
+					AnalyzerVersion: "1.0.0",
+					Finding:         "no issues",
+					Confidence:      0.99,
+				}},
+			}},
 		},
 	}
 
@@ -344,5 +364,26 @@ func TestReviewPayloadOmittedWhenNil(t *testing.T) {
 	// Verify review_payload IS present when set
 	if _, exists := decodedWithReview["review_payload"]; !exists {
 		t.Fatalf("review_payload should be present when set, but was missing in: %s", string(rawWithReview))
+	}
+
+	reviewPayload, ok := decodedWithReview["review_payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected review_payload structure: %#v", decodedWithReview["review_payload"])
+	}
+
+	results, ok := reviewPayload["results"].([]any)
+	if !ok || len(results) != 1 {
+		t.Fatalf("unexpected review results payload: %#v", reviewPayload["results"])
+	}
+
+	first, ok := results[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected first review result payload: %#v", results[0])
+	}
+
+	for _, field := range []string{"blockers", "evidence_references", "next_action"} {
+		if _, exists := first[field]; !exists {
+			t.Fatalf("review result field %s should be present when set, but was missing in: %s", field, string(rawWithReview))
+		}
 	}
 }
