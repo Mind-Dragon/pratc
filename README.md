@@ -2,6 +2,18 @@
 
 prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull request triage and merge planning.
 
+## Project Status
+
+- **Current release line:** `0.2.x`
+- **Current direction:** evidence-backed PR review workflows, merged/open duplicate detection, and safer operator-facing review output
+- **Default API port:** `7400` (reserved prATC range: `7400-7500`)
+
+## Documentation
+
+- [CHANGELOG.md](CHANGELOG.md) — release history
+- [ROADMAP.md](ROADMAP.md) — upcoming priorities
+- [docs/plans/2026-04-09-pratc-v1-3-review-engine-design.md](docs/plans/2026-04-09-pratc-v1-3-review-engine-design.md) — v1.3 review engine design
+
 ## Features
 
 - **CLI Analysis**: Analyze, cluster, graph, and plan merges for GitHub repositories
@@ -10,6 +22,7 @@ prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull re
 - **SQLite Cache**: Incremental GitHub sync with persisted state
 - **Omni Batch Planning**: Select PRs by ID ranges and boolean expressions via selector syntax
 - **Rate-Limit Aware**: Built-in retry and budget management
+- **Review Pipeline**: Advisory analyzers for security, reliability, performance, and quality review output
 
 ## Quick Start
 

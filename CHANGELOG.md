@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added `ROADMAP.md` to document near-term priorities for the review-engine release track.
+- Added a v1.3 review-engine design document under `docs/plans/` for evidence-backed PR review workflows.
+
+### Changed
+
+- Updated `README.md` to surface current project status, the reserved prATC port range, and links to roadmap/review design docs.
+- Hardened `.gitignore` to exclude local secret material, TypeScript incremental build outputs, and stray browser screenshot artifacts from release commits.
+
+### Removed
+
+- Removed a tracked `web/tsconfig.tsbuildinfo` build artifact from version control.
+
 ## [0.2.0] - 2026-03-23
 
 ### Added
