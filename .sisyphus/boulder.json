@@ -225,6 +225,15 @@
       "agent": "Sisyphus-Junior",
       "category": "quick",
       "updated_at": "2026-04-09T01:43:03.201Z"
+    },
+    "todo:31": {
+      "task_key": "todo:31",
+      "task_label": "31",
+      "task_title": "WebSocket server tests",
+      "session_id": "ses_290151e35ffeAijiuruZ45618Q",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-09T01:49:30.989Z"
     }
   }
 }
