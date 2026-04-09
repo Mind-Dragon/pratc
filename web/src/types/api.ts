@@ -210,3 +210,29 @@ export interface HealthResponse {
   status: string;
   version: string;
 }
+
+export type ReviewCategory = "merge_safe" | "duplicate" | "problematic" | "needs_review";
+
+export type PriorityTier = "fast_merge" | "review_required" | "blocked";
+
+export interface AnalyzerFinding {
+  analyzer_name: string;
+  analyzer_version: string;
+  finding: string;
+  confidence: number;
+}
+
+export interface AnalyzerMetadata {
+  name: string;
+  version: string;
+  category: string;
+  confidence: number;
+}
+
+export interface ReviewResult {
+  category: ReviewCategory;
+  priority_tier: PriorityTier;
+  confidence: number;
+  reasons: string[];
+  analyzer_findings: AnalyzerFinding[];
+}
