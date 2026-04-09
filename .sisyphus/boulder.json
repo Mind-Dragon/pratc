@@ -180,6 +180,15 @@
       "agent": "Sisyphus-Junior",
       "category": "visual-engineering",
       "updated_at": "2026-04-09T00:52:55.312Z"
+    },
+    "todo:25": {
+      "task_key": "todo:25",
+      "task_label": "25",
+      "task_title": "Build cmd/pratc/monitor.go command",
+      "session_id": "ses_29042da1dffe3H94UyvOCkSQzO",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-09T01:00:01.799Z"
     }
   }
 }
