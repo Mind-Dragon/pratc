@@ -199,6 +199,7 @@ type AnalysisResponse struct {
 	Conflicts               []ConflictPair      `json:"conflicts"`
 	StalenessSignals        []StalenessReport   `json:"stalenessSignals"`
 	Telemetry               *OperationTelemetry `json:"telemetry,omitempty"`
+	ReviewPayload           *ReviewResponse     `json:"review_payload,omitempty"`
 }
 
 type GraphResponse struct {
@@ -296,6 +297,33 @@ const (
 	// (e.g., conflicts, failing CI, requires rebase).
 	PriorityTierBlocked PriorityTier = "blocked"
 )
+
+// ReviewCategoryCount tracks the count of PRs in a specific review category.
+type ReviewCategoryCount struct {
+	Category string `json:"category"`
+	Count    int    `json:"count"`
+}
+
+// PriorityTierCount tracks the count of PRs in a specific priority tier.
+type PriorityTierCount struct {
+	Tier  string `json:"tier"`
+	Count int    `json:"count"`
+}
+
+// ReviewResponse aggregates review results for all analyzed PRs.
+// It provides categorized counts and priority tier distributions for agentic review systems.
+type ReviewResponse struct {
+	// TotalPRs is the total number of PRs included in this review.
+	TotalPRs int `json:"total_prs"`
+	// ReviewedPRs is the number of PRs that were successfully reviewed.
+	ReviewedPRs int `json:"reviewed_prs"`
+	// Categories contains counts of PRs by review category (merge_safe, duplicate, problematic, needs_review).
+	Categories []ReviewCategoryCount `json:"categories"`
+	// PriorityTiers contains counts of PRs by priority tier (fast_merge, review_required, blocked).
+	PriorityTiers []PriorityTierCount `json:"priority_tiers"`
+	// Results contains individual review results for each PR.
+	Results []ReviewResult `json:"results"`
+}
 
 // AnalyzerFinding represents a single finding from an analyzer in the agentic review system.
 // It captures the analyzer's output with version information for traceability.
