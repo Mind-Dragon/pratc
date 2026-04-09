@@ -68,10 +68,17 @@ out/
 *.db
 /--viewport
 
-# Fixtures cache/metadata (not committed)
+# Fixtures data (fetched via scripts/fetch_fixtures.py - keep script, ignore data)
+fixtures/prs/
 fixtures/cache/
 fixtures/tmp/
-fixtures/manifest.json
+fixtures/*.json
 
 # Docker
 .docker/
+
+# Next.js generated
+next-env.d.ts
+
+# Bun lock (we use package-lock.json for reproducibility)
+bun.lock
