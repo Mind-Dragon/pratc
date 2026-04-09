@@ -189,6 +189,24 @@
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
       "updated_at": "2026-04-09T01:00:01.799Z"
+    },
+    "todo:27": {
+      "task_key": "todo:27",
+      "task_label": "27",
+      "task_title": "Integrate with existing web layout",
+      "session_id": "ses_29037d252ffeMHtONSANb27b6t",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-09T01:08:53.780Z"
+    },
+    "todo:28": {
+      "task_key": "todo:28",
+      "task_label": "28",
+      "task_title": "TUI integration tests",
+      "session_id": "ses_290346d69ffeOW0xZaFFJUOiqL",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-09T01:17:53.506Z"
     }
   }
 }
