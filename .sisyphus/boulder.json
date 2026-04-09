@@ -153,6 +153,15 @@
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
       "updated_at": "2026-04-09T00:26:33.098Z"
+    },
+    "todo:22": {
+      "task_key": "todo:22",
+      "task_label": "22",
+      "task_title": "Wire Web to data layer via WebSocket",
+      "session_id": "ses_2905ba41effejg00vNYuvaksg6",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-09T00:30:56.445Z"
     }
   }
 }
