@@ -12,6 +12,7 @@ import (
 
 // ResolvedFinding represents the outcome of resolving disagreement among multiple analyzers.
 // It captures the final category decision along with metadata about consensus or disagreement.
+// Raw findings are preserved for transparency and auditability.
 type ResolvedFinding struct {
 	// Category is the resolved review category after considering all analyzer findings.
 	Category types.ReviewCategory `json:"category"`
@@ -26,6 +27,9 @@ type ResolvedFinding struct {
 	MajorityCategory string `json:"majority_category"`
 	// MinorityCategories lists categories that were not selected by the majority.
 	MinorityCategories []string `json:"minority_categories"`
+	// RawFindings contains all individual analyzer findings that contributed to this resolution.
+	// Preserved for transparency, auditability, and debugging analyzer disagreements.
+	RawFindings []types.AnalyzerFinding `json:"raw_findings"`
 }
 
 // ResolveDisagreement resolves disagreement among multiple analyzer findings using majority wins.
@@ -46,6 +50,7 @@ func ResolveDisagreement(findings []types.AnalyzerFinding) ResolvedFinding {
 			DisagreementDetected: false,
 			MajorityCategory:     "",
 			MinorityCategories:   []string{},
+			RawFindings:          []types.AnalyzerFinding{},
 		}
 	}
 
@@ -58,6 +63,7 @@ func ResolveDisagreement(findings []types.AnalyzerFinding) ResolvedFinding {
 			DisagreementDetected: false,
 			MajorityCategory:     findings[0].Finding,
 			MinorityCategories:   []string{},
+			RawFindings:          findings,
 		}
 	}
 
@@ -100,6 +106,7 @@ func ResolveDisagreement(findings []types.AnalyzerFinding) ResolvedFinding {
 
 	resolved := ResolvedFinding{
 		MinorityCategories: minorityCategories,
+		RawFindings:        findings,
 	}
 
 	// Confidence penalties for disagreement
