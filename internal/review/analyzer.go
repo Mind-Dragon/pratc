@@ -1,4 +1,14 @@
 // Package review provides the Analyzer interface and related types for the agentic PR review system.
+//
+// Timeout Policy:
+//
+//	Analyzers have configurable timeouts to prevent runaway analysis. The default
+//	timeout is 30 seconds, with a minimum of 5 seconds and maximum of 120 seconds.
+//	Use WithTimeout() to customize per-analyzer timeout.
+//
+//	DefaultAnalyzerTimeout = 30s  // Recommended for most analyzers
+//	MinAnalyzerTimeout     = 5s   // Floor to ensure analyzers have time to work
+//	MaxAnalyzerTimeout     = 120s // Ceiling to prevent resource exhaustion
 package review
 
 import (
@@ -6,6 +16,20 @@ import (
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/types"
+)
+
+// Timeout policy constants for analyzer execution.
+// These bounds ensure analyzers have sufficient time to complete while
+// preventing runaway analysis from consuming excessive resources.
+const (
+	// DefaultAnalyzerTimeout is the recommended timeout for most analyzers.
+	DefaultAnalyzerTimeout = 30 * time.Second
+
+	// MinAnalyzerTimeout is the floor to ensure analyzers have time to work.
+	MinAnalyzerTimeout = 5 * time.Second
+
+	// MaxAnalyzerTimeout is the ceiling to prevent resource exhaustion.
+	MaxAnalyzerTimeout = 120 * time.Second
 )
 
 // PRData contains all PR metadata needed for an analyzer to produce a review result.
