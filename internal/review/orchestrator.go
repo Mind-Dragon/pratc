@@ -260,11 +260,14 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 	if len(analyzers) == 0 {
 		// No analyzers registered - return empty result
 		placeholderResult := types.ReviewResult{
-			Category:         types.ReviewCategoryNeedsReview,
-			PriorityTier:     types.PriorityTierReviewRequired,
-			Confidence:       0.0,
-			Reasons:          []string{"no analyzers registered"},
-			AnalyzerFindings: []types.AnalyzerFinding{},
+			Category:           types.ReviewCategoryNeedsReview,
+			PriorityTier:       types.PriorityTierReviewRequired,
+			Confidence:         0.0,
+			Reasons:            []string{"no analyzers registered"},
+			Blockers:           []string{},
+			EvidenceReferences: []string{},
+			NextAction:         "human_review",
+			AnalyzerFindings:   []types.AnalyzerFinding{},
 		}
 		return AnalyzerResult{
 			Result:           placeholderResult,
@@ -337,11 +340,56 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 	}
 
 	reviewResult := types.ReviewResult{
-		Category:         finalCategory,
-		PriorityTier:     types.PriorityTierReviewRequired,
-		Confidence:       finalConfidence,
-		Reasons:          finalReasons,
-		AnalyzerFindings: allFindings,
+		Category:           finalCategory,
+		PriorityTier:       types.PriorityTierReviewRequired,
+		Confidence:         finalConfidence,
+		Reasons:            finalReasons,
+		AnalyzerFindings:   allFindings,
+		Blockers:           []string{},
+		EvidenceReferences: []string{},
+		NextAction:         "review",
+	}
+
+	// Populate blockers based on PR data and category
+	if prData.Staleness != nil && prData.Staleness.Score > 50 {
+		reviewResult.Blockers = append(reviewResult.Blockers, "stale: PR has staleness signals")
+	}
+	if len(prData.ConflictPairs) > 0 {
+		reviewResult.Blockers = append(reviewResult.Blockers, "conflict: PR has file conflicts with other PRs")
+	}
+	if len(prData.DuplicateGroups) > 0 {
+		reviewResult.Blockers = append(reviewResult.Blockers, "duplicate: PR may duplicate existing changes")
+	}
+
+	// Populate evidence references
+	if prData.Staleness != nil {
+		reviewResult.EvidenceReferences = append(reviewResult.EvidenceReferences, fmt.Sprintf("staleness_score:%.1f", prData.Staleness.Score))
+	}
+	reviewResult.EvidenceReferences = append(reviewResult.EvidenceReferences, fmt.Sprintf("cluster:%s", prData.ClusterID))
+	if len(prData.ConflictPairs) > 0 {
+		reviewResult.EvidenceReferences = append(reviewResult.EvidenceReferences, fmt.Sprintf("conflicts:%d", len(prData.ConflictPairs)))
+	}
+	if len(prData.DuplicateGroups) > 0 {
+		reviewResult.EvidenceReferences = append(reviewResult.EvidenceReferences, fmt.Sprintf("duplicates:%d", len(prData.DuplicateGroups)))
+	}
+
+	// Determine next action based on category
+	switch finalCategory {
+	case types.ReviewCategoryMergeSafe:
+		reviewResult.NextAction = "merge"
+		reviewResult.PriorityTier = types.PriorityTierFastMerge
+	case types.ReviewCategoryDuplicate:
+		reviewResult.NextAction = "close_duplicate"
+		reviewResult.PriorityTier = types.PriorityTierBlocked
+	case types.ReviewCategoryProblematic:
+		reviewResult.NextAction = "address_issues"
+		reviewResult.PriorityTier = types.PriorityTierBlocked
+	case types.ReviewCategoryNeedsReview:
+		reviewResult.NextAction = "human_review"
+		reviewResult.PriorityTier = types.PriorityTierReviewRequired
+	default:
+		reviewResult.NextAction = "review"
+		reviewResult.PriorityTier = types.PriorityTierReviewRequired
 	}
 
 	isPartial := len(skippedReasons) > 0
