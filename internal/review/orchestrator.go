@@ -153,6 +153,40 @@ func ResolveDisagreement(findings []types.AnalyzerFinding) ResolvedFinding {
 	return resolved
 }
 
+// ReviewSummary aggregates review results across multiple PRs.
+// It provides categorized counts and tracks analyzer disagreements for reporting.
+type ReviewSummary struct {
+	// TotalPRs is the total number of PRs included in the summary.
+	TotalPRs int `json:"total_prs"`
+	// Categories maps each review category to its count of PRs.
+	Categories map[types.ReviewCategory]int `json:"categories"`
+	// PriorityTiers maps each priority tier to its count of PRs.
+	PriorityTiers map[types.PriorityTier]int `json:"priority_tiers"`
+	// DisagreementCount is the number of PRs where analyzers disagreed.
+	DisagreementCount int `json:"disagreement_count"`
+}
+
+// GenerateReviewSummary aggregates multiple ResolvedFinding results into a ReviewSummary.
+// It counts PRs by category, priority tier, and tracks disagreements.
+func GenerateReviewSummary(results []ResolvedFinding) ReviewSummary {
+	summary := ReviewSummary{
+		TotalPRs:          len(results),
+		Categories:        make(map[types.ReviewCategory]int),
+		PriorityTiers:     make(map[types.PriorityTier]int),
+		DisagreementCount: 0,
+	}
+
+	for _, result := range results {
+		summary.Categories[result.Category]++
+
+		if result.DisagreementDetected {
+			summary.DisagreementCount++
+		}
+	}
+
+	return summary
+}
+
 type Orchestrator struct {
 	analyzers     []Analyzer
 	config        settings.AnalyzerConfig
