@@ -16,6 +16,9 @@ type MergeSafetyResult struct {
 func ClassifyMergeSafety(pr types.PR, conflictPairs []types.ConflictPair) MergeSafetyResult {
 	var reasons, blockers []string
 	confidence := 1.0
+	hasDiffEvidence := len(pr.FilesChanged) > 0 || pr.Additions > 0 || pr.Deletions > 0
+	hasCIEvidence := isPassingCIStatus(pr.CIStatus)
+	hasApprovalEvidence := pr.ReviewStatus == "approved"
 
 	switch pr.CIStatus {
 	case "success", "passed", "green":
@@ -39,11 +42,10 @@ func ClassifyMergeSafety(pr types.PR, conflictPairs []types.ConflictPair) MergeS
 		blockers = append(blockers, "changes requested")
 		confidence -= 0.2
 	case "pending", "review_required", "required":
-		if !pr.IsDraft {
-			blockers = append(blockers, "not reviewed")
-			confidence -= 0.15
-		} else {
+		if pr.IsDraft {
 			confidence -= 0.05
+		} else {
+			confidence -= 0.15
 		}
 	case "":
 		confidence -= 0.1
@@ -84,12 +86,50 @@ func ClassifyMergeSafety(pr types.PR, conflictPairs []types.ConflictPair) MergeS
 		confidence = 0.0
 	}
 
+	// Evidence-tier confidence guardrails.
+	// Metadata-only inputs stay low-confidence, diff+CI inputs stay medium-confidence,
+	// and large/high-risk PRs do not cross the fast-merge threshold without stronger evidence.
+	switch {
+	case !hasDiffEvidence && !hasCIEvidence && !hasApprovalEvidence:
+		if confidence > 0.35 {
+			confidence = 0.35
+		}
+	case hasDiffEvidence && hasCIEvidence && !hasApprovalEvidence:
+		if confidence > 0.65 {
+			confidence = 0.65
+		}
+	case hasDiffEvidence && hasCIEvidence && hasApprovalEvidence && !pr.IsDraft && len(blockers) == 0:
+		if confidence < 0.80 {
+			confidence = 0.80
+		}
+	}
+
+	if isHighRiskPR(pr) && confidence > 0.79 {
+		confidence = 0.79
+	}
+
 	return MergeSafetyResult{
 		IsSafe:     len(blockers) == 0,
 		Confidence: confidence,
 		Reasons:    reasons,
 		Blockers:   blockers,
 	}
+}
+
+func isPassingCIStatus(status string) bool {
+	switch status {
+	case "success", "passed", "green":
+		return true
+	default:
+		return false
+	}
+}
+
+func isHighRiskPR(pr types.PR) bool {
+	if pr.ChangedFilesCount >= 5 {
+		return true
+	}
+	return pr.Additions+pr.Deletions >= 500
 }
 
 func gatherConflictFiles(pairs []types.ConflictPair, prNumber int) []string {
