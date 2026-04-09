@@ -173,6 +173,231 @@ func TestStoreGetAllJobsExcludesEmptyRepo(t *testing.T) {
 	}
 }
 
+func TestStoreGetActiveJobsWithError(t *testing.T) {
+	t.Parallel()
+
+	cacheStore := newTestCacheStore(t)
+	store := NewStore(cacheStore)
+	cacheStore.Close()
+
+	jobs := store.GetActiveJobs()
+	if jobs != nil {
+		t.Errorf("expected nil on error, got %v", jobs)
+	}
+}
+
+func TestStoreGetJobHistoryWithError(t *testing.T) {
+	t.Parallel()
+
+	cacheStore := newTestCacheStore(t)
+	store := NewStore(cacheStore)
+	cacheStore.Close()
+
+	jobs := store.GetJobHistory(10)
+	if jobs != nil {
+		t.Errorf("expected nil on error, got %v", jobs)
+	}
+}
+
+func TestStoreGetAllJobsWithError(t *testing.T) {
+	t.Parallel()
+
+	cacheStore := newTestCacheStore(t)
+	store := NewStore(cacheStore)
+	cacheStore.Close()
+
+	jobs := store.GetAllJobs()
+	if jobs != nil {
+		t.Errorf("expected nil on error, got %v", jobs)
+	}
+}
+
+func TestStoreDB(t *testing.T) {
+	t.Parallel()
+
+	cacheStore := newTestCacheStore(t)
+	store := NewStore(cacheStore)
+
+	db := store.DB()
+	if db == nil {
+		t.Fatal("expected non-nil DB")
+	}
+
+	var one int
+	if err := db.QueryRow("SELECT 1").Scan(&one); err != nil {
+		t.Fatalf("DB query failed: %v", err)
+	}
+	if one != 1 {
+		t.Errorf("expected 1, got %d", one)
+	}
+}
+
+func TestStoreJobToViewProgressCalculation(t *testing.T) {
+	t.Parallel()
+
+	cacheStore := newTestCacheStore(t)
+	store := NewStore(cacheStore)
+
+	job, err := cacheStore.CreateSyncJob("owner/repo")
+	if err != nil {
+		t.Fatalf("create sync job: %v", err)
+	}
+
+	if err := cacheStore.UpdateSyncJobProgress(job.ID, cache.SyncProgress{
+		Cursor:       "cursor-1",
+		ProcessedPRs: 50,
+		TotalPRs:     100,
+	}); err != nil {
+		t.Fatalf("update progress: %v", err)
+	}
+
+	jobs := store.GetAllJobs()
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+
+	if jobs[0].Progress != 50 {
+		t.Errorf("expected progress 50, got %d", jobs[0].Progress)
+	}
+}
+
+func TestStoreJobToViewZeroTotal(t *testing.T) {
+	t.Parallel()
+
+	cacheStore := newTestCacheStore(t)
+	store := NewStore(cacheStore)
+
+	job, err := cacheStore.CreateSyncJob("owner/repo")
+	if err != nil {
+		t.Fatalf("create sync job: %v", err)
+	}
+
+	if err := cacheStore.UpdateSyncJobProgress(job.ID, cache.SyncProgress{
+		Cursor:       "cursor-1",
+		ProcessedPRs: 0,
+		TotalPRs:     0,
+	}); err != nil {
+		t.Fatalf("update progress: %v", err)
+	}
+
+	jobs := store.GetAllJobs()
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+
+	if jobs[0].Progress != 0 {
+		t.Errorf("expected progress 0 when total is 0, got %d", jobs[0].Progress)
+	}
+}
+
+func TestStoreMapCacheStatus(t *testing.T) {
+	tests := []struct {
+		input    cache.SyncJobStatus
+		expected string
+	}{
+		{cache.SyncJobStatusInProgress, StatusActive},
+		{cache.SyncJobStatusPaused, StatusPaused},
+		{cache.SyncJobStatusCompleted, StatusCompleted},
+		{cache.SyncJobStatusFailed, StatusFailed},
+		{cache.SyncJobStatus("unknown"), StatusQueued},
+		{"", StatusQueued},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.input), func(t *testing.T) {
+			result := mapCacheStatus(tt.input)
+			if result != tt.expected {
+				t.Errorf("mapCacheStatus(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestStoreJobToViewCompletedDetail(t *testing.T) {
+	t.Parallel()
+
+	cacheStore := newTestCacheStore(t)
+	store := NewStore(cacheStore)
+
+	job, err := cacheStore.CreateSyncJob("owner/repo")
+	if err != nil {
+		t.Fatalf("create sync job: %v", err)
+	}
+
+	if err := cacheStore.MarkSyncJobComplete(job.ID, time.Now()); err != nil {
+		t.Fatalf("complete job: %v", err)
+	}
+
+	jobs := store.GetAllJobs()
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+
+	if jobs[0].Detail != "Completed successfully" {
+		t.Errorf("expected 'Completed successfully' detail, got %q", jobs[0].Detail)
+	}
+}
+
+func TestStoreJobToViewErrorDetail(t *testing.T) {
+	t.Parallel()
+
+	cacheStore := newTestCacheStore(t)
+	store := NewStore(cacheStore)
+
+	job, err := cacheStore.CreateSyncJob("owner/repo")
+	if err != nil {
+		t.Fatalf("create sync job: %v", err)
+	}
+
+	errorMsg := "network timeout"
+	if err := cacheStore.MarkSyncJobFailed(job.ID, errorMsg); err != nil {
+		t.Fatalf("fail job: %v", err)
+	}
+
+	jobs := store.GetAllJobs()
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+
+	if jobs[0].Detail != errorMsg {
+		t.Errorf("expected error detail %q, got %q", errorMsg, jobs[0].Detail)
+	}
+}
+
+func TestStoreGetJobHistoryEmpty(t *testing.T) {
+	t.Parallel()
+
+	cacheStore := newTestCacheStore(t)
+	store := NewStore(cacheStore)
+
+	jobs := store.GetJobHistory(10)
+	if len(jobs) != 0 {
+		t.Errorf("expected 0 jobs in history, got %d", len(jobs))
+	}
+}
+
+func TestStoreGetActiveJobsEmpty(t *testing.T) {
+	t.Parallel()
+
+	cacheStore := newTestCacheStore(t)
+	store := NewStore(cacheStore)
+
+	for i := 0; i < 3; i++ {
+		job, err := cacheStore.CreateSyncJob("owner/repo" + string(rune('a'+i)))
+		if err != nil {
+			t.Fatalf("create job: %v", err)
+		}
+		if err := cacheStore.MarkSyncJobComplete(job.ID, time.Now()); err != nil {
+			t.Fatalf("complete job: %v", err)
+		}
+	}
+
+	jobs := store.GetActiveJobs()
+	if len(jobs) != 0 {
+		t.Errorf("expected 0 active jobs, got %d", len(jobs))
+	}
+}
+
 func newTestCacheStore(t *testing.T) *cache.Store {
 	t.Helper()
 

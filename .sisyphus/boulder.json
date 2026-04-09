@@ -216,6 +216,15 @@
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
       "updated_at": "2026-04-09T01:33:26.041Z"
+    },
+    "todo:30": {
+      "task_key": "todo:30",
+      "task_label": "30",
+      "task_title": "Data layer unit tests",
+      "session_id": "ses_2901c76b1ffe4y8gOAC5fvsMc0",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-09T01:43:03.201Z"
     }
   }
 }
