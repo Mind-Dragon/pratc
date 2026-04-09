@@ -243,6 +243,15 @@
       "agent": "Sisyphus-Junior",
       "category": "writing",
       "updated_at": "2026-04-09T01:53:04.873Z"
+    },
+    "todo:33": {
+      "task_key": "todo:33",
+      "task_label": "33",
+      "task_title": "Documentation: api/monitor-endpoints.md",
+      "session_id": "ses_2900c186effe18ZwezYKiOTrqa",
+      "agent": "Sisyphus-Junior",
+      "category": "writing",
+      "updated_at": "2026-04-09T01:56:55.544Z"
     }
   }
 }
