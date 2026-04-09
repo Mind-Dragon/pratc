@@ -9,25 +9,23 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/monitor/data"
 )
 
-// JobsList displays a scrollable list of sync jobs with progress bars.
 type JobsList struct {
-	jobs   []data.SyncJobView
-	cursor int
-	offset int
-	height int
+	jobs       []data.SyncJobView
+	cursor     int
+	offset     int
+	height     int
+	shimmerPos int
 }
 
-// NewJobsList creates a new JobsList with default height of 10.
 func NewJobsList() *JobsList {
 	return &JobsList{
-		height: 10,
+		height:     10,
+		shimmerPos: 0,
 	}
 }
 
-// SetJobs updates the job list with new data.
 func (j *JobsList) SetJobs(jobs []data.SyncJobView) {
 	j.jobs = jobs
-	// Ensure cursor is within bounds
 	if j.cursor >= len(jobs) {
 		if len(jobs) > 0 {
 			j.cursor = len(jobs) - 1
@@ -35,15 +33,12 @@ func (j *JobsList) SetJobs(jobs []data.SyncJobView) {
 			j.cursor = 0
 		}
 	}
-	// Ensure offset is valid
 	if j.offset > j.cursor {
 		j.offset = j.cursor
 	}
 	j.ensureCursorVisible()
 }
 
-// Update handles keyboard input for navigation.
-// Supports: ↑/↓ for line navigation with wrap-around, PgUp/PgDn for page scrolling.
 func (j *JobsList) Update(msg tea.Msg) tea.Cmd {
 	if len(j.jobs) == 0 {
 		return nil
@@ -55,14 +50,14 @@ func (j *JobsList) Update(msg tea.Msg) tea.Cmd {
 		case tea.KeyUp:
 			j.cursor--
 			if j.cursor < 0 {
-				j.cursor = len(j.jobs) - 1 // wrap around
+				j.cursor = len(j.jobs) - 1
 			}
 			j.ensureCursorVisible()
 
 		case tea.KeyDown:
 			j.cursor++
 			if j.cursor >= len(j.jobs) {
-				j.cursor = 0 // wrap around
+				j.cursor = 0
 			}
 			j.ensureCursorVisible()
 
@@ -82,11 +77,12 @@ func (j *JobsList) Update(msg tea.Msg) tea.Cmd {
 			j.offset = j.cursor
 			j.ensureCursorVisible()
 		}
+	case TickMsg:
+		j.shimmerPos = (j.shimmerPos + 10) % 100
 	}
 	return nil
 }
 
-// ensureCursorVisible scrolls the viewport to keep the cursor visible.
 func (j *JobsList) ensureCursorVisible() {
 	if j.cursor < j.offset {
 		j.offset = j.cursor
@@ -96,8 +92,6 @@ func (j *JobsList) ensureCursorVisible() {
 	}
 }
 
-// View renders the jobs list with progress bars and status badges.
-// Each job is displayed as: [STATUS] repo/name  [████████████░░░░]  67%
 func (j *JobsList) View(width int) string {
 	if len(j.jobs) == 0 {
 		return j.renderEmpty()
@@ -118,7 +112,6 @@ func (j *JobsList) View(width int) string {
 	return sb.String()
 }
 
-// cursorJob represents a job with its index in the full list.
 type cursorJob struct {
 	job   data.SyncJobView
 	index int
@@ -146,7 +139,7 @@ func (j *JobsList) renderEmpty() string {
 func (j *JobsList) renderJob(job data.SyncJobView, isCursor bool, width int) string {
 	statusBadge := j.statusBadge(job.Status)
 	repoName := j.truncateRepo(job.Repo, 20)
-	progressBar := j.renderProgressBar(job.Progress, job.Status)
+	progressBar := j.renderProgressBarWithShimmer(job.Progress, job.Status)
 	progressPct := fmt.Sprintf("%3d%%", job.Progress)
 
 	var sb strings.Builder
@@ -172,20 +165,41 @@ func (j *JobsList) statusBadge(status string) string {
 	return color + "[" + strings.ToUpper(status) + "]" + reset
 }
 
-func (j *JobsList) renderProgressBar(progress int, status string) string {
+func (j *JobsList) renderProgressBarWithShimmer(progress int, status string) string {
 	const barWidth = 40
 	filled := (progress * barWidth) / 100
 
-	// Limit filled to barWidth
 	if filled > barWidth {
 		filled = barWidth
 	}
 
+	isActive := status == data.StatusActive || status == "in_progress" || status == "running"
+
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+
+	if isActive {
+		shimmerStart := j.shimmerPos / 3
+		shimmerEnd := shimmerStart + 5
+		if shimmerEnd > barWidth {
+			shimmerEnd = barWidth
+		}
+
+		var shimmerBar strings.Builder
+		for i := 0; i < barWidth; i++ {
+			if i >= shimmerStart && i < shimmerEnd && i < filled {
+				shimmerBar.WriteString("\033[96m█\033[0m")
+			} else if i < filled {
+				shimmerBar.WriteString("█")
+			} else {
+				shimmerBar.WriteString("░")
+			}
+		}
+		bar = shimmerBar.String()
+	}
+
 	return "[" + bar + "]"
 }
 
-// truncateRepo truncates a repo name to fit within the given width.
 func (j *JobsList) truncateRepo(repo string, maxLen int) string {
 	if len(repo) <= maxLen {
 		return repo

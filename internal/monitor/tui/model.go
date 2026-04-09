@@ -78,7 +78,7 @@ func (m *Model) Init() tea.Cmd {
 		go m.receiveUpdates(ch)
 	}
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return tickMsg(t)
+		return TickMsg(t)
 	})
 }
 
@@ -88,15 +88,16 @@ func (m *Model) receiveUpdates(ch chan data.DataUpdate) {
 	}
 }
 
-type tickMsg time.Time
+type TickMsg time.Time
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return m.HandleKey(msg)
-	case tickMsg:
+	case TickMsg:
+		m.JobsPanel.Update(TickMsg(msg))
 		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
-			return tickMsg(t)
+			return TickMsg(t)
 		})
 	case data.DataUpdate:
 		return m.handleDataUpdate(msg)

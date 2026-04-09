@@ -171,6 +171,15 @@
       "agent": "Sisyphus-Junior",
       "category": "visual-engineering",
       "updated_at": "2026-04-09T00:44:07.471Z"
+    },
+    "todo:24": {
+      "task_key": "todo:24",
+      "task_label": "24",
+      "task_title": "Add animation (progress bars, pulses)",
+      "session_id": "ses_2904ba352ffeIZkC5j7dCUPgLN",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-04-09T00:52:55.312Z"
     }
   }
 }

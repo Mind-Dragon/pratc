@@ -438,6 +438,39 @@ button {
   }
 }
 
+@keyframes pulse-live {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(0.98);
+  }
+}
+
+.job-progress-bar {
+  transition: width 0.5s ease;
+}
+
+.live-indicator {
+  animation: pulse-live 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-progress-bar {
+    transition: none;
+  }
+  
+  .live-indicator {
+    animation: none;
+  }
+  
+  .job-progress-bar--animation {
+    animation: none;
+  }
+}
+
 .action-feedback--success {
   border: 1px solid rgba(44, 122, 98, 0.35);
   background: rgba(44, 122, 98, 0.12);
