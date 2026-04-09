@@ -48,6 +48,31 @@ func TestAnalyzeReturnsContractShape(t *testing.T) {
 	}
 }
 
+func TestAnalyzeIncludesReviewPayloadWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	manifest, err := testutil.LoadManifest()
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	service := NewService(Config{Now: fixedNow, IncludeReview: true})
+	response, err := service.Analyze(context.Background(), manifest.Repo)
+	if err != nil {
+		t.Fatalf("analyze with review: %v", err)
+	}
+
+	if response.ReviewPayload == nil {
+		t.Fatal("expected review payload when review is enabled")
+	}
+	if response.ReviewPayload.TotalPRs != len(response.PRs) {
+		t.Fatalf("review total_prs = %d, want %d", response.ReviewPayload.TotalPRs, len(response.PRs))
+	}
+	if len(response.ReviewPayload.Results) == 0 {
+		t.Fatal("expected at least one review result")
+	}
+}
+
 func TestClusterReturnsThresholdsAndClusters(t *testing.T) {
 	t.Parallel()
 

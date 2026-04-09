@@ -23,12 +23,12 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/settings"
 	"github.com/jeffersonnunn/pratc/internal/testutil"
 	"github.com/jeffersonnunn/pratc/internal/types"
+	"github.com/jeffersonnunn/pratc/internal/version"
 )
 
 const (
 	duplicateThreshold = 0.90
 	overlapThreshold   = 0.70
-	version            = "1.0.0"
 	defaultMaxPRs      = 1000
 )
 
@@ -36,6 +36,7 @@ type Config struct {
 	Now                     func() time.Time
 	AllowLive               bool
 	UseCacheFirst           bool
+	IncludeReview           bool
 	Token                   string
 	MaxPRs                  int
 	BeginningPRNumber       int
@@ -48,6 +49,7 @@ type Service struct {
 	now                     func() time.Time
 	allowLive               bool
 	useCacheFirst           bool
+	includeReview           bool
 	token                   string
 	maxPRs                  int
 	beginningPRNumber       int
@@ -134,6 +136,7 @@ func NewService(cfg Config) Service {
 	}
 
 	useCacheFirst := cfg.UseCacheFirst
+	includeReview := cfg.IncludeReview
 
 	var cacheStore *cache.Store
 	if useCacheFirst {
@@ -163,6 +166,7 @@ func NewService(cfg Config) Service {
 		now:                     now,
 		allowLive:               allowLive,
 		useCacheFirst:           useCacheFirst,
+		includeReview:           includeReview,
 		token:                   token,
 		maxPRs:                  maxPRs,
 		beginningPRNumber:       cfg.BeginningPRNumber,
@@ -245,7 +249,7 @@ type truncationMeta struct {
 }
 
 func (s Service) Health() types.HealthResponse {
-	return types.HealthResponse{Status: "ok", Version: version}
+	return types.HealthResponse{Status: "ok", Version: version.Version}
 }
 
 func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisResponse, error) {
@@ -334,7 +338,7 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 	staleness := buildStaleness(prs, duplicates, s.now())
 	telemetry.StageLatenciesMS["staleness_ms"] = int(time.Since(staleStart).Milliseconds())
 
-	return types.AnalysisResponse{
+	response := types.AnalysisResponse{
 		Repo:                    repoName,
 		GeneratedAt:             s.now().Format(time.RFC3339),
 		AnalysisTruncated:       meta.AnalysisTruncated,
@@ -358,6 +362,139 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 		Conflicts:        conflicts,
 		StalenessSignals: staleness,
 		Telemetry:        &telemetry,
+	}
+
+	if s.includeReview {
+		reviewPayload, err := s.buildReviewPayload(ctx, repoName, response)
+		if err != nil {
+			log.Warn("review analysis failed", "error", err)
+		} else {
+			response.ReviewPayload = reviewPayload
+		}
+	}
+
+	return response, nil
+}
+
+func (s Service) buildReviewPayload(ctx context.Context, repo string, response types.AnalysisResponse) (*types.ReviewResponse, error) {
+	if len(response.PRs) == 0 {
+		return &types.ReviewResponse{
+			TotalPRs:      0,
+			ReviewedPRs:   0,
+			Categories:    []types.ReviewCategoryCount{},
+			PriorityTiers: []types.PriorityTierCount{},
+			Results:       []types.ReviewResult{},
+		}, nil
+	}
+
+	settingsDB := os.Getenv("PRATC_SETTINGS_DB")
+	if settingsDB == "" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			settingsDB = filepath.Join(home, ".pratc", "pratc-settings.db")
+		} else {
+			settingsDB = "./pratc-settings.db"
+		}
+	}
+
+	settingsStore, err := settings.Open(settingsDB)
+	if err != nil {
+		return nil, fmt.Errorf("open settings store: %w", err)
+	}
+	defer settingsStore.Close()
+
+	cfg := settings.DefaultAnalyzerConfig()
+	orchestrator := review.NewOrchestrator(cfg, settingsStore)
+
+	clusterMap := make(map[string]types.PRCluster)
+	for _, cluster := range response.Clusters {
+		clusterMap[cluster.ClusterID] = cluster
+	}
+
+	duplicateMap := make(map[int][]types.DuplicateGroup)
+	for _, dup := range response.Duplicates {
+		duplicateMap[dup.CanonicalPRNumber] = append(duplicateMap[dup.CanonicalPRNumber], dup)
+	}
+	for _, ov := range response.Overlaps {
+		duplicateMap[ov.CanonicalPRNumber] = append(duplicateMap[ov.CanonicalPRNumber], ov)
+	}
+
+	conflictMap := make(map[int][]types.ConflictPair)
+	for _, conflict := range response.Conflicts {
+		conflictMap[conflict.SourcePR] = append(conflictMap[conflict.SourcePR], conflict)
+		conflictMap[conflict.TargetPR] = append(conflictMap[conflict.TargetPR], conflict)
+	}
+
+	staleMap := make(map[int]types.StalenessReport)
+	for _, stale := range response.StalenessSignals {
+		staleMap[stale.PRNumber] = stale
+	}
+
+	var allResults []types.ReviewResult
+	for _, pr := range response.PRs {
+		clusterLabel := ""
+		if cluster, ok := clusterMap[pr.ClusterID]; ok {
+			clusterLabel = cluster.ClusterLabel
+		}
+
+		var relatedPRs []types.PR
+		if cluster, ok := clusterMap[pr.ClusterID]; ok {
+			for _, prID := range cluster.PRIDs {
+				if prID != pr.Number {
+					for _, p := range response.PRs {
+						if p.Number == prID {
+							relatedPRs = append(relatedPRs, p)
+							break
+						}
+					}
+				}
+			}
+		}
+
+		prData := review.PRData{
+			PR:              pr,
+			Repo:            repo,
+			ClusterID:       pr.ClusterID,
+			ClusterLabel:    clusterLabel,
+			RelatedPRs:      relatedPRs,
+			DuplicateGroups: duplicateMap[pr.Number],
+			ConflictPairs:   conflictMap[pr.Number],
+			Staleness:       nil,
+			AnalyzedAt:      s.now(),
+		}
+		if stale, ok := staleMap[pr.Number]; ok {
+			prData.Staleness = &stale
+		}
+
+		result, err := orchestrator.Review(ctx, prData)
+		if err != nil {
+			continue
+		}
+		allResults = append(allResults, result.Result)
+	}
+
+	categoryCount := make(map[types.ReviewCategory]int)
+	tierCount := make(map[types.PriorityTier]int)
+	for _, r := range allResults {
+		categoryCount[r.Category]++
+		tierCount[r.PriorityTier]++
+	}
+
+	var categories []types.ReviewCategoryCount
+	for cat, cnt := range categoryCount {
+		categories = append(categories, types.ReviewCategoryCount{Category: string(cat), Count: cnt})
+	}
+	var tiers []types.PriorityTierCount
+	for tier, cnt := range tierCount {
+		tiers = append(tiers, types.PriorityTierCount{Tier: string(tier), Count: cnt})
+	}
+
+	return &types.ReviewResponse{
+		TotalPRs:      len(response.PRs),
+		ReviewedPRs:   len(allResults),
+		Categories:    categories,
+		PriorityTiers: tiers,
+		Results:       allResults,
 	}, nil
 }
 

@@ -28,7 +28,6 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/planning"
 	"github.com/jeffersonnunn/pratc/internal/repo"
 	"github.com/jeffersonnunn/pratc/internal/report"
-	"github.com/jeffersonnunn/pratc/internal/review"
 	"github.com/jeffersonnunn/pratc/internal/settings"
 	prsync "github.com/jeffersonnunn/pratc/internal/sync"
 	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
@@ -281,7 +280,7 @@ func RegisterAnalyzeCommand() {
 			)
 			log.Info("analyze budget initialized", "budget", budget.String())
 
-			cfg := buildAnalyzeConfig(useCacheFirst, forceLive, maxPRs)
+			cfg := buildAnalyzeConfig(useCacheFirst, forceLive, maxPRs, enableReview)
 			service := app.NewService(cfg)
 
 			if shouldWarnAnalyzeSync(useCacheFirst, force, forceLive) {
@@ -299,18 +298,6 @@ func RegisterAnalyzeCommand() {
 			response, err := service.Analyze(ctx, repo)
 			if err != nil {
 				return err
-			}
-
-			// Run review analysis if --review flag is set
-			if enableReview {
-				log.Info("running review analysis", "pr_count", len(response.PRs))
-				reviewResponse, err := runReviewAnalysis(ctx, repo, response)
-				if err != nil {
-					log.Warn("review analysis failed", "error", err)
-					// Continue without review payload on error
-				} else {
-					response.ReviewPayload = reviewResponse
-				}
 			}
 
 			switch strings.ToLower(format) {
@@ -338,120 +325,8 @@ func RegisterAnalyzeCommand() {
 	rootCmd.AddCommand(command)
 }
 
-func runReviewAnalysis(ctx context.Context, repo string, response types.AnalysisResponse) (*types.ReviewResponse, error) {
-	if len(response.PRs) == 0 {
-		return &types.ReviewResponse{
-			TotalPRs:      0,
-			ReviewedPRs:   0,
-			Categories:    []types.ReviewCategoryCount{},
-			PriorityTiers: []types.PriorityTierCount{},
-			Results:       []types.ReviewResult{},
-		}, nil
-	}
-
-	settingsStore, err := openSettingsStore()
-	if err != nil {
-		return nil, fmt.Errorf("open settings store: %w", err)
-	}
-	defer settingsStore.Close()
-
-	cfg := settings.DefaultAnalyzerConfig()
-	orchestrator := review.NewOrchestrator(cfg, settingsStore)
-
-	clusterMap := make(map[string]types.PRCluster)
-	for _, cluster := range response.Clusters {
-		clusterMap[cluster.ClusterID] = cluster
-	}
-
-	duplicateMap := make(map[int][]types.DuplicateGroup)
-	for _, dup := range response.Duplicates {
-		duplicateMap[dup.CanonicalPRNumber] = append(duplicateMap[dup.CanonicalPRNumber], dup)
-	}
-	for _, ov := range response.Overlaps {
-		duplicateMap[ov.CanonicalPRNumber] = append(duplicateMap[ov.CanonicalPRNumber], ov)
-	}
-
-	conflictMap := make(map[int][]types.ConflictPair)
-	for _, conflict := range response.Conflicts {
-		conflictMap[conflict.SourcePR] = append(conflictMap[conflict.SourcePR], conflict)
-		conflictMap[conflict.TargetPR] = append(conflictMap[conflict.TargetPR], conflict)
-	}
-
-	staleMap := make(map[int]types.StalenessReport)
-	for _, stale := range response.StalenessSignals {
-		staleMap[stale.PRNumber] = stale
-	}
-
-	var allResults []types.ReviewResult
-	for _, pr := range response.PRs {
-		clusterLabel := ""
-		if cluster, ok := clusterMap[pr.ClusterID]; ok {
-			clusterLabel = cluster.ClusterLabel
-		}
-
-		var relatedPRs []types.PR
-		if cluster, ok := clusterMap[pr.ClusterID]; ok {
-			for _, prID := range cluster.PRIDs {
-				if prID != pr.Number {
-					for _, p := range response.PRs {
-						if p.Number == prID {
-							relatedPRs = append(relatedPRs, p)
-							break
-						}
-					}
-				}
-			}
-		}
-
-		prData := review.PRData{
-			PR:              pr,
-			Repo:            repo,
-			ClusterID:       pr.ClusterID,
-			ClusterLabel:    clusterLabel,
-			RelatedPRs:      relatedPRs,
-			DuplicateGroups: duplicateMap[pr.Number],
-			ConflictPairs:   conflictMap[pr.Number],
-			Staleness:       nil,
-			AnalyzedAt:      time.Now(),
-		}
-		if stale, ok := staleMap[pr.Number]; ok {
-			prData.Staleness = &stale
-		}
-
-		result, err := orchestrator.Review(ctx, prData)
-		if err != nil {
-			continue
-		}
-		allResults = append(allResults, result.Result)
-	}
-
-	categoryCount := make(map[types.ReviewCategory]int)
-	tierCount := make(map[types.PriorityTier]int)
-	for _, r := range allResults {
-		categoryCount[r.Category]++
-		tierCount[r.PriorityTier]++
-	}
-
-	var categories []types.ReviewCategoryCount
-	for cat, cnt := range categoryCount {
-		categories = append(categories, types.ReviewCategoryCount{Category: string(cat), Count: cnt})
-	}
-	var tiers []types.PriorityTierCount
-	for tier, cnt := range tierCount {
-		tiers = append(tiers, types.PriorityTierCount{Tier: string(tier), Count: cnt})
-	}
-
-	return &types.ReviewResponse{
-		TotalPRs:      len(response.PRs),
-		ReviewedPRs:   len(allResults),
-		Categories:    categories,
-		PriorityTiers: tiers,
-		Results:       allResults,
-	}, nil
-}
-
-func buildAnalyzeConfig(useCacheFirst, forceLive bool, maxPRs int) app.Config {
-	return app.Config{AllowLive: forceLive, UseCacheFirst: useCacheFirst, MaxPRs: maxPRs}
+func buildAnalyzeConfig(useCacheFirst, forceLive bool, maxPRs int, includeReview bool) app.Config {
+	return app.Config{AllowLive: forceLive, UseCacheFirst: useCacheFirst, MaxPRs: maxPRs, IncludeReview: includeReview}
 }
 
 func buildCacheFirstConfig(useCacheFirst bool) app.Config {

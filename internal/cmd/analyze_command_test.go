@@ -37,7 +37,7 @@ func TestBuildAnalyzeConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := buildAnalyzeConfig(tt.useCacheFirst, tt.forceLive, -1)
+			cfg := buildAnalyzeConfig(tt.useCacheFirst, tt.forceLive, -1, false)
 			if cfg.UseCacheFirst != tt.useCacheFirst {
 				t.Fatalf("expected UseCacheFirst=%t, got %t", tt.useCacheFirst, cfg.UseCacheFirst)
 			}
