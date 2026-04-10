@@ -218,7 +218,13 @@ func TestAnalyzeAddsMaxPRsMetadata(t *testing.T) {
 func TestAnalyzeProvidesAuthFallbackGuidanceForLiveRepoWithoutToken(t *testing.T) {
 	t.Parallel()
 
-	service := NewService(Config{Now: fixedNow, AllowLive: true, Token: ""})
+	service := Service{
+		now:           fixedNow,
+		allowLive:     true,
+		useCacheFirst: false,
+		includeReview: false,
+		token:         "",
+	}
 	_, err := service.Analyze(context.Background(), "openclaw/openclaw")
 	if err == nil {
 		t.Fatal("expected auth guidance error")
