@@ -304,7 +304,7 @@ func RegisterAnalyzeCommand() {
 			case "json", "":
 				return writeJSON(cmd, response)
 			case "text":
-				return writeAnalyzeText(cmd, response, enableReview)
+				return writeAnalyzeText(cmd, response)
 			default:
 				return fmt.Errorf("invalid format %q for analyze", format)
 			}
@@ -319,14 +319,15 @@ func RegisterAnalyzeCommand() {
 	command.Flags().IntVar(&rateLimit, "rate-limit", 5000, "GitHub API rate limit per hour")
 	command.Flags().IntVar(&reserveBuffer, "reserve-buffer", 200, "Minimum requests to keep in reserve")
 	command.Flags().IntVar(&resetBuffer, "reset-buffer", 15, "Seconds to wait after rate limit reset")
-	command.Flags().BoolVar(&enableReview, "review", false, "Run review analysis and include review categories in output")
+	command.Flags().BoolVar(&enableReview, "review", false, "Legacy compatibility flag; review output is always included in v1.3")
 	_ = command.Flags().MarkHidden("force")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
 
 func buildAnalyzeConfig(useCacheFirst, forceLive bool, maxPRs int, includeReview bool) app.Config {
-	return app.Config{AllowLive: forceLive, UseCacheFirst: useCacheFirst, MaxPRs: maxPRs, IncludeReview: includeReview}
+	_ = includeReview
+	return app.Config{AllowLive: forceLive, UseCacheFirst: useCacheFirst, MaxPRs: maxPRs, IncludeReview: true}
 }
 
 func buildCacheFirstConfig(useCacheFirst bool) app.Config {
@@ -506,6 +507,13 @@ func RegisterReportCommand() {
 				return fmt.Errorf("failed to load metrics data: %w", err)
 			}
 			exporter.AddSection(metrics)
+
+			reviewSection, err := report.LoadReviewSection(inputDir, repo)
+			if err != nil {
+				log.Warn("failed to load review section", "error", err)
+				return fmt.Errorf("failed to load review data: %w", err)
+			}
+			exporter.AddSection(reviewSection)
 
 			// Add cluster analysis section
 			clusterSection, err := report.LoadClusterSection(inputDir, repo)
@@ -876,7 +884,7 @@ func reviewBucketLabel(category types.ReviewCategory) string {
 	}
 }
 
-func writeAnalyzeText(cmd *cobra.Command, response types.AnalysisResponse, includeReview bool) error {
+func writeAnalyzeText(cmd *cobra.Command, response types.AnalysisResponse) error {
 	out := cmd.OutOrStdout()
 
 	fmt.Fprintf(out, "Repository: %s\n", response.Repo)
@@ -890,7 +898,7 @@ func writeAnalyzeText(cmd *cobra.Command, response types.AnalysisResponse, inclu
 	fmt.Fprintf(out, "  Conflict Pairs:   %d\n", response.Counts.ConflictPairs)
 	fmt.Fprintf(out, "  Stale PRs:        %d\n\n", response.Counts.StalePRs)
 
-	if includeReview && response.ReviewPayload != nil {
+	if response.ReviewPayload != nil {
 		review := response.ReviewPayload
 		fmt.Fprintf(out, "Review Analysis\n")
 		fmt.Fprintf(out, "  PRs Reviewed: %d / %d\n\n", review.ReviewedPRs, review.TotalPRs)

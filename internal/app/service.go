@@ -388,14 +388,18 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 		Telemetry:        &telemetry,
 	}
 
-	if s.includeReview {
-		reviewPayload, err := s.buildReviewPayload(ctx, repoName, response)
-		if err != nil {
-			log.Warn("review analysis failed", "error", err)
-		} else {
-			response.ReviewPayload = reviewPayload
+	reviewPayload, err := s.buildReviewPayload(ctx, repoName, response)
+	if err != nil {
+		log.Warn("review analysis failed", "error", err)
+		reviewPayload = &types.ReviewResponse{
+			TotalPRs:      len(response.PRs),
+			ReviewedPRs:   0,
+			Categories:    []types.ReviewCategoryCount{},
+			PriorityTiers: []types.PriorityTierCount{},
+			Results:       []types.ReviewResult{},
 		}
 	}
+	response.ReviewPayload = reviewPayload
 
 	return response, nil
 }

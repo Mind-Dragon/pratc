@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
@@ -269,4 +270,142 @@ func (p *SingleRepoQueuePolicy) NextBatch(ctx context.Context, store QueueStore,
 		return nil, nil
 	}
 	return []cache.SyncJob{job}, nil
+}
+
+// PRQueueItem represents a single PR in the sync queue
+type PRQueueItem struct {
+	PRNumber    int
+	Priority    int       // Higher = process first
+	Attempts    int
+	LastError   error
+	NextAttempt time.Time // When this item is eligible for processing
+	ETag        string    // For conditional requests
+}
+
+// PRQueue is a thread-safe priority queue with rate limit awareness
+type PRQueue struct {
+	items       []PRQueueItem
+	minBackoff  time.Duration
+	store       *cache.Store
+	mu          sync.Mutex
+}
+
+// NewPRQueue creates a new PR queue
+func NewPRQueue(store *cache.Store, minBackoff time.Duration) *PRQueue {
+	if minBackoff <= 0 {
+		minBackoff = 5 * time.Minute
+	}
+	return &PRQueue{
+		items:      make([]PRQueueItem, 0),
+		minBackoff: minBackoff,
+		store:      store,
+	}
+}
+
+// Enqueue adds a PR to the queue
+func (q *PRQueue) Enqueue(item PRQueueItem) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	// Insert in priority order (higher priority first)
+	insertIdx := len(q.items)
+	for i, existing := range q.items {
+		if item.Priority > existing.Priority {
+			insertIdx = i
+			break
+		}
+	}
+
+	// Insert at the found position
+	q.items = append(q.items, PRQueueItem{})
+	copy(q.items[insertIdx+1:], q.items[insertIdx:])
+	q.items[insertIdx] = item
+}
+
+// Dequeue removes and returns the highest priority item that's ready to process
+func (q *PRQueue) Dequeue() (PRQueueItem, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	now := time.Now()
+	for i, item := range q.items {
+		if now.After(item.NextAttempt) || now.Equal(item.NextAttempt) {
+			// Remove this item from queue
+			q.items = append(q.items[:i], q.items[i+1:]...)
+			return item, true
+		}
+	}
+
+	return PRQueueItem{}, false
+}
+
+// Process processes all items in the queue with the given processor function
+func (q *PRQueue) Process(ctx context.Context, processor func(item PRQueueItem) error) error {
+	for {
+		item, ok := q.Dequeue()
+		if !ok {
+			// No items ready
+			break
+		}
+
+		err := processor(item)
+		if err != nil {
+			// Check if it's a rate limit error
+			if isRateLimitError(err) {
+				// Re-queue with 5-minute backoff
+				item.Attempts++
+				item.LastError = err
+				item.NextAttempt = time.Now().Add(q.minBackoff)
+				q.Enqueue(item)
+			} else {
+				// Re-queue with exponential backoff
+				item.Attempts++
+				item.LastError = err
+				backoff := time.Duration(1<<uint(item.Attempts)) * time.Minute
+				if backoff > 30*time.Minute {
+					backoff = 30 * time.Minute
+				}
+				item.NextAttempt = time.Now().Add(backoff)
+				q.Enqueue(item)
+			}
+		}
+
+		// Check context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+	}
+
+	return nil
+}
+
+// Len returns the number of items in the queue
+func (q *PRQueue) Len() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return len(q.items)
+}
+
+// Helper function to detect rate limit errors
+func isRateLimitError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return contains(errStr, "rate limit") || contains(errStr, "403") || contains(errStr, "429")
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

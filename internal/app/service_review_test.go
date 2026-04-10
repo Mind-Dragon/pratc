@@ -79,7 +79,7 @@ func TestAnalyzeIncludesReviewPayload(t *testing.T) {
 	}
 }
 
-func TestAnalyzeOmitsReviewPayloadWhenIncludeReviewIsFalse(t *testing.T) {
+func TestAnalyzeIncludesReviewPayloadWhenIncludeReviewIsFalse(t *testing.T) {
 	t.Parallel()
 
 	manifest, err := testutil.LoadManifest()
@@ -87,7 +87,7 @@ func TestAnalyzeOmitsReviewPayloadWhenIncludeReviewIsFalse(t *testing.T) {
 		t.Fatalf("load manifest: %v", err)
 	}
 
-	// Create service with IncludeReview disabled (default)
+	// Create service with IncludeReview disabled to confirm v1.3 still wires review output.
 	service := NewService(Config{
 		Now:           fixedNow,
 		IncludeReview: false,
@@ -98,9 +98,8 @@ func TestAnalyzeOmitsReviewPayloadWhenIncludeReviewIsFalse(t *testing.T) {
 		t.Fatalf("analyze: %v", err)
 	}
 
-	// Assert ReviewPayload is nil when IncludeReview is false
-	if response.ReviewPayload != nil {
-		t.Fatal("expected ReviewPayload to be nil when IncludeReview is false")
+	if response.ReviewPayload == nil {
+		t.Fatal("expected ReviewPayload to be populated even when IncludeReview is false")
 	}
 }
 

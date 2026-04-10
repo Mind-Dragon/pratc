@@ -199,10 +199,10 @@ type AnalysisResponse struct {
 	Conflicts               []ConflictPair      `json:"conflicts"`
 	StalenessSignals        []StalenessReport   `json:"stalenessSignals"`
 	Telemetry               *OperationTelemetry `json:"telemetry,omitempty"`
-	// ReviewPayload contains agentic review results when review mode is enabled.
-	// This field is optional and omitted when nil to maintain backward compatibility.
-	// Review features are opt-in via feature flag or configuration.
-	// When disabled (nil), existing API responses continue to work without review data.
+	// ReviewPayload contains agentic review results for the analysis snapshot.
+	// v1.3 pipelines populate this field by default so review buckets are first-class
+	// output in the primary API, dashboard, and report surfaces.
+	// The pointer is retained for compatibility with older callers.
 	ReviewPayload *ReviewResponse `json:"review_payload,omitempty"`
 }
 

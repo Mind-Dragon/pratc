@@ -250,10 +250,16 @@ export interface PriorityTierCount {
   count: number;
 }
 
+export interface BucketCount {
+  bucket: string;
+  count: number;
+}
+
 export interface ReviewResponse {
   total_prs: number;
   reviewed_prs: number;
   categories: ReviewCategoryCount[];
+  buckets: BucketCount[];
   priority_tiers: PriorityTierCount[];
   results: ReviewResult[];
 }
@@ -267,5 +273,5 @@ export interface AnalysisResponse {
   overlaps: DuplicateGroup[];
   conflicts: ConflictPair[];
   stalenessSignals: StalenessReport[];
-  review_payload?: ReviewResponse;
+  review_payload: ReviewResponse;
 }

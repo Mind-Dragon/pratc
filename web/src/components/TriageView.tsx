@@ -131,6 +131,25 @@ export default function TriageView({
     return prs[selectedIndex];
   }, [prs, selectedIndex]);
 
+  const review = analysis?.review_payload ?? null;
+  const reviewBuckets = review
+    ? [
+        { label: "Merge now", value: review.buckets.find((bucket) => bucket.bucket === "Merge now")?.count ?? 0, tone: "mint" },
+        { label: "Focused review", value: review.buckets.find((bucket) => bucket.bucket === "Merge after focused review")?.count ?? 0, tone: "sky" },
+        { label: "Duplicate / superseded", value: review.buckets.find((bucket) => bucket.bucket === "Duplicate / superseded")?.count ?? 0, tone: "sand" },
+        { label: "Problematic / quarantine", value: review.buckets.find((bucket) => bucket.bucket === "Problematic / quarantine")?.count ?? 0, tone: "rose" },
+        { label: "Unknown / escalate", value: review.buckets.find((bucket) => bucket.bucket === "Unknown / escalate")?.count ?? 0, tone: "sand" }
+      ] as const
+    : [];
+
+  const priorityTiers = review
+    ? [
+        { label: "fast_merge", value: review.priority_tiers.find((tier) => tier.tier === "fast_merge")?.count ?? 0, tone: "mint" },
+        { label: "review_required", value: review.priority_tiers.find((tier) => tier.tier === "review_required")?.count ?? 0, tone: "sky" },
+        { label: "blocked", value: review.priority_tiers.find((tier) => tier.tier === "blocked")?.count ?? 0, tone: "rose" }
+      ] as const
+    : [];
+
   // Log action intent (intent-only, no real mutation)
   const logIntent = useCallback(
     (action: string, prNumber: number): ActionIntent => {
@@ -277,6 +296,36 @@ export default function TriageView({
           </div>
 
           <ActionFeedback result={feedback} onDismiss={dismissFeedback} />
+
+          {review ? (
+            <section className="cluster-section" aria-label="review summary">
+              <div className="section-heading">
+                <div>
+                  <p className="hero-kicker">Review engine</p>
+                  <h3>Bucket distribution</h3>
+                </div>
+                <p>
+                  {review.reviewed_prs.toLocaleString()} reviewed PRs out of {review.total_prs.toLocaleString()} total.
+                </p>
+              </div>
+              <div className="stats-grid">
+                {reviewBuckets.map((card) => (
+                  <article className={`stat-card stat-card--${card.tone}`} key={card.label}>
+                    <span>{card.label}</span>
+                    <strong>{card.value}</strong>
+                  </article>
+                ))}
+              </div>
+              <div className="stats-grid" style={{ marginTop: 12 }}>
+                {priorityTiers.map((card) => (
+                  <article className={`stat-card stat-card--${card.tone}`} key={card.label}>
+                    <span>{card.label}</span>
+                    <strong>{card.value}</strong>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <div
             ref={tableContainerRef}

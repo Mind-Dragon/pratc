@@ -193,7 +193,7 @@ func TestWriteAnalyzeTextShowsReviewBucketVocabulary(t *testing.T) {
 	var buf strings.Builder
 	cmd.SetOut(&buf)
 
-	err := writeAnalyzeText(cmd, response, true)
+	err := writeAnalyzeText(cmd, response)
 	if err != nil {
 		t.Fatalf("writeAnalyzeText failed: %v", err)
 	}

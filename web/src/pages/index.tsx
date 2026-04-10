@@ -8,6 +8,8 @@ import type { AnalysisResponse } from "../types/api";
 
 const DEFAULT_REPO = "opencode-ai/opencode";
 
+const REVIEW_CARD_TONES = ["sky", "mint", "sand", "rose", "sky"] as const;
+
 type DashboardProps = {
   analysis: AnalysisResponse | null;
 };
@@ -19,6 +21,14 @@ function isSyncInProgress(payload: unknown): payload is { sync_status: string; r
     "sync_status" in payload &&
     !("counts" in payload)
   );
+}
+
+function reviewBucketCount(review: AnalysisResponse["review_payload"], label: string): number {
+  return review?.buckets.find((bucket) => bucket.bucket === label)?.count ?? 0;
+}
+
+function reviewTierCount(review: AnalysisResponse["review_payload"], tier: string): number {
+  return review?.priority_tiers.find((item) => item.tier === tier)?.count ?? 0;
 }
 
 export const getServerSideProps: GetServerSideProps<DashboardProps> = async (context) => {
@@ -80,6 +90,25 @@ export default function DashboardPage({ analysis }: DashboardProps) {
     { label: "Stale PRs", value: analysis.counts.stale_prs.toString(), tone: "rose" }
   ] as const;
 
+  const review = analysis.review_payload;
+  const reviewCards = review
+    ? [
+        { label: "Merge now", value: reviewBucketCount(review, "Merge now"), tone: REVIEW_CARD_TONES[0] },
+        { label: "Focused review", value: reviewBucketCount(review, "Merge after focused review"), tone: REVIEW_CARD_TONES[1] },
+        { label: "Duplicate / superseded", value: reviewBucketCount(review, "Duplicate / superseded"), tone: REVIEW_CARD_TONES[2] },
+        { label: "Problematic / quarantine", value: reviewBucketCount(review, "Problematic / quarantine"), tone: REVIEW_CARD_TONES[3] },
+        { label: "Unknown / escalate", value: reviewBucketCount(review, "Unknown / escalate"), tone: REVIEW_CARD_TONES[4] }
+      ] as const
+    : [];
+
+  const priorityCards = review
+    ? [
+        { label: "fast_merge", value: reviewTierCount(review, "fast_merge"), tone: "mint" },
+        { label: "review_required", value: reviewTierCount(review, "review_required"), tone: "sky" },
+        { label: "blocked", value: reviewTierCount(review, "blocked"), tone: "rose" }
+      ] as const
+    : [];
+
   return (
     <Layout
       title="prATC Dashboard"
@@ -107,6 +136,36 @@ export default function DashboardPage({ analysis }: DashboardProps) {
           </article>
         ))}
       </section>
+
+      {review ? (
+        <section className="cluster-section" aria-label="review buckets">
+          <div className="section-heading">
+            <div>
+              <p className="hero-kicker">Review engine</p>
+              <h3>Bucket distribution</h3>
+            </div>
+            <p>
+              {review.reviewed_prs.toLocaleString()} reviewed PRs out of {review.total_prs.toLocaleString()} total.
+            </p>
+          </div>
+          <div className="stats-grid">
+            {reviewCards.map((card) => (
+              <article className={`stat-card stat-card--${card.tone}`} key={card.label}>
+                <span>{card.label}</span>
+                <strong>{card.value}</strong>
+              </article>
+            ))}
+          </div>
+          <div className="stats-grid" style={{ marginTop: 12 }}>
+            {priorityCards.map((card) => (
+              <article className={`stat-card stat-card--${card.tone}`} key={card.label}>
+                <span>{card.label}</span>
+                <strong>{card.value}</strong>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="cluster-section" aria-label="cluster preview">
         <div className="section-heading">

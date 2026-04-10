@@ -45,6 +45,7 @@ type Client struct {
 	sleep               func(time.Duration)
 	log                 *logger.Logger
 	budget              *ratelimit.BudgetManager
+	etagCache           ETagCache
 }
 
 type RateLimitStatus struct {
