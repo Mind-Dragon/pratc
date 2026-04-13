@@ -19,7 +19,7 @@
 //   - Make automated decisions without human review
 //
 // All GitHub operations are read-only: FetchPullRequests, FetchPullRequestFiles.
-// Authentication is token-based only (GITHUB_TOKEN or gh CLI auth).
+// Authentication is token-based only (GITHUB_TOKEN/GH_TOKEN/GITHUB_PAT or gh CLI auth).
 //
 // Future versions (1.4+) may introduce automation with explicit opt-in only.
 package app
@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -100,19 +99,6 @@ const (
 	precisionModeDeep = "deep"
 )
 
-func fetchTokenFromGHCLI() string {
-	path, err := exec.LookPath("gh")
-	if err != nil {
-		return ""
-	}
-	cmd := exec.Command(path, "auth", "token")
-	output, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(output))
-}
-
 func NewService(cfg Config) Service {
 	now := cfg.Now
 	if now == nil {
@@ -145,9 +131,10 @@ func NewService(cfg Config) Service {
 		}
 	}
 
-	// Fallback to gh auth CLI if no token found
 	if token == "" {
-		token = fetchTokenFromGHCLI()
+		if resolved, err := gh.ResolveToken(context.Background()); err == nil {
+			token = resolved
+		}
 	}
 
 	allowLive := cfg.AllowLive
@@ -851,7 +838,11 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 	}
 
 	if targetRepo != manifest.Repo && strings.TrimSpace(s.token) == "" {
-		return nil, "", truncationMeta{}, fmt.Errorf("missing auth for live repo %q: unlock psst GITHUB_PAT, export GH_TOKEN, or login with gh CLI", targetRepo)
+		resolved, err := gh.ResolveToken(ctx)
+		if err != nil {
+			return nil, "", truncationMeta{}, fmt.Errorf("missing auth for live repo %q: %w", targetRepo, err)
+		}
+		s.token = resolved
 	}
 
 	// Try cache first if enabled

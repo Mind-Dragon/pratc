@@ -216,7 +216,10 @@ func TestAnalyzeAddsMaxPRsMetadata(t *testing.T) {
 }
 
 func TestAnalyzeProvidesAuthFallbackGuidanceForLiveRepoWithoutToken(t *testing.T) {
-	t.Parallel()
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_PAT", "")
+	t.Setenv("PATH", t.TempDir())
 
 	service := Service{
 		now:           fixedNow,
@@ -230,11 +233,11 @@ func TestAnalyzeProvidesAuthFallbackGuidanceForLiveRepoWithoutToken(t *testing.T
 		t.Fatal("expected auth guidance error")
 	}
 	message := err.Error()
-	if !strings.Contains(message, "GH_TOKEN") {
-		t.Fatalf("expected GH_TOKEN guidance, got %q", message)
+	if !strings.Contains(message, "GITHUB_TOKEN") {
+		t.Fatalf("expected GITHUB_TOKEN guidance, got %q", message)
 	}
-	if !strings.Contains(message, "gh CLI") {
-		t.Fatalf("expected gh CLI guidance, got %q", message)
+	if !strings.Contains(message, "gh auth login") {
+		t.Fatalf("expected gh auth login guidance, got %q", message)
 	}
 }
 
