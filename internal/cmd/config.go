@@ -1,13 +1,69 @@
 package cmd
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/jeffersonnunn/pratc/internal/settings"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
+
+// apiKeyPath returns the path to the API key file.
+func apiKeyPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".pratc", "api-key")
+}
+
+// loadOrGenerateAPIKey loads the API key from disk or generates a new one.
+// It respects PRATC_API_KEY environment variable as an override.
+func loadOrGenerateAPIKey() (string, error) {
+	// Check environment variable override first
+	if envKey := os.Getenv("PRATC_API_KEY"); envKey != "" {
+		return envKey, nil
+	}
+
+	keyFile := apiKeyPath()
+
+	// Try to read existing key
+	if data, err := os.ReadFile(keyFile); err == nil {
+		key := strings.TrimSpace(string(data))
+		if len(key) == 64 { // 32 bytes = 64 hex chars
+			return key, nil
+		}
+	}
+
+	// Generate new 32-byte key
+	keyBytes := make([]byte, 32)
+	if _, err := rand.Read(keyBytes); err != nil {
+		return "", fmt.Errorf("generate API key: %w", err)
+	}
+	key := hex.EncodeToString(keyBytes)
+
+	// Ensure directory exists
+	dir := filepath.Dir(keyFile)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("create API key dir: %w", err)
+	}
+
+	// Write key with mode 0600
+	if err := os.WriteFile(keyFile, []byte(key), 0600); err != nil {
+		return "", fmt.Errorf("write API key: %w", err)
+	}
+
+	return key, nil
+}
+
+// getAPIKey returns the configured API key (loads it if needed).
+// This is used to verify incoming requests.
+func getAPIKey() (string, error) {
+	return loadOrGenerateAPIKey()
+}
 
 func RegisterConfigCommand() {
 	configCmd := &cobra.Command{

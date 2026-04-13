@@ -575,6 +575,42 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// isHealthCheckPath returns true if the path is a health check endpoint.
+func isHealthCheckPath(path string) bool {
+	return path == "/healthz" || path == "/api/health"
+}
+
+// authMiddleware checks X-API-Key header on all non-healthz routes.
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isHealthCheckPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		apiKey, err := getAPIKey()
+		if err != nil {
+			writeHTTPError(w, http.StatusInternalServerError, "API key unavailable")
+			return
+		}
+
+		providedKey := r.Header.Get("X-API-Key")
+		if providedKey == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "missing API key"})
+			return
+		}
+
+		if providedKey != apiKey {
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid API key"})
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst bool) error {
 	token, err := github.ResolveToken(ctx)
 	if err != nil {
@@ -674,7 +710,7 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst 
 		handleRepoAction(w, r, service, repoSync)
 	})
 
-	server := &http.Server{Addr: ":" + strconv.Itoa(port), Handler: corsMiddleware(mux)}
+	server := &http.Server{Addr: ":" + strconv.Itoa(port), Handler: authMiddleware(corsMiddleware(mux))}
 
 	go func() {
 		<-ctx.Done()
