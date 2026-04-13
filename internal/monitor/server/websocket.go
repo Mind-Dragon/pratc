@@ -139,6 +139,7 @@ func (s *WebSocketServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	upgrader := newUpgrader()
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		log.Printf("[ERROR] WebSocket: failed to upgrade connection: %v", err)
 		return
 	}
 
@@ -160,6 +161,7 @@ func (s *WebSocketServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for update := range sub {
 		data, err := json.Marshal(update)
 		if err != nil {
+			log.Printf("[ERROR] WebSocket: failed to marshal update to JSON: %v", err)
 			continue
 		}
 

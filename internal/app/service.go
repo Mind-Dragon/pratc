@@ -52,9 +52,9 @@ import (
 )
 
 const (
+	defaultMaxPRs      = 1000
 	duplicateThreshold = 0.90
 	overlapThreshold   = 0.70
-	defaultMaxPRs      = 1000
 )
 
 type Config struct {
@@ -1416,6 +1416,7 @@ func newLiveAnalysisProgressReporter(log *logger.Logger, step int) func(processe
 }
 
 func buildStaleness(prs []types.PR, duplicates []types.DuplicateGroup, now time.Time) []types.StalenessReport {
+	log := logger.New("app")
 	supersededBy := make(map[int][]int)
 	for _, group := range duplicates {
 		for _, duplicate := range group.DuplicatePRNums {
@@ -1430,7 +1431,12 @@ func buildStaleness(prs []types.PR, duplicates []types.DuplicateGroup, now time.
 		score := 0.0
 
 		updatedAt, err := time.Parse(time.RFC3339, pr.UpdatedAt)
-		if err == nil {
+		if err != nil {
+			log.Warn("staleness: failed to parse PR updated_at",
+				"pr_number", pr.Number,
+				"updated_at", pr.UpdatedAt,
+				"error", err)
+		} else {
 			days := now.Sub(updatedAt).Hours() / 24
 			if days > 30 {
 				signals = append(signals, "inactive")
