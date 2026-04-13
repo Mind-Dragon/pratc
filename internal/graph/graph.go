@@ -39,7 +39,7 @@ func BuildWithProgress(repo string, prs []types.PR, progress func(processed int,
 	nodes := make([]types.GraphNode, 0, len(sortedPRs))
 	edges := make([]types.GraphEdge, 0)
 	seenEdges := make(map[string]struct{})
-	pairsEvaluated := 0
+	candidatePairsEvaluated := 0
 
 	for _, pr := range sortedPRs {
 		nodes = append(nodes, types.GraphNode{
@@ -50,39 +50,72 @@ func BuildWithProgress(repo string, prs []types.PR, progress func(processed int,
 		})
 	}
 
+	// Build indices for O(1) lookup instead of O(n) pairwise scan
+	// baseBranchIndex: for each base branch, which PRs have that base (PRs waiting on that branch)
+	baseBranchIndex := make(map[string][]*types.PR, len(sortedPRs))
+	// headBranchIndex: for each head branch, which PR has that head (the dependee PR)
+	headBranchIndex := make(map[string][]*types.PR, len(sortedPRs))
+
+	for i := range sortedPRs {
+		pr := &sortedPRs[i]
+		if pr.BaseBranch != "" {
+			baseBranchIndex[pr.BaseBranch] = append(baseBranchIndex[pr.BaseBranch], pr)
+		}
+		if pr.HeadBranch != "" {
+			headBranchIndex[pr.HeadBranch] = append(headBranchIndex[pr.HeadBranch], pr)
+		}
+	}
+
 	for i, left := range sortedPRs {
 		if progress != nil {
 			progress(i+1, len(sortedPRs))
 		}
-		for j := i + 1; j < len(sortedPRs); j++ {
-			right := sortedPRs[j]
-			pairsEvaluated++
 
-			if left.HeadBranch != "" && right.BaseBranch == left.HeadBranch {
-				appendEdge(&edges, seenEdges, types.GraphEdge{
-					FromPR:   left.Number,
-					ToPR:     right.Number,
-					EdgeType: EdgeTypeDependency,
-					Reason:   fmt.Sprintf("base branch %q depends on head branch %q", right.BaseBranch, left.HeadBranch),
-				})
+		// Dependency detection: left is the dependee, find PRs whose BaseBranch == left.HeadBranch
+		// These PRs depend on left because their base is left's head
+		if left.HeadBranch != "" {
+			candidates := baseBranchIndex[left.HeadBranch]
+			for _, right := range candidates {
+				candidatePairsEvaluated++
+				// right.BaseBranch == left.HeadBranch means right depends on left
+				if right.BaseBranch == left.HeadBranch {
+					appendEdge(&edges, seenEdges, types.GraphEdge{
+						FromPR:   left.Number,
+						ToPR:     right.Number,
+						EdgeType: EdgeTypeDependency,
+						Reason:   fmt.Sprintf("base branch %q depends on head branch %q", right.BaseBranch, left.HeadBranch),
+					})
+				}
+				// left.BaseBranch == right.HeadBranch means left depends on right
+				if left.BaseBranch != "" && left.BaseBranch == right.HeadBranch {
+					appendEdge(&edges, seenEdges, types.GraphEdge{
+						FromPR:   right.Number,
+						ToPR:     left.Number,
+						EdgeType: EdgeTypeDependency,
+						Reason:   fmt.Sprintf("base branch %q depends on head branch %q", left.BaseBranch, right.HeadBranch),
+					})
+				}
 			}
+		}
 
-			if right.HeadBranch != "" && left.BaseBranch == right.HeadBranch {
-				appendEdge(&edges, seenEdges, types.GraphEdge{
-					FromPR:   right.Number,
-					ToPR:     left.Number,
-					EdgeType: EdgeTypeDependency,
-					Reason:   fmt.Sprintf("base branch %q depends on head branch %q", left.BaseBranch, right.HeadBranch),
-				})
-			}
-
-			if conflictFiles := conflictFiles(left, right); len(conflictFiles) > 0 {
-				appendEdge(&edges, seenEdges, types.GraphEdge{
-					FromPR:   left.Number,
-					ToPR:     right.Number,
-					EdgeType: EdgeTypeConflict,
-					Reason:   fmt.Sprintf("shared files: %s", strings.Join(conflictFiles, ", ")),
-				})
+		// Conflict detection: find PRs sharing the same BaseBranch as left
+		if left.BaseBranch != "" {
+			candidates := baseBranchIndex[left.BaseBranch]
+			for _, right := range candidates {
+				if right.Number <= left.Number {
+					continue // Only process pairs where right.Number > left.Number to avoid duplicates
+				}
+				candidatePairsEvaluated++
+				// Only call conflictFiles if they actually share files or mergeable="conflicting"
+				// conflictFiles already checks BaseBranch match internally
+				if conflictFiles := conflictFiles(left, *right); len(conflictFiles) > 0 {
+					appendEdge(&edges, seenEdges, types.GraphEdge{
+						FromPR:   left.Number,
+						ToPR:     right.Number,
+						EdgeType: EdgeTypeConflict,
+						Reason:   fmt.Sprintf("shared files: %s", strings.Join(conflictFiles, ", ")),
+					})
+				}
 			}
 		}
 	}
@@ -112,7 +145,7 @@ func BuildWithProgress(repo string, prs []types.PR, progress func(processed int,
 				"build_total_ms": int(time.Since(buildStart).Milliseconds()),
 			},
 			StageDropCounts: map[string]int{
-				"pairs_without_edges": pairsEvaluated - len(edges),
+				"candidate_pairs_without_edges": candidatePairsEvaluated - len(edges),
 			},
 		},
 	}
