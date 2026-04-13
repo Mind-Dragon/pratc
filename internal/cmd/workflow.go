@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jeffersonnunn/pratc/internal/app"
 	"github.com/jeffersonnunn/pratc/internal/cache"
+	"github.com/jeffersonnunn/pratc/internal/formula"
 	gh "github.com/jeffersonnunn/pratc/internal/github"
 	"github.com/jeffersonnunn/pratc/internal/logger"
 	prsync "github.com/jeffersonnunn/pratc/internal/sync"
@@ -123,6 +124,33 @@ Examples:
 				return err
 			}
 			if err := writeWorkflowJSON(filepath.Join(resolvedOutDir, "step-2-analyze.json"), response); err != nil {
+				return err
+			}
+
+			analyzeLog.Info("starting workflow cluster", "repo", repo)
+			clusterResponse, err := service.Cluster(analyzeCtx, repo)
+			if err != nil {
+				return err
+			}
+			if err := writeWorkflowJSON(filepath.Join(resolvedOutDir, "step-3-cluster.json"), clusterResponse); err != nil {
+				return err
+			}
+
+			analyzeLog.Info("starting workflow graph", "repo", repo)
+			graphResponse, err := service.Graph(analyzeCtx, repo)
+			if err != nil {
+				return err
+			}
+			if err := writeWorkflowJSON(filepath.Join(resolvedOutDir, "step-4-graph.json"), graphResponse); err != nil {
+				return err
+			}
+
+			analyzeLog.Info("starting workflow plan", "repo", repo)
+			planResponse, err := service.Plan(analyzeCtx, repo, 20, formula.ModeCombination)
+			if err != nil {
+				return err
+			}
+			if err := writeWorkflowJSON(filepath.Join(resolvedOutDir, "step-5-plan.json"), planResponse); err != nil {
 				return err
 			}
 
