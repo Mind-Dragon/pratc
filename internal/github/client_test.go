@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
 func TestPullRequestsQueryIncludesPaginationCursor(t *testing.T) {
@@ -41,7 +43,7 @@ func TestFetchPullRequestsPaginates(t *testing.T) {
 
 	var mu sync.Mutex
 	var cursors []string
-
+	var progressTotals []int
 	client := NewClient(Config{
 		BaseURL: "https://example.test",
 		HTTPClient: roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -53,13 +55,13 @@ func TestFetchPullRequestsPaginates(t *testing.T) {
 				cursors = append(cursors, "")
 			}
 			mu.Unlock()
-
 			if req.Variables["cursor"] == nil {
 				return jsonResponse(t, http.StatusOK, map[string]string{"Content-Type": "application/json"}, map[string]any{
 					"data": map[string]any{
 						"repository": map[string]any{
 							"pullRequests": map[string]any{
-								"pageInfo": map[string]any{"hasNextPage": true, "endCursor": "page-2"},
+								"totalCount": 2,
+								"pageInfo":   map[string]any{"hasNextPage": true, "endCursor": "page-2"},
 								"nodes": []map[string]any{
 									samplePRNode(101, "First page", "2026-03-12T10:00:00Z"),
 								},
@@ -73,7 +75,8 @@ func TestFetchPullRequestsPaginates(t *testing.T) {
 				"data": map[string]any{
 					"repository": map[string]any{
 						"pullRequests": map[string]any{
-							"pageInfo": map[string]any{"hasNextPage": false, "endCursor": nil},
+							"totalCount": 2,
+							"pageInfo":   map[string]any{"hasNextPage": false, "endCursor": nil},
 							"nodes": []map[string]any{
 								samplePRNode(102, "Second page", "2026-03-12T11:00:00Z"),
 							},
@@ -84,7 +87,14 @@ func TestFetchPullRequestsPaginates(t *testing.T) {
 		}),
 		ReserveRequests: 10,
 	})
-	prs, err := client.FetchPullRequests(context.Background(), "owner/repo", PullRequestListOptions{PerPage: 1})
+	prs, err := client.FetchPullRequests(context.Background(), "owner/repo", PullRequestListOptions{
+		PerPage: 1,
+		Progress: func(processed int, total int) {
+			mu.Lock()
+			progressTotals = append(progressTotals, total)
+			mu.Unlock()
+		},
+	})
 	if err != nil {
 		t.Fatalf("fetch pull requests: %v", err)
 	}
@@ -96,6 +106,120 @@ func TestFetchPullRequestsPaginates(t *testing.T) {
 	}
 	if len(cursors) != 2 || cursors[0] != "" || cursors[1] != "page-2" {
 		t.Fatalf("unexpected cursors: %#v", cursors)
+	}
+	if len(progressTotals) == 0 || progressTotals[0] != 2 {
+		t.Fatalf("expected progress total count to be surfaced, got %#v", progressTotals)
+	}
+}
+
+func TestFetchPullRequestsHonorsMaxPRs(t *testing.T) {
+	t.Parallel()
+
+	var calls int
+	client := NewClient(Config{
+		BaseURL: "https://example.test",
+		HTTPClient: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			calls++
+			req := decodeGraphQLRequest(t, r)
+			if req.Variables["cursor"] == nil {
+				return jsonResponse(t, http.StatusOK, map[string]string{"Content-Type": "application/json"}, map[string]any{
+					"data": map[string]any{
+						"repository": map[string]any{
+							"pullRequests": map[string]any{
+								"totalCount": 2,
+								"pageInfo":   map[string]any{"hasNextPage": true, "endCursor": "page-2"},
+								"nodes": []map[string]any{
+									samplePRNode(101, "First page", "2026-03-12T10:00:00Z"),
+								},
+							},
+						},
+					},
+				})
+			}
+			t.Fatal("expected max PR limit to stop before fetching a second page")
+			return nil, nil
+		}),
+		ReserveRequests: 10,
+	})
+
+	called := 0
+	prs, err := client.FetchPullRequests(context.Background(), "owner/repo", PullRequestListOptions{
+		PerPage: 1,
+		MaxPRs:  1,
+		OnPage: func(page []types.PR, cursor string) error {
+			called++
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("fetch pull requests with max prs: %v", err)
+	}
+	if len(prs) != 1 || prs[0].Number != 101 {
+		t.Fatalf("expected one PR from first page, got %+v", prs)
+	}
+	if called != 1 {
+		t.Fatalf("expected OnPage to run once, got %d", called)
+	}
+	if calls != 1 {
+		t.Fatalf("expected one GraphQL request, got %d", calls)
+	}
+}
+
+func TestFetchPullRequestsStopsWhenOnPageReturnsError(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient(Config{
+		BaseURL: "https://example.test",
+		HTTPClient: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			req := decodeGraphQLRequest(t, r)
+			if req.Variables["cursor"] == nil {
+				return jsonResponse(t, http.StatusOK, map[string]string{"Content-Type": "application/json"}, map[string]any{
+					"data": map[string]any{
+						"repository": map[string]any{
+							"pullRequests": map[string]any{
+								"totalCount": 2,
+								"pageInfo":   map[string]any{"hasNextPage": true, "endCursor": "page-2"},
+								"nodes": []map[string]any{
+									samplePRNode(101, "First page", "2026-03-12T10:00:00Z"),
+								},
+							},
+						},
+					},
+				})
+			}
+			return jsonResponse(t, http.StatusOK, map[string]string{"Content-Type": "application/json"}, map[string]any{
+				"data": map[string]any{
+					"repository": map[string]any{
+						"pullRequests": map[string]any{
+							"totalCount": 2,
+							"pageInfo":   map[string]any{"hasNextPage": false, "endCursor": nil},
+							"nodes": []map[string]any{
+								samplePRNode(102, "Second page", "2026-03-12T11:00:00Z"),
+							},
+						},
+					},
+				},
+			})
+		}),
+		ReserveRequests: 10,
+	})
+
+	called := 0
+	_, err := client.FetchPullRequests(context.Background(), "owner/repo", PullRequestListOptions{
+		PerPage: 1,
+		OnPage: func(page []types.PR, cursor string) error {
+			called++
+			return fmt.Errorf("persist failed at %s", cursor)
+		},
+	})
+	if err == nil {
+		t.Fatal("expected fetch to fail when page persistence fails")
+	}
+	if !strings.Contains(err.Error(), "persist pull request page") {
+		t.Fatalf("expected wrapped persistence error, got %v", err)
+	}
+	if called != 1 {
+		t.Fatalf("expected OnPage to run once before aborting, got %d", called)
 	}
 }
 

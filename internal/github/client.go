@@ -57,8 +57,10 @@ type PullRequestListOptions struct {
 	PerPage      int
 	Cursor       string
 	UpdatedSince time.Time
+	MaxPRs       int
 	Progress     func(processed int, total int)
 	OnCursor     func(cursor string, processed int)
+	OnPage       func(page []types.PR, cursor string) error
 	Concurrency  int
 }
 
@@ -127,24 +129,27 @@ func (c *Client) FetchPullRequests(ctx context.Context, repo string, opts PullRe
 			UpdatedSince: opts.UpdatedSince,
 		})
 
-		var response struct {
-			Data struct {
-				Repository struct {
-					PullRequests struct {
-						PageInfo struct {
-							HasNextPage bool    `json:"hasNextPage"`
-							EndCursor   *string `json:"endCursor"`
-						} `json:"pageInfo"`
-						Nodes []pullRequestNode `json:"nodes"`
-					} `json:"pullRequests"`
-				} `json:"repository"`
-			} `json:"data"`
-		}
+	var response struct {
+		Data struct {
+			Repository struct {
+				PullRequests struct {
+					TotalCount int `json:"totalCount"`
+					PageInfo struct {
+						HasNextPage bool    `json:"hasNextPage"`
+						EndCursor   *string `json:"endCursor"`
+					} `json:"pageInfo"`
+					Nodes []pullRequestNode `json:"nodes"`
+				} `json:"pullRequests"`
+			} `json:"repository"`
+		} `json:"data"`
+	}
 
 		if err := c.graphQL(ctx, query, variables, &response); err != nil {
 			return nil, err
 		}
 
+		totalCount := response.Data.Repository.PullRequests.TotalCount
+		pagePRs := make([]types.PR, 0, len(response.Data.Repository.PullRequests.Nodes))
 		for _, node := range response.Data.Repository.PullRequests.Nodes {
 			pr := node.toPR(repo)
 			if !opts.UpdatedSince.IsZero() {
@@ -154,12 +159,25 @@ func (c *Client) FetchPullRequests(ctx context.Context, repo string, opts PullRe
 				}
 			}
 			prs = append(prs, pr)
+			pagePRs = append(pagePRs, pr)
 			if opts.Progress != nil {
-				opts.Progress(len(prs), 0)
+				opts.Progress(len(prs), totalCount)
+			}
+			if opts.MaxPRs > 0 && len(prs) >= opts.MaxPRs {
+				break
+			}
+		}
+		if opts.OnPage != nil && len(pagePRs) > 0 {
+			cursorCopy := cursor
+			if response.Data.Repository.PullRequests.PageInfo.EndCursor != nil {
+				cursorCopy = *response.Data.Repository.PullRequests.PageInfo.EndCursor
+			}
+			if err := opts.OnPage(pagePRs, cursorCopy); err != nil {
+				return nil, fmt.Errorf("persist pull request page: %w", err)
 			}
 		}
 
-		if !response.Data.Repository.PullRequests.PageInfo.HasNextPage || response.Data.Repository.PullRequests.PageInfo.EndCursor == nil {
+		if (opts.MaxPRs > 0 && len(prs) >= opts.MaxPRs) || !response.Data.Repository.PullRequests.PageInfo.HasNextPage || response.Data.Repository.PullRequests.PageInfo.EndCursor == nil {
 			break
 		}
 		cursor = *response.Data.Repository.PullRequests.PageInfo.EndCursor
@@ -538,5 +556,25 @@ func (n pullRequestNode) toPR(repo string) types.PR {
 		Additions:         n.Additions,
 		Deletions:         n.Deletions,
 		ChangedFilesCount: n.ChangedFiles,
+		Provenance: map[string]string{
+			"id":                  "live_api",
+			"repo":                "live_api",
+			"title":               "live_api",
+			"body":                "live_api",
+			"url":                 "live_api",
+			"author":              "live_api",
+			"labels":              "live_api",
+			"review_status":       "live_api",
+			"ci_status":           "live_api",
+			"mergeable":           "live_api",
+			"base_branch":         "live_api",
+			"head_branch":         "live_api",
+			"created_at":          "live_api",
+			"updated_at":          "live_api",
+			"is_draft":            "live_api",
+			"additions":           "live_api",
+			"deletions":           "live_api",
+			"changed_files_count": "live_api",
+		},
 	}
 }

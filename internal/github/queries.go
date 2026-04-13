@@ -33,6 +33,7 @@ func buildPullRequestsQuery(owner string, repo string, opts PullRequestListOptio
 	query := fmt.Sprintf(`query PullRequests(%s) {
   repository(owner: $owner, name: $repo) {
     pullRequests(first: $perPage%s, states: OPEN, orderBy: {field: UPDATED_AT, direction: ASC}) {
+      totalCount
       pageInfo { hasNextPage endCursor }
       nodes {
         id
