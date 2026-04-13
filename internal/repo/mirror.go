@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -401,4 +402,154 @@ func repoFromGitDir(gitDir string) string {
 		return ""
 	}
 	return owner + "/" + repo
+}
+
+// DiffStats holds the additions and deletions counts for a PR.
+type DiffStats struct {
+	PRNumber  int
+	Additions int
+	Deletions int
+	Files     int
+}
+
+// GetDiffStats returns addition/deletion/file counts for a PR using git diff --stat.
+func (m *Mirror) GetDiffStats(ctx context.Context, prNumber int, baseBranch string) (*DiffStats, error) {
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+	prRef := fmt.Sprintf("refs/pull/%d/head", prNumber)
+	baseRef := fmt.Sprintf("refs/heads/%s", baseBranch)
+
+	mergeBase, err := m.runOutput(ctx, "merge-base", baseRef, prRef)
+	if err != nil {
+		return nil, fmt.Errorf("git merge-base: %w", err)
+	}
+	mergeBase = strings.TrimSpace(mergeBase)
+
+	// git diff --stat for additions/deletions summary
+	out, err := m.runner.Run(ctx, "diff", "--stat", mergeBase, prRef)
+	if err != nil {
+		return nil, fmt.Errorf("git diff --stat: %w", err)
+	}
+
+	stats := parseDiffStat(strings.TrimSpace(string(out)), prNumber)
+	return stats, nil
+}
+
+// GetDiffStatsBatch returns diff stats for multiple PRs concurrently.
+func (m *Mirror) GetDiffStatsBatch(ctx context.Context, prNumbers []int, baseBranch string, workers int) ([]*DiffStats, error) {
+	if workers <= 0 {
+		workers = 10
+	}
+
+	results := make([]*DiffStats, len(prNumbers))
+	errors := make([]error, len(prNumbers))
+	var wg sync.WaitGroup
+
+	for i, prNumber := range prNumbers {
+		wg.Add(1)
+		go func(idx int, num int) {
+			defer wg.Done()
+			stats, err := m.GetDiffStats(ctx, num, baseBranch)
+			results[idx] = stats
+			errors[idx] = err
+		}(i, prNumber)
+	}
+	wg.Wait()
+
+	// Return first error if any
+	for _, err := range errors {
+		if err != nil {
+			return results, err
+		}
+	}
+	return results, nil
+}
+
+// CommitInfo holds commit metadata from git log.
+type CommitInfo struct {
+	SHA      string
+	Author   string
+	Date     string
+	Subject  string
+	Body     string
+}
+
+// GetCommitLog returns commit history for a PR using git log.
+func (m *Mirror) GetCommitLog(ctx context.Context, prNumber int, limit int) ([]CommitInfo, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	prRef := fmt.Sprintf("refs/pull/%d/head", prNumber)
+
+	// Use git log with custom format to get commit info
+	format := "%H%n%an%n%ad%n%s%n%b<COMMIT_DELIM>"
+	args := []string{"log", "--format=" + format, "--date=short", "-n", fmt.Sprintf("%d", limit), prRef}
+
+	out, err := m.runner.Run(ctx, args...)
+	if err != nil {
+		return nil, fmt.Errorf("git log: %w", err)
+	}
+
+	return parseCommitLog(strings.TrimSpace(string(out))), nil
+}
+
+// runOutput is a helper to run git and return trimmed output.
+func (m *Mirror) runOutput(ctx context.Context, args ...string) (string, error) {
+	out, err := m.runner.Run(ctx, args...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// parseDiffStat parses git diff --stat output.
+// Example: " 0 files changed, 100 insertions(+), 50 deletions(-)"
+func parseDiffStat(output string, prNumber int) *DiffStats {
+	stats := &DiffStats{PRNumber: prNumber}
+
+	// Parse insertion/deletion counts
+	addRe := regexp.MustCompile(`(\d+) insertion`)
+	delRe := regexp.MustCompile(`(\d+) deletion`)
+	fileRe := regexp.MustCompile(`(\d+) file`)
+
+	if matches := addRe.FindStringSubmatch(output); len(matches) > 1 {
+		if n, err := strconv.Atoi(matches[1]); err == nil {
+			stats.Additions = n
+		}
+	}
+	if matches := delRe.FindStringSubmatch(output); len(matches) > 1 {
+		if n, err := strconv.Atoi(matches[1]); err == nil {
+			stats.Deletions = n
+		}
+	}
+	if matches := fileRe.FindStringSubmatch(output); len(matches) > 1 {
+		if n, err := strconv.Atoi(matches[1]); err == nil {
+			stats.Files = n
+		}
+	}
+
+	return stats
+}
+
+// parseCommitLog parses git log output with custom delimiter.
+func parseCommitLog(output string) []CommitInfo {
+	const delim = "<COMMIT_DELIM>"
+	parts := strings.Split(output, delim)
+	var commits []CommitInfo
+
+	for _, part := range parts {
+		lines := strings.Split(strings.TrimSpace(part), "\n")
+		if len(lines) < 4 {
+			continue
+		}
+		commits = append(commits, CommitInfo{
+			SHA:     lines[0],
+			Author:  lines[1],
+			Date:    lines[2],
+			Subject: lines[3],
+			Body:    strings.Join(lines[4:], "\n"),
+		})
+	}
+	return commits
 }
