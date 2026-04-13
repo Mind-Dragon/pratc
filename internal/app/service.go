@@ -1139,7 +1139,7 @@ func (s Service) enrichFromMirror(ctx context.Context, repoID string, prs []type
 		return
 	}
 
-	remoteURL := fmt.Sprintf("https://github.com/%s.git", repoID)
+	remoteURL := fmt.Sprintf(types.GitHubURLPrefix+"%s.git", repoID)
 	mirror, err := repo.OpenOrCreate(ctx, s.mirrorBaseDir, repoID, remoteURL)
 	if err != nil {
 		s.enrichFromGraphQL(ctx, repoID, prs)

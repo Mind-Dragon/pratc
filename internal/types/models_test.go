@@ -191,7 +191,7 @@ func sampleAnalysisResponse() AnalysisResponse {
 		Number:            101,
 		Title:             "Reduce planner conflicts",
 		Body:              "Introduces a smaller candidate pool.",
-		URL:               "https://github.com/owner/repo/pull/101",
+		URL:               GitHubURLPrefix + "owner/repo/pull/101",
 		Author:            "octocat",
 		Labels:            []string{"planner", "ci"},
 		FilesChanged:      []string{"internal/planner/plan.go", "internal/types/models.go"},

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
+	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
 func TestDefaultWorkerMirrorFactoryInitializesMirror(t *testing.T) {
@@ -29,7 +30,7 @@ func TestDefaultWorkerMirrorFactoryInitializesMirror(t *testing.T) {
 
 	ctx := context.Background()
 	repoID := "owner/repo"
-	expectedRemoteURL := "https://github.com/owner/repo.git"
+	expectedRemoteURL := types.GitHubURLPrefix + "owner/repo.git"
 	expectedMirrorPath := filepath.Join(tempDir, "repos", "owner", "repo.git")
 
 	t.Run("creates and initializes mirror for valid repo", func(t *testing.T) {

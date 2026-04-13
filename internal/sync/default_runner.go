@@ -141,7 +141,7 @@ func defaultWorker(cacheStore *cache.Store) Worker {
 			if err != nil {
 				return nil, fmt.Errorf("default base dir: %w", err)
 			}
-			remoteURL := fmt.Sprintf("https://github.com/%s.git", repoID)
+			remoteURL := fmt.Sprintf(types.GitHubURLPrefix+"%s.git", repoID)
 			return repo.OpenOrCreate(ctx, baseDir, repoID, remoteURL)
 		},
 		Metadata:   githubMetadataSource{client: gh.NewClient(gh.Config{Token: os.Getenv("GITHUB_TOKEN"), ReserveRequests: 200, BudgetManager: budget}), cacheStore: cacheStore, budget: budget},

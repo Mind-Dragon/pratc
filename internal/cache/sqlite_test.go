@@ -340,7 +340,7 @@ func samplePR(number int) types.PR {
 		Number:            number,
 		Title:             fmt.Sprintf("PR %d", number),
 		Body:              "Body",
-		URL:               fmt.Sprintf("https://github.com/owner/repo/pull/%d", number),
+		URL:               fmt.Sprintf(types.GitHubURLPrefix+"owner/repo/pull/%d", number),
 		Author:            "octocat",
 		Labels:            []string{"triage"},
 		FilesChanged:      []string{fmt.Sprintf("internal/service/file_%d.go", number)},

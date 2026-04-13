@@ -18,7 +18,7 @@ func TestBootstrapFileSourceLoadsJSONL(t *testing.T) {
 		Number:            42,
 		Title:             "Bootstrap Test",
 		Body:              "",
-		URL:               "https://github.com/owner/repo/pull/42",
+		URL:               types.GitHubURLPrefix + "owner/repo/pull/42",
 		Author:            "testuser",
 		Labels:            []string{"bug"},
 		FilesChanged:      nil,

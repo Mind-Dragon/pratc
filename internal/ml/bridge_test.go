@@ -293,7 +293,7 @@ func TestPrToML(t *testing.T) {
 				Number:       42,
 				Title:        "Add new feature",
 				Body:         "This PR adds a new feature",
-				URL:          "https://github.com/owner/repo/pull/42",
+				URL:          types.GitHubURLPrefix + "owner/repo/pull/42",
 				Author:       "developer",
 				Labels:       []string{"enhancement", "needs-review"},
 				FilesChanged: []string{"feature.go", "feature_test.go"},

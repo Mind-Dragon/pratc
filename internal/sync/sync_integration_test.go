@@ -34,7 +34,7 @@ func TestSyncIntegration_UpsertPR_Works(t *testing.T) {
 		Number:            123,
 		Title:             "Test PR",
 		Body:              "Test body",
-		URL:               "https://github.com/test/repo/pull/123",
+		URL:               types.GitHubURLPrefix + "test/repo/pull/123",
 		Author:            "testuser",
 		Labels:            []string{"bug", "enhancement"},
 		FilesChanged:      []string{"src/main.go", "src/lib.go"},

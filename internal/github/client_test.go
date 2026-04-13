@@ -733,7 +733,7 @@ func samplePRNode(number int, title string, updatedAt string) map[string]any {
 		"number":            number,
 		"title":             title,
 		"body":              "Body",
-		"url":               fmt.Sprintf("https://github.com/owner/repo/pull/%d", number),
+		"url":               fmt.Sprintf(types.GitHubURLPrefix+"owner/repo/pull/%d", number),
 		"isDraft":           false,
 		"createdAt":         "2026-03-12T09:00:00Z",
 		"updatedAt":         updatedAt,

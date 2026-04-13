@@ -135,7 +135,7 @@ func TestCheckAnalyzeSyncWarningDataUsesOpenPRCountWhenSyncIsStale(t *testing.T)
 		Repo:       "owner/repo",
 		Number:     1,
 		Title:      "PR 1",
-		URL:        "https://github.com/owner/repo/pull/1",
+		URL:        types.GitHubURLPrefix + "owner/repo/pull/1",
 		Author:     "octocat",
 		BaseBranch: "main",
 		HeadBranch: "feature/1",
