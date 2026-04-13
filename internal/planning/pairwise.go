@@ -14,6 +14,10 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
+// DEPRECATED: PairwiseExecutor is not wired into the production planning path.
+// Production uses internal/filter + internal/planner instead.
+// Scheduled for removal in v0.2.
+// See: internal/AGENTS.md "planning/ is mostly dead code"
 type PairwiseResult struct {
 	Repo            string                   `json:"repo"`
 	GeneratedAt     string                   `json:"generated_at"`

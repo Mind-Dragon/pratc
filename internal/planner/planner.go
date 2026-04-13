@@ -73,8 +73,8 @@ func (p *Planner) Plan(ctx context.Context, repo string, prs []types.PR, target 
 		return types.PlanResponse{}, fmt.Errorf("invalid plan input: %w", err)
 	}
 
-	// Build clusters for cluster assignment
-	clusters := p.buildClusters(prs)
+	// Build clusters using title similarity
+	clusters := p.BuildClusters(prs)
 	clusterByPR := make(map[int]string)
 	for _, cluster := range clusters {
 		for _, prID := range cluster.PRIDs {
@@ -197,8 +197,8 @@ func (p *Planner) Plan(ctx context.Context, repo string, prs []types.PR, target 
 	}, nil
 }
 
-// buildClusters groups PRs into clusters based on branch, labels, or bot status.
-func (p *Planner) buildClusters(prs []types.PR) []types.PRCluster {
+// BuildClusters groups PRs into clusters based on branch, labels, or bot status.
+func (p *Planner) BuildClusters(prs []types.PR) []types.PRCluster {
 	clusterMap := make(map[string][]types.PR)
 	for _, pr := range prs {
 		key := p.clusterKey(pr)

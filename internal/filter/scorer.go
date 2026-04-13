@@ -2,6 +2,7 @@ package filter
 
 import (
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -81,23 +82,14 @@ func ScoreAndSortPool(prs []types.PR, now time.Time) []types.PR {
 	copy(sorted, prs)
 
 	// Sort by priority descending, then by PR number ascending for determinism
-	for i := 0; i < len(sorted)-1; i++ {
-		for j := i + 1; j < len(sorted); j++ {
-			left := PlannerPriority(sorted[i], now)
-			right := PlannerPriority(sorted[j], now)
-
-			shouldSwap := false
-			if left == right {
-				shouldSwap = sorted[i].Number > sorted[j].Number
-			} else {
-				shouldSwap = left < right
-			}
-
-			if shouldSwap {
-				sorted[i], sorted[j] = sorted[j], sorted[i]
-			}
+	sort.Slice(sorted, func(i, j int) bool {
+		left := PlannerPriority(sorted[i], now)
+		right := PlannerPriority(sorted[j], now)
+		if left == right {
+			return sorted[i].Number < sorted[j].Number
 		}
-	}
+		return left > right
+	})
 
 	return sorted
 }

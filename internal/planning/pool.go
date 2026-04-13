@@ -61,6 +61,11 @@ func (w PriorityWeights) Validate() error {
 	return nil
 }
 
+// DEPRECATED: PoolSelector is not wired into the production planning path.
+// Production uses internal/filter + internal/planner instead.
+// Scheduled for removal in v0.2.
+// See: internal/AGENTS.md "planning/ is mostly dead code"
+//
 // PoolSelector selects deterministic candidate pools based on weighted priority scoring.
 type PoolSelector struct {
 	Weights PriorityWeights

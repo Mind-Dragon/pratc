@@ -40,6 +40,7 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/graph"
 	"github.com/jeffersonnunn/pratc/internal/logger"
 	"github.com/jeffersonnunn/pratc/internal/ml"
+	"github.com/jeffersonnunn/pratc/internal/planner"
 	"github.com/jeffersonnunn/pratc/internal/planning"
 	"github.com/jeffersonnunn/pratc/internal/repo"
 	"github.com/jeffersonnunn/pratc/internal/review"
@@ -297,7 +298,7 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 	}
 
 	clusterStart := time.Now()
-	clusters := buildClusters(prs)
+	clusters := planner.New().BuildClusters(prs)
 	telemetry.StageLatenciesMS["clusters_ms"] = int(time.Since(clusterStart).Milliseconds())
 
 	// Attempt ML-backed clustering via Voyage if configured.
@@ -445,6 +446,12 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 		staleMap[stale.PRNumber] = stale
 	}
 
+	// Build PR number lookup map for O(1) related PR lookups
+	prByNumber := make(map[int]types.PR)
+	for _, p := range response.PRs {
+		prByNumber[p.Number] = p
+	}
+
 	var allResults []types.ReviewResult
 	for _, pr := range response.PRs {
 		clusterLabel := ""
@@ -456,11 +463,8 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 		if cluster, ok := clusterMap[pr.ClusterID]; ok {
 			for _, prID := range cluster.PRIDs {
 				if prID != pr.Number {
-					for _, p := range response.PRs {
-						if p.Number == prID {
-							relatedPRs = append(relatedPRs, p)
-							break
-						}
+					if p, ok := prByNumber[prID]; ok {
+						relatedPRs = append(relatedPRs, p)
 					}
 				}
 			}
@@ -564,7 +568,7 @@ func (s Service) Cluster(ctx context.Context, repo string) (types.ClusterRespons
 	}
 
 	model := "heuristic-fallback"
-	clusters := buildClusters(prs)
+	clusters := planner.New().BuildClusters(prs)
 
 	// Attempt ML-backed clustering via Voyage if configured.
 	if s.mlBridge != nil && s.mlBridge.Available() {
@@ -666,7 +670,7 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 	}
 
 	clusterStart := time.Now()
-	clusters := buildClusters(prs)
+	clusters := planner.New().BuildClusters(prs)
 	planTelemetry.StageLatenciesMS["clusters_ms"] = int(time.Since(clusterStart).Milliseconds())
 	clusterByPR := make(map[int]string)
 	for _, cluster := range clusters {
@@ -1084,73 +1088,6 @@ func (s Service) applyIntakeControls(input []types.PR) ([]types.PR, truncationMe
 	return output, meta
 }
 
-func buildClusters(prs []types.PR) []types.PRCluster {
-	clusterMap := make(map[string][]types.PR)
-	for _, pr := range prs {
-		key := clusterKey(pr)
-		clusterMap[key] = append(clusterMap[key], pr)
-	}
-
-	keys := make([]string, 0, len(clusterMap))
-	for key := range clusterMap {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	clusters := make([]types.PRCluster, 0, len(keys))
-	for i, key := range keys {
-		members := clusterMap[key]
-		sort.Slice(members, func(a, b int) bool { return members[a].Number < members[b].Number })
-
-		prIDs := make([]int, 0, len(members))
-		titles := make([]string, 0, min(3, len(members)))
-		health := "green"
-		for _, member := range members {
-			prIDs = append(prIDs, member.Number)
-			if len(titles) < 3 {
-				titles = append(titles, member.Title)
-			}
-			if member.Mergeable == "conflicting" || member.CIStatus == "failure" {
-				health = "red"
-			} else if health != "red" && (member.CIStatus == "pending" || member.CIStatus == "unknown") {
-				health = "yellow"
-			}
-		}
-
-		clusters = append(clusters, types.PRCluster{
-			ClusterID:         fmt.Sprintf("%s-%02d", sanitizeClusterID(key), i+1),
-			ClusterLabel:      strings.Title(key),
-			Summary:           fmt.Sprintf("%d pull requests grouped by %s", len(members), key),
-			PRIDs:             prIDs,
-			HealthStatus:      health,
-			AverageSimilarity: averageTitleSimilarity(members),
-			SampleTitles:      titles,
-		})
-	}
-
-	return clusters
-}
-
-func clusterKey(pr types.PR) string {
-	if pr.IsBot || containsLabel(pr.Labels, "dependencies") || containsLabel(pr.Labels, "dependabot") {
-		return "dependency updates"
-	}
-	if pr.BaseBranch != "" && pr.BaseBranch != "main" {
-		return "branch " + pr.BaseBranch
-	}
-	if len(pr.Labels) > 0 {
-		return strings.ToLower(pr.Labels[0])
-	}
-	parts := tokenize(pr.Title)
-	if len(parts) == 0 {
-		return "general"
-	}
-	if len(parts) > 2 {
-		return parts[0] + " " + parts[1]
-	}
-	return strings.Join(parts, " ")
-}
-
 func classifyDuplicates(prs []types.PR, mergedPRs []review.MergedPRRecord) ([]types.DuplicateGroup, []types.DuplicateGroup) {
 	duplicatesByCanonical := make(map[int]*types.DuplicateGroup)
 	overlapsByCanonical := make(map[int]*types.DuplicateGroup)
@@ -1473,26 +1410,6 @@ func plannerRationale(pr types.PR) string {
 	return strings.Join(parts, "; ")
 }
 
-func averageTitleSimilarity(prs []types.PR) float64 {
-	if len(prs) <= 1 {
-		return 1
-	}
-
-	total := 0.0
-	pairs := 0.0
-	for i := 0; i < len(prs); i++ {
-		for j := i + 1; j < len(prs); j++ {
-			total += jaccard(tokenize(prs[i].Title), tokenize(prs[j].Title))
-			pairs++
-		}
-	}
-	if pairs == 0 {
-		return 1
-	}
-
-	return round(total/pairs, 4)
-}
-
 func similarity(left, right types.PR) float64 {
 	titleScore := jaccard(tokenize(left.Title), tokenize(right.Title))
 	bodyScore := jaccard(tokenize(left.Body), tokenize(right.Body))
@@ -1572,16 +1489,6 @@ func tokenize(value string) []string {
 	return parts
 }
 
-func containsLabel(labels []string, want string) bool {
-	want = strings.ToLower(strings.TrimSpace(want))
-	for _, label := range labels {
-		if strings.Contains(strings.ToLower(label), want) {
-			return true
-		}
-	}
-	return false
-}
-
 func parseSharedFiles(reason string) []string {
 	const prefix = "shared files:"
 	if !strings.HasPrefix(reason, prefix) {
@@ -1600,18 +1507,6 @@ func parseSharedFiles(reason string) []string {
 		}
 	}
 	return files
-}
-
-func sanitizeClusterID(input string) string {
-	input = strings.ToLower(input)
-	input = strings.ReplaceAll(input, " ", "-")
-	input = strings.ReplaceAll(input, "/", "-")
-	input = strings.ReplaceAll(input, "_", "-")
-	input = strings.Trim(input, "-")
-	if input == "" {
-		return "cluster"
-	}
-	return input
 }
 
 func appendUniqueInt(values []int, candidate int) []int {

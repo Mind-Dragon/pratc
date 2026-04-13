@@ -11,6 +11,11 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
+// DEPRECATED: HierarchicalPlanner is not wired into the production planning path.
+// Production uses internal/filter + internal/planner instead.
+// Scheduled for removal in v0.2.
+// See: internal/AGENTS.md "planning/ is mostly dead code"
+//
 // HierarchicalPlanner implements three-level hierarchical planning:
 // Level 1: Select cluster/batch order based on priority pool selector scores
 // Level 2: Rank PRs within selected batches using weighted scoring

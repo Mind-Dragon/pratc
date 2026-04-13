@@ -82,3 +82,4 @@ next-env.d.ts
 
 # Bun lock (we use package-lock.json for reproducibility)
 bun.lock
+.worktrees/

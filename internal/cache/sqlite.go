@@ -1012,6 +1012,9 @@ func (s *Store) init(ctx context.Context) error {
 			files_touched_json TEXT NOT NULL,
 			PRIMARY KEY (repo, number)
 		);`,
+		`CREATE INDEX IF NOT EXISTS idx_pull_requests_base_branch ON pull_requests(base_branch);`,
+		`CREATE INDEX IF NOT EXISTS idx_pull_requests_ci_status ON pull_requests(ci_status);`,
+		`CREATE INDEX IF NOT EXISTS idx_pull_requests_updated_at ON pull_requests(updated_at DESC);`,
 	}
 
 	for _, stmt := range schema {
