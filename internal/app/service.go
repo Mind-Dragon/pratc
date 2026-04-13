@@ -47,6 +47,7 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/settings"
 	"github.com/jeffersonnunn/pratc/internal/testutil"
 	"github.com/jeffersonnunn/pratc/internal/types"
+	"github.com/jeffersonnunn/pratc/internal/util"
 	"github.com/jeffersonnunn/pratc/internal/version"
 )
 
@@ -1592,9 +1593,9 @@ func plannerRationale(pr types.PR) string {
 }
 
 func similarity(left, right types.PR) float64 {
-	titleScore := jaccard(tokenize(left.Title), tokenize(right.Title))
-	bodyScore := jaccard(tokenize(left.Body), tokenize(right.Body))
-	fileScore := jaccard(left.FilesChanged, right.FilesChanged)
+	titleScore := util.Jaccard(util.Tokenize(left.Title), util.Tokenize(right.Title))
+	bodyScore := util.Jaccard(util.Tokenize(left.Body), util.Tokenize(right.Body))
+	fileScore := util.Jaccard(left.FilesChanged, right.FilesChanged)
 	if len(left.FilesChanged) == 0 && len(right.FilesChanged) == 0 {
 		fileScore = 0.5
 	}
@@ -1603,71 +1604,14 @@ func similarity(left, right types.PR) float64 {
 }
 
 func similarityWithMerged(pr types.PR, merged review.MergedPRRecord) float64 {
-	titleScore := jaccard(tokenize(pr.Title), tokenize(merged.Title))
-	bodyScore := jaccard(tokenize(pr.Body), tokenize(merged.Body))
-	fileScore := jaccard(pr.FilesChanged, merged.FilesChanged)
+	titleScore := util.Jaccard(util.Tokenize(pr.Title), util.Tokenize(merged.Title))
+	bodyScore := util.Jaccard(util.Tokenize(pr.Body), util.Tokenize(merged.Body))
+	fileScore := util.Jaccard(pr.FilesChanged, merged.FilesChanged)
 	if len(pr.FilesChanged) == 0 && len(merged.FilesChanged) == 0 {
 		fileScore = 0.5
 	}
 
 	return round((0.6*titleScore)+(0.3*fileScore)+(0.1*bodyScore), 4)
-}
-
-func jaccard(left, right []string) float64 {
-	if len(left) == 0 && len(right) == 0 {
-		return 1
-	}
-	leftSet := make(map[string]struct{}, len(left))
-	rightSet := make(map[string]struct{}, len(right))
-	for _, value := range left {
-		trimmed := strings.TrimSpace(strings.ToLower(value))
-		if trimmed != "" {
-			leftSet[trimmed] = struct{}{}
-		}
-	}
-	for _, value := range right {
-		trimmed := strings.TrimSpace(strings.ToLower(value))
-		if trimmed != "" {
-			rightSet[trimmed] = struct{}{}
-		}
-	}
-
-	intersection := 0.0
-	union := make(map[string]struct{}, len(leftSet)+len(rightSet))
-	for value := range leftSet {
-		union[value] = struct{}{}
-		if _, ok := rightSet[value]; ok {
-			intersection++
-		}
-	}
-	for value := range rightSet {
-		union[value] = struct{}{}
-	}
-	if len(union) == 0 {
-		return 0
-	}
-
-	return intersection / float64(len(union))
-}
-
-func tokenize(value string) []string {
-	value = strings.ToLower(value)
-	replacer := strings.NewReplacer(
-		"/", " ",
-		"_", " ",
-		"-", " ",
-		":", " ",
-		".", " ",
-		",", " ",
-		"(", " ",
-		")", " ",
-		"[", " ",
-		"]", " ",
-		"{", " ",
-		"}", " ",
-	)
-	parts := strings.Fields(replacer.Replace(value))
-	return parts
 }
 
 func parseSharedFiles(reason string) []string {

@@ -11,6 +11,7 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/formula"
 	"github.com/jeffersonnunn/pratc/internal/graph"
 	"github.com/jeffersonnunn/pratc/internal/types"
+	"github.com/jeffersonnunn/pratc/internal/util"
 )
 
 // Planner orchestrates the planning pipeline by coordinating filter, formula, and graph engines.
@@ -257,7 +258,7 @@ func (p *Planner) clusterKey(pr types.PR) string {
 	if len(pr.Labels) > 0 {
 		return pr.Labels[0]
 	}
-	parts := p.tokenize(pr.Title)
+	parts := util.Tokenize(pr.Title)
 	if len(parts) == 0 {
 		return "general"
 	}
@@ -347,7 +348,7 @@ func (p *Planner) averageTitleSimilarity(prs []types.PR) float64 {
 	pairs := 0.0
 	for i := 0; i < len(prs); i++ {
 		for j := i + 1; j < len(prs); j++ {
-			total += p.jaccard(p.tokenize(prs[i].Title), p.tokenize(prs[j].Title))
+			total += util.Jaccard(util.Tokenize(prs[i].Title), util.Tokenize(prs[j].Title))
 			pairs++
 		}
 	}
@@ -367,70 +368,6 @@ func (p *Planner) containsLabel(labels []string, target string) bool {
 		}
 	}
 	return false
-}
-
-func (p *Planner) tokenize(value string) []string {
-	if value == "" {
-		return nil
-	}
-	// Simple tokenization: split on spaces and common delimiters
-	result := make([]string, 0)
-	current := ""
-	for _, r := range value {
-		if r == ' ' || r == '-' || r == '_' || r == '/' || r == ':' {
-			if current != "" {
-				result = append(result, current)
-				current = ""
-			}
-		} else {
-			current += string(r)
-		}
-	}
-	if current != "" {
-		result = append(result, current)
-	}
-	return result
-}
-
-func (p *Planner) jaccard(left, right []string) float64 {
-	if len(left) == 0 && len(right) == 0 {
-		return 1
-	}
-	leftSet := make(map[string]struct{}, len(left))
-	rightSet := make(map[string]struct{}, len(right))
-	for _, value := range left {
-		trimmed := p.trimAndLower(value)
-		if trimmed != "" {
-			leftSet[trimmed] = struct{}{}
-		}
-	}
-	for _, value := range right {
-		trimmed := p.trimAndLower(value)
-		if trimmed != "" {
-			rightSet[trimmed] = struct{}{}
-		}
-	}
-
-	intersection := 0.0
-	union := make(map[string]struct{}, len(leftSet)+len(rightSet))
-	for value := range leftSet {
-		union[value] = struct{}{}
-		if _, ok := rightSet[value]; ok {
-			intersection++
-		}
-	}
-	for value := range rightSet {
-		union[value] = struct{}{}
-	}
-	if len(union) == 0 {
-		return 0
-	}
-
-	return intersection / float64(len(union))
-}
-
-func (p *Planner) trimAndLower(s string) string {
-	return strings.ToLower(strings.TrimSpace(s))
 }
 
 func (p *Planner) round(value float64, places int) float64 {
