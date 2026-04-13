@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from datasketch import MinHash, MinHashLSH
+
 from pratc_ml.providers import ProviderConfig
 from pratc_ml.providers.minimax import MinimaxError, embed_texts as minimax_embed_texts
 from pratc_ml.providers.voyage import VoyageError, embed_texts as voyage_embed_texts
@@ -11,6 +13,58 @@ from pratc_ml.similarity import cosine_similarity, heuristic_similarity
 def _embedding_text(pr: dict[str, Any]) -> str:
     files = " ".join(pr.get("files_changed", [])[:5])
     return f"{pr.get('title', '')}\n{pr.get('body', '')}\n{files}".strip()
+
+
+def _minhash_signature(pr: dict[str, Any], num_perm: int = 128) -> MinHash:
+    """Create a MinHash signature for a PR using its title, body, and files."""
+    tokens: set[str] = set()
+    title = pr.get("title", "")
+    body = pr.get("body", "")
+    files = pr.get("files_changed", [])[:5]
+
+    for part in title.lower().split():
+        if part:
+            tokens.add(part)
+    for part in body.lower().split():
+        if part:
+            tokens.add(part)
+    for f in files:
+        for part in f.lower().split("/"):
+            if part:
+                tokens.add(part)
+
+    m = MinHash(num_perm=num_perm)
+    for token in tokens:
+        m.update(token.encode("utf8"))
+    return m
+
+
+def _get_candidate_pairs_lsh(
+    prs: list[dict[str, Any]], threshold: float = 0.5, num_perm: int = 128
+) -> set[tuple[int, int]]:
+    """Use MinHash LSH to find candidate similar PR pairs."""
+    if len(prs) < 2:
+        return set()
+
+    lsh = MinHashLSH(threshold=threshold, num_perm=num_perm)
+    minhashes: list[MinHash] = []
+
+    for i, pr in enumerate(prs):
+        m = _minhash_signature(pr, num_perm=num_perm)
+        minhashes.append(m)
+        lsh.insert(f"pr_{i}", m)
+
+    candidates: set[tuple[int, int]] = set()
+    for i in range(len(prs)):
+        result = lsh.query(minhashes[i])
+        for rid in result:
+            j = int(rid.split("_")[1])
+            if i < j:
+                candidates.add((i, j))
+            elif j < i:
+                candidates.add((j, i))
+
+    return candidates
 
 
 def detect_duplicates(payload: dict[str, Any]) -> dict[str, Any]:
@@ -49,36 +103,46 @@ def detect_duplicates(payload: dict[str, Any]) -> dict[str, Any]:
     duplicates: dict[int, dict[str, Any]] = {}
     overlaps: dict[int, dict[str, Any]] = {}
 
-    for i in range(len(prs)):
-        for j in range(i + 1, len(prs)):
-            left = prs[i]
-            right = prs[j]
+    n = len(prs)
+    if n < 100:
+        pairs_to_check = [(i, j) for i in range(n) for j in range(i + 1, n)]
+    else:
+        lsh_threshold = max(overlap_threshold * 0.8, 0.5)
+        pairs_to_check = _get_candidate_pairs_lsh(prs, threshold=lsh_threshold)
+        if len(pairs_to_check) < n * (n - 1) // 4:
+            pass
+        else:
+            pairs_to_check = [(i, j) for i in range(n) for j in range(i + 1, n)]
 
-            if embeddings is not None:
-                score = round((cosine_similarity(embeddings[i], embeddings[j]) + 1.0) / 2.0, 4)
-            else:
-                score = heuristic_similarity(left, right)
+    for i, j in pairs_to_check:
+        left = prs[i]
+        right = prs[j]
 
-            if score < overlap_threshold:
-                continue
+        if embeddings is not None:
+            score = round((cosine_similarity(embeddings[i], embeddings[j]) + 1.0) / 2.0, 4)
+        else:
+            score = heuristic_similarity(left, right)
 
-            canonical = min(int(left.get("number", 0)), int(right.get("number", 0)))
-            duplicate = max(int(left.get("number", 0)), int(right.get("number", 0)))
+        if score < overlap_threshold:
+            continue
 
-            target = duplicates if score > duplicate_threshold else overlaps
-            if canonical not in target:
-                target[canonical] = {
-                    "canonical_pr_number": canonical,
-                    "duplicate_pr_numbers": [],
-                    "similarity": score,
-                    "reason": "similarity above duplicate threshold"
-                    if target is duplicates
-                    else "similarity in overlap threshold range",
-                }
+        canonical = min(int(left.get("number", 0)), int(right.get("number", 0)))
+        duplicate = max(int(left.get("number", 0)), int(right.get("number", 0)))
 
-            target[canonical]["similarity"] = max(target[canonical]["similarity"], score)
-            if duplicate not in target[canonical]["duplicate_pr_numbers"]:
-                target[canonical]["duplicate_pr_numbers"].append(duplicate)
+        target = duplicates if score > duplicate_threshold else overlaps
+        if canonical not in target:
+            target[canonical] = {
+                "canonical_pr_number": canonical,
+                "duplicate_pr_numbers": [],
+                "similarity": score,
+                "reason": "similarity above duplicate threshold"
+                if target is duplicates
+                else "similarity in overlap threshold range",
+            }
+
+        target[canonical]["similarity"] = max(target[canonical]["similarity"], score)
+        if duplicate not in target[canonical]["duplicate_pr_numbers"]:
+            target[canonical]["duplicate_pr_numbers"].append(duplicate)
 
     duplicate_groups = [duplicates[key] for key in sorted(duplicates)]
     overlap_groups = [overlaps[key] for key in sorted(overlaps)]

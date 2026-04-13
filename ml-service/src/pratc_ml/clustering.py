@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+
 from pratc_ml.providers import ProviderConfig
 from pratc_ml.providers.minimax import MinimaxError, embed_texts as minimax_embed_texts
 from pratc_ml.providers.voyage import VoyageError, embed_texts as voyage_embed_texts
@@ -23,6 +25,22 @@ def _cluster_key(pr: dict[str, Any]) -> str:
     if labels:
         return labels[0]
     return title.split(" ")[0] if title else "general"
+
+
+def _compute_similarity_matrix(
+    embeddings: list[list[float]], indices: list[int]
+) -> np.ndarray:
+    """Compute pairwise cosine similarity matrix for given embedding indices."""
+    n = len(indices)
+    if n < 2:
+        return np.zeros((n, n))
+
+    vecs = np.array([embeddings[i] for i in indices], dtype=np.float64)
+    norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+    norms = np.where(norms == 0, 1, norms)
+    normalized = vecs / norms
+    sim_matrix = normalized @ normalized.T
+    return (sim_matrix + 1.0) / 2.0
 
 
 def cluster_pull_requests(payload: dict[str, Any]) -> dict[str, Any]:
@@ -65,18 +83,38 @@ def cluster_pull_requests(payload: dict[str, Any]) -> dict[str, Any]:
 
     clusters: list[dict[str, Any]] = []
     for idx, (key, members) in enumerate(sorted(grouped.items()), start=1):
-        similarities: list[float] = []
-        for left_idx in range(len(members)):
-            for right_idx in range(left_idx + 1, len(members)):
-                left_position, left = members[left_idx]
-                right_position, right = members[right_idx]
-                if embeddings is not None:
-                    left_embedding = embeddings[left_position]
-                    right_embedding = embeddings[right_position]
-                    score = (cosine_similarity(left_embedding, right_embedding) + 1.0) / 2.0
-                else:
-                    score = heuristic_similarity(left, right)
-                similarities.append(score)
+        positions = [pos for pos, _ in members]
+
+        if embeddings is not None and len(members) >= 2:
+            sim_matrix = _compute_similarity_matrix(embeddings, positions)
+            n = len(members)
+            similarities = []
+            for left_idx in range(n):
+                for right_idx in range(left_idx + 1, n):
+                    similarities.append(round(float(sim_matrix[left_idx, right_idx]), 4))
+        elif embeddings is not None and len(members) == 1:
+            similarities = []
+        else:
+            member_dicts = [member for _, member in members]
+            titles = [m.get("title", "") for m in member_dicts]
+            bodies = [m.get("body", "") for m in member_dicts]
+            files_list = [m.get("files_changed", []) for m in member_dicts]
+
+            from pratc_ml.similarity import tokenize
+
+            tokenized_titles = [tokenize(t) for t in titles]
+            tokenized_bodies = [tokenize(b) for b in bodies]
+
+            similarities = []
+            for i in range(len(members)):
+                for j in range(i + 1, len(members)):
+                    left = member_dicts[i]
+                    right = member_dicts[j]
+                    score = _heuristic_similarity_precomputed(
+                        left, right, tokenized_titles[i], tokenized_titles[j],
+                        tokenized_bodies[i], tokenized_bodies[j], files_list[i], files_list[j]
+                    )
+                    similarities.append(score)
 
         average_similarity = (
             round(sum(similarities) / len(similarities), 4) if similarities else 1.0
@@ -118,3 +156,37 @@ def cluster_pull_requests(payload: dict[str, Any]) -> dict[str, Any]:
         ),
         "clusters": clusters,
     }
+
+
+def _heuristic_similarity_precomputed(
+    left: dict, right: dict,
+    left_title_tokens: tuple[str, ...], right_title_tokens: tuple[str, ...],
+    left_body_tokens: tuple[str, ...], right_body_tokens: tuple[str, ...],
+    left_files: list, right_files: list
+) -> float:
+    """Heuristic similarity with pre-computed tokenized title and body."""
+    left_title_set = set(left_title_tokens)
+    right_title_set = set(right_title_tokens)
+    if not left_title_set and not right_title_set:
+        title_score = 0.0
+    else:
+        union = left_title_set | right_title_set
+        title_score = len(left_title_set & right_title_set) / len(union) if union else 0.0
+
+    left_body_set = set(left_body_tokens)
+    right_body_set = set(right_body_tokens)
+    if not left_body_set and not right_body_set:
+        body_score = 0.0
+    else:
+        union = left_body_set | right_body_set
+        body_score = len(left_body_set & right_body_set) / len(union) if union else 0.0
+
+    left_files_set = {f.strip().lower() for f in left_files if f and f.strip()}
+    right_files_set = {f.strip().lower() for f in right_files if f and f.strip()}
+    if not left_files_set and not right_files_set:
+        files_score = 0.5
+    else:
+        union = left_files_set | right_files_set
+        files_score = len(left_files_set & right_files_set) / len(union) if union else 0.0
+
+    return round((0.6 * title_score) + (0.3 * files_score) + (0.1 * body_score), 4)

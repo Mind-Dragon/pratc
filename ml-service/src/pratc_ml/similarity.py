@@ -3,10 +3,12 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Iterable
+from functools import lru_cache
 
 
-def tokenize(value: str) -> list[str]:
-    return [part for part in re.split(r"[^a-z0-9]+", value.lower()) if part]
+@lru_cache(maxsize=1024)
+def tokenize(value: str) -> tuple[str, ...]:
+    return tuple(part for part in re.split(r"[^a-z0-9]+", value.lower()) if part)
 
 
 def jaccard(left: Iterable[str], right: Iterable[str]) -> float:
