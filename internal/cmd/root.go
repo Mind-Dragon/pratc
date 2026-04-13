@@ -1200,9 +1200,11 @@ func handleRepoAction(w http.ResponseWriter, r *http.Request, service app.Servic
 			return
 		}
 		syncAPI.Stream(repo, w, r)
-	case "sync/status":
+ 	case "sync/status":
 		syncStatus := getSyncStatus(repo)
 		writeHTTPJSON(w, http.StatusOK, syncStatus)
+	case "review":
+		handleReview(w, r, service, repo)
 	default:
 		writeHTTPError(w, http.StatusNotFound, "route not found")
 	}
@@ -1666,6 +1668,33 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 	}
 
 	writeHTTPJSON(w, http.StatusOK, response)
+}
+
+func handleReview(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
+	if !ensureGET(w, r) || !ensureRepo(w, repo) {
+		return
+	}
+
+	response, err := service.Analyze(r.Context(), repo)
+	if err != nil {
+		writeHTTPError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if response.ReviewPayload == nil {
+		writeHTTPJSON(w, http.StatusOK, map[string]any{
+			"repo":        repo,
+			"generatedAt": response.GeneratedAt,
+			"review":      map[string]any{},
+		})
+		return
+	}
+
+	writeHTTPJSON(w, http.StatusOK, map[string]any{
+		"repo":        repo,
+		"generatedAt": response.GeneratedAt,
+		"review":      response.ReviewPayload,
+	})
 }
 
 // handlePlanOmni handles GET /api/repos/:owner/:repo/plan/omni
