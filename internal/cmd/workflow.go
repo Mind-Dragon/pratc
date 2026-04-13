@@ -1,0 +1,313 @@
+package cmd
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jeffersonnunn/pratc/internal/app"
+	"github.com/jeffersonnunn/pratc/internal/cache"
+	gh "github.com/jeffersonnunn/pratc/internal/github"
+	"github.com/jeffersonnunn/pratc/internal/logger"
+	prsync "github.com/jeffersonnunn/pratc/internal/sync"
+	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
+	"github.com/spf13/cobra"
+)
+
+const workflowRateLimitPauseReason = "rate limit budget exhausted"
+
+type workflowSyncSummary struct {
+	Repo        string                    `json:"repo"`
+	GeneratedAt string                    `json:"generatedAt"`
+	Status      string                    `json:"status"`
+	JobID       string                    `json:"job_id"`
+	Budget      string                    `json:"budget,omitempty"`
+	Metrics     ratelimit.MetricsSnapshot `json:"metrics,omitempty"`
+	ResumeAt    string                    `json:"resume_at,omitempty"`
+}
+
+func RegisterWorkflowCommand() {
+	var repo string
+	var outDir string
+	var progress bool
+	var useCacheFirst bool
+	var forceLive bool
+	var maxPRs int
+	var rateLimit int
+	var reserveBuffer int
+	var resetBuffer int
+
+	command := &cobra.Command{
+		Use:   "workflow",
+		Short: "Run sync to completion, then analyze",
+		Long: `Run a full prATC workflow for a repository.
+
+The workflow command performs a blocking sync run, automatically waits through
+rate-limit pauses, then runs analysis once fresh sync data is available.
+
+The workflow is service-friendly: it does not require a TTY. Use 'pratc monitor
+--repo=owner/repo' in another terminal to watch live dashboard updates while the
+workflow is running.
+
+Examples:
+  # Run the full workflow with progress output
+  pratc workflow --repo=owner/repo --progress
+
+  # Write artifacts to a custom directory
+  pratc workflow --repo=owner/repo --out-dir=/tmp/pratc-workflow
+
+  # Use a higher max PR limit for large repos
+  pratc workflow --repo=owner/repo --max-prs=5000`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			requestID := uuid.New().String()
+			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
+			log := logger.FromContext(ctx)
+
+			if strings.TrimSpace(repo) == "" {
+				return fmt.Errorf("repo is required")
+			}
+
+			if _, err := gh.ResolveToken(ctx); err != nil {
+				return err
+			}
+
+			store, err := openWorkflowCacheStore()
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			resolvedOutDir := strings.TrimSpace(outDir)
+			if resolvedOutDir == "" {
+				resolvedOutDir = defaultWorkflowOutDir(repo)
+			}
+			if err := os.MkdirAll(resolvedOutDir, 0o755); err != nil {
+				return fmt.Errorf("create workflow output directory: %w", err)
+			}
+
+			log.Info("starting workflow", "repo", repo, "out_dir", resolvedOutDir)
+			fmt.Fprintf(cmd.ErrOrStderr(), "Workflow output: %s\n", resolvedOutDir)
+			if progress {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Use 'pratc monitor --repo=%s' in another terminal to watch live updates.\n", repo)
+			}
+
+			syncSummary, err := runWorkflowSync(ctx, cmd, store, repo, progress, rateLimit, reserveBuffer, resetBuffer)
+			if err != nil {
+				return err
+			}
+			if err := writeWorkflowJSON(filepath.Join(resolvedOutDir, "sync.json"), syncSummary); err != nil {
+				return err
+			}
+
+			service := app.NewService(app.Config{
+				AllowLive:     forceLive,
+				UseCacheFirst: useCacheFirst,
+				MaxPRs:        maxPRs,
+				IncludeReview: true,
+			})
+			analyzeCtx := logger.ContextWithRequestID(ctx, requestID)
+			analyzeLog := logger.FromContext(analyzeCtx)
+			analyzeLog.Info("starting workflow analyze", "repo", repo)
+
+			response, err := service.Analyze(analyzeCtx, repo)
+			if err != nil {
+				return err
+			}
+
+			if err := writeWorkflowJSON(filepath.Join(resolvedOutDir, "analyze.json"), response); err != nil {
+				return err
+			}
+			if err := writeWorkflowJSON(filepath.Join(resolvedOutDir, "step-2-analyze.json"), response); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(cmd.ErrOrStderr(), "Workflow complete for %s\n", repo)
+			encoder := json.NewEncoder(cmd.OutOrStdout())
+			encoder.SetIndent("", "  ")
+			return encoder.Encode(response)
+		},
+	}
+
+	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
+	command.Flags().StringVar(&outDir, "out-dir", "", "Directory for workflow artifacts")
+	command.Flags().BoolVar(&progress, "progress", true, "Show sync progress while the workflow runs")
+	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch during analyze")
+	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch during analyze")
+	command.Flags().IntVar(&maxPRs, "max-prs", -1, "Max PRs to analyze (-1=default 1000, 0=no cap)")
+	command.Flags().IntVar(&rateLimit, "rate-limit", 5000, "GitHub API rate limit per hour")
+	command.Flags().IntVar(&reserveBuffer, "reserve-buffer", 200, "Minimum requests to keep in reserve")
+	command.Flags().IntVar(&resetBuffer, "reset-buffer", 15, "Seconds to wait after rate limit reset")
+	_ = command.MarkFlagRequired("repo")
+	rootCmd.AddCommand(command)
+}
+
+func defaultWorkflowOutDir(repo string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		home = "."
+	}
+	slug := strings.NewReplacer("/", "_", string(os.PathSeparator), "_", " ", "_").Replace(strings.TrimSpace(repo))
+	if slug == "" {
+		slug = "repo"
+	}
+	return filepath.Join(home, ".pratc", "workflows", slug, time.Now().UTC().Format("20060102-150405"))
+}
+
+func openWorkflowCacheStore() (*cache.Store, error) {
+	dbPath := strings.TrimSpace(os.Getenv("PRATC_DB_PATH"))
+	if dbPath == "" {
+		home, _ := os.UserHomeDir()
+		dbPath = filepath.Join(home, ".pratc", "pratc.db")
+	}
+	store, err := cache.Open(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open cache store: %w", err)
+	}
+	return store, nil
+}
+
+func runWorkflowSync(ctx context.Context, cmd *cobra.Command, store *cache.Store, repo string, progress bool, rateLimit, reserveBuffer, resetBuffer int) (workflowSyncSummary, error) {
+	job, err := loadWorkflowJob(store, repo)
+	if err != nil {
+		return workflowSyncSummary{}, err
+	}
+
+	for {
+		budget := ratelimit.NewBudgetManager(
+			ratelimit.WithRateLimit(rateLimit),
+			ratelimit.WithReserveBuffer(reserveBuffer),
+			ratelimit.WithResetBuffer(resetBuffer),
+		)
+		metrics := ratelimit.NewMetrics()
+		innerRunner := prsync.NewDefaultRunner(nil, job.ID, store)
+		guard := prsync.NewRateLimitGuard(budget, metrics, store, job.ID)
+		runner := prsync.NewRateLimitRunner(innerRunner, guard, store, repo)
+
+		startTime := time.Now()
+		var lastProgress cache.SyncProgress
+		emit := func(eventType string, payload map[string]any) {
+			if eventType != "progress" {
+				return
+			}
+			done, hasDone := payload["done"].(int)
+			total, hasTotal := payload["total"].(int)
+			if !hasDone || !hasTotal || total <= 0 {
+				return
+			}
+			lastProgress.ProcessedPRs = done
+			lastProgress.TotalPRs = total
+			_ = store.UpdateSyncJobProgress(job.ID, lastProgress)
+
+			if !progress {
+				return
+			}
+			percent := (done * 100) / total
+			elapsed := time.Since(startTime)
+			eta := calculateETA(done, total, elapsed)
+			fmt.Fprintf(cmd.ErrOrStderr(), "\r[%3d%%] %d/%d PRs | Elapsed: %s | ETA: %s | Budget: %s",
+				percent, done, total, elapsed.Round(time.Second), eta.Round(time.Second), budget.String())
+		}
+
+		syncErr := runner.Run(ctx, repo, emit)
+		if progress {
+			fmt.Fprintln(cmd.ErrOrStderr())
+		}
+
+		if syncErr == nil {
+			if err := store.MarkSyncJobComplete(job.ID, time.Now().UTC()); err != nil {
+				return workflowSyncSummary{}, err
+			}
+			return workflowSyncSummary{
+				Repo:        repo,
+				GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+				Status:      string(cache.SyncJobStatusCompleted),
+				JobID:       job.ID,
+				Budget:      budget.String(),
+				Metrics:     metrics.Snapshot(),
+			}, nil
+		}
+
+		if isWorkflowRateLimitPause(syncErr) {
+			pausedJob, err := store.GetPausedSyncJobByRepo(repo)
+			if err != nil {
+				return workflowSyncSummary{}, fmt.Errorf("load paused sync job: %w", err)
+			}
+			job = pausedJob
+			resumeAt := job.Progress.ScheduledResumeAt
+			if resumeAt.IsZero() {
+				resumeAt = budget.ResetAt().Add(time.Duration(resetBuffer) * time.Second)
+			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "Sync paused due to rate limits. Waiting until %s\n", resumeAt.Format(time.RFC3339))
+			if err := sleepUntil(ctx, resumeAt); err != nil {
+				return workflowSyncSummary{}, err
+			}
+			job, err = cache.ResumeSyncJob(store, repo)
+			if err != nil {
+				return workflowSyncSummary{}, err
+			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "Resumed sync job %s\n", job.ID)
+			continue
+		}
+
+		if markErr := store.MarkSyncJobFailed(job.ID, syncErr.Error()); markErr != nil {
+			return workflowSyncSummary{}, fmt.Errorf("%w (mark failed job: %v)", syncErr, markErr)
+		}
+		return workflowSyncSummary{}, syncErr
+	}
+}
+
+func loadWorkflowJob(store *cache.Store, repo string) (cache.SyncJob, error) {
+	if job, ok, err := store.ResumeSyncJob(repo); err == nil && ok {
+		return job, nil
+	} else if err != nil {
+		return cache.SyncJob{}, err
+	}
+
+	if job, err := cache.ResumeSyncJob(store, repo); err == nil {
+		return job, nil
+	} else if !strings.Contains(err.Error(), "no paused sync job found") {
+		return cache.SyncJob{}, err
+	}
+
+	job, err := store.CreateSyncJob(repo)
+	if err != nil {
+		return cache.SyncJob{}, fmt.Errorf("create sync job: %w", err)
+	}
+	return job, nil
+}
+
+func isWorkflowRateLimitPause(err error) bool {
+	return err != nil && strings.Contains(err.Error(), workflowRateLimitPauseReason)
+}
+
+func sleepUntil(ctx context.Context, resumeAt time.Time) error {
+	delay := time.Until(resumeAt)
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func writeWorkflowJSON(path string, payload any) error {
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal workflow artifact: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("write workflow artifact %s: %w", path, err)
+	}
+	return nil
+}
