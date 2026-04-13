@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"container/heap"
 	"errors"
 	"fmt"
 	"slices"
@@ -17,6 +18,26 @@ const (
 )
 
 var errDependencyCycle = errors.New("dependency cycle detected")
+
+// minHeap is a min-heap of PR numbers for topological ordering.
+// Heap order is by PR number (lowest first) for deterministic output.
+type minHeap []int
+
+func (h minHeap) Len() int           { return len(h) }
+func (h minHeap) Less(i, j int) bool { return h[i] < h[j] }
+func (h minHeap) Swap(i, j int)     { h[i], h[j] = h[j], h[i] }
+
+func (h *minHeap) Push(x any) {
+	*h = append(*h, x.(int))
+}
+
+func (h *minHeap) Pop() any {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
+}
 
 type Graph struct {
 	Repo      string
@@ -176,18 +197,17 @@ func (g Graph) TopologicalOrder() ([]types.GraphNode, error) {
 		inDegree[edge.ToPR]++
 	}
 
-	ready := make([]int, 0)
+	ready := make(minHeap, 0)
+	heap.Init(&ready)
 	for prNumber, degree := range inDegree {
 		if degree == 0 {
-			ready = append(ready, prNumber)
+			heap.Push(&ready, prNumber)
 		}
 	}
-	sort.Ints(ready)
 
 	order := make([]types.GraphNode, 0, len(g.Nodes))
-	for len(ready) > 0 {
-		current := ready[0]
-		ready = ready[1:]
+	for ready.Len() > 0 {
+		current := heap.Pop(&ready).(int)
 		order = append(order, nodeByPR[current])
 
 		children := dependents[current]
@@ -195,8 +215,7 @@ func (g Graph) TopologicalOrder() ([]types.GraphNode, error) {
 		for _, next := range children {
 			inDegree[next]--
 			if inDegree[next] == 0 {
-				ready = append(ready, next)
-				sort.Ints(ready)
+				heap.Push(&ready, next)
 			}
 		}
 	}
