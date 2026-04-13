@@ -2,7 +2,9 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -14,22 +16,94 @@ import (
 // It is configured at server startup via NewWebSocketServer.
 var allowedOrigins []string
 
+// parsedAllowedOrigins holds the parsed form of allowed origins for efficient validation.
+var parsedAllowedOrigins []*url.URL
+
 // SetAllowedOrigins configures the global allowed origins list for WebSocket connections.
+// Each origin is validated at startup; malformed origins cause a log warning and are skipped.
 func SetAllowedOrigins(origins []string) {
 	allowedOrigins = origins
+	parsedAllowedOrigins = make([]*url.URL, 0, len(origins))
+
+	for _, origin := range origins {
+		parsed, err := url.Parse(origin)
+		if err != nil {
+			log.Printf("[WARN] WebSocket: skipping malformed allowed origin %q: %v", origin, err)
+			continue
+		}
+		// Validate that the origin has a valid scheme
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			log.Printf("[WARN] WebSocket: skipping allowed origin %q with invalid scheme %q (must be http or https)", origin, parsed.Scheme)
+			continue
+		}
+		// Require host to be present
+		if parsed.Host == "" {
+			log.Printf("[WARN] WebSocket: skipping allowed origin %q with empty host", origin)
+			continue
+		}
+		parsedAllowedOrigins = append(parsedAllowedOrigins, parsed)
+	}
+
+	if len(parsedAllowedOrigins) == 0 && len(origins) > 0 {
+		log.Printf("[WARN] WebSocket: no valid allowed origins after filtering; WebSocket connections will be rejected")
+	}
 }
 
-// isOriginAllowed checks if the given origin is in the allowed list.
-func isOriginAllowed(origin string) bool {
+// isValidOriginURL checks if the given origin string is a valid http/https origin
+// and matches one of the configured allowed origins.
+func isValidOriginURL(origin string) bool {
 	if origin == "" {
 		return false
 	}
-	for _, a := range allowedOrigins {
-		if a == origin {
+
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		log.Printf("[WARN] WebSocket: rejecting origin with parse error: %q: %v", origin, err)
+		return false
+	}
+
+	// Reject non-http schemes (data:, javascript:, file:, etc.)
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		log.Printf("[WARN] WebSocket: rejecting origin with non-http scheme: %q (scheme=%q)", origin, parsed.Scheme)
+		return false
+	}
+
+	// Require host to be present
+	if parsed.Host == "" {
+		log.Printf("[WARN] WebSocket: rejecting origin with empty host: %q", origin)
+		return false
+	}
+
+	// Check if origin matches any allowed origin
+	for _, allowed := range parsedAllowedOrigins {
+		if matchOrigin(parsed, allowed) {
 			return true
 		}
 	}
+
+	log.Printf("[WARN] WebSocket: rejecting origin not in allowlist: %q", origin)
 	return false
+}
+
+// matchOrigin checks if the request origin matches the allowed origin,
+// considering scheme, host, and port.
+func matchOrigin(reqOrigin, allowed *url.URL) bool {
+	// Scheme must match exactly (http or https)
+	if reqOrigin.Scheme != allowed.Scheme {
+		return false
+	}
+
+	// Host must match
+	if reqOrigin.Host != allowed.Host {
+		return false
+	}
+
+	return true
+}
+
+// isOriginAllowed checks if the given origin is in the allowed list using proper URL parsing.
+func isOriginAllowed(origin string) bool {
+	return isValidOriginURL(origin)
 }
 
 // newUpgrader creates a websocket.Upgrader with proper origin validation.
