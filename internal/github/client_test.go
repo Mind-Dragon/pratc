@@ -351,9 +351,10 @@ func TestRateLimitRetryCeilingEnforced(t *testing.T) {
 	mu.Unlock()
 
 	// Should be called maxSecondaryRetries + 1 times (initial + retries)
-	expectedCalls := 4 // 0, 1, 2, 3 attempts
+	// With REST fallback, adds 2 more calls (initial + 1 retry)
+	expectedCalls := 6 // 4 GraphQL (0,1,2,3) + 2 REST (initial + 1 retry)
 	if actualCalls != expectedCalls {
-		t.Fatalf("expected %d calls (initial + %d retries), got %d", expectedCalls, 3, actualCalls)
+		t.Fatalf("expected %d calls (initial + %d retries + REST fallback), got %d", expectedCalls, 3, actualCalls)
 	}
 }
 
@@ -530,7 +531,8 @@ func TestRateLimitDeterministicTerminalError(t *testing.T) {
 	actualCalls := callCount
 	mu.Unlock()
 
-	expectedCalls := 3 // 0, 1, 2 attempts (maxSecondaryRetries + 1)
+	// 3 GraphQL attempts (0,1,2) + 2 REST attempts (initial + 1 retry)
+	expectedCalls := 5
 	if actualCalls != expectedCalls {
 		t.Fatalf("expected exactly %d calls, got %d", expectedCalls, actualCalls)
 	}

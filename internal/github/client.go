@@ -145,6 +145,11 @@ func (c *Client) FetchPullRequests(ctx context.Context, repo string, opts PullRe
 	}
 
 		if err := c.graphQL(ctx, query, variables, &response); err != nil {
+			// If GraphQL fails with rate limit, fall back to REST
+			if isRateLimitError(err) {
+				c.log.Warn("graphQL rate limited, falling back to REST", "repo", repo, "err", err.Error())
+				return c.FetchPullRequestsREST(ctx, repo, opts)
+			}
 			return nil, err
 		}
 
@@ -418,6 +423,17 @@ func (c *Client) graphQL(ctx context.Context, query string, variables map[string
 		return lastErr
 	}
 	return errors.New("github graphql request failed after retries")
+}
+
+// isRateLimitError returns true if the error is a GitHub rate limit error.
+func isRateLimitError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "rate limit exceeded") ||
+		strings.Contains(errStr, "rate limit exhausted") ||
+		strings.Contains(errStr, "rate limit")
 }
 
 func addJitter(d time.Duration) time.Duration {
