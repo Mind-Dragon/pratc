@@ -10,6 +10,8 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/cache"
 	gh "github.com/jeffersonnunn/pratc/internal/github"
 	"github.com/jeffersonnunn/pratc/internal/repo"
+	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
+	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
 type JobRecorder interface {
@@ -88,8 +90,8 @@ func (r *DefaultRunner) Run(ctx context.Context, repo string, emit func(eventTyp
 		_ = cacheStore.UpdateSyncJobProgress(r.jobID, progress)
 	}, func(cursor string, processed int) {
 		currentCursor = cursor
-		if cacheStore != nil && r.jobID != "" {
-			_ = cacheStore.SaveCursor(r.jobID, cursor, processed, metadataTotal)
+		if cacheStore != nil && repo != "" {
+			_ = cacheStore.SaveCursor(repo, cursor, processed, metadataTotal)
 		}
 	})
 	if err != nil {
@@ -127,6 +129,12 @@ func (r *DefaultRunner) Run(ctx context.Context, repo string, emit func(eventTyp
 }
 
 func defaultWorker(cacheStore *cache.Store) Worker {
+	bootstrapPath := strings.TrimSpace(os.Getenv("PRATC_BOOTSTRAP_PATH"))
+	var bootstrap BootstrapSource
+	if bootstrapPath != "" {
+		bootstrap = NewBootstrapFileSource(bootstrapPath, bootstrapPathLabel(bootstrapPath))
+	}
+	budget := ratelimit.NewBudgetManager(ratelimit.WithRateLimit(5000))
 	return Worker{
 		MirrorFactory: func(ctx context.Context, repoID string) (Mirror, error) {
 			baseDir, err := repo.DefaultBaseDir()
@@ -136,8 +144,10 @@ func defaultWorker(cacheStore *cache.Store) Worker {
 			remoteURL := fmt.Sprintf("https://github.com/%s.git", repoID)
 			return repo.OpenOrCreate(ctx, baseDir, repoID, remoteURL)
 		},
-		Metadata:   githubMetadataSource{client: gh.NewClient(gh.Config{Token: os.Getenv("GITHUB_TOKEN"), ReserveRequests: 200}), cacheStore: cacheStore},
+		Metadata:   githubMetadataSource{client: gh.NewClient(gh.Config{Token: os.Getenv("GITHUB_TOKEN"), ReserveRequests: 200, BudgetManager: budget}), cacheStore: cacheStore, budget: budget},
+		Bootstrap:  bootstrap,
 		CacheStore: cacheStore,
+		Budget:     budget,
 		Now:        func() time.Time { return time.Now().UTC() },
 	}
 }
@@ -169,6 +179,7 @@ func (r dbJobRecorder) MarkSyncJobFailed(jobID string, message string) error {
 type githubMetadataSource struct {
 	client     *gh.Client
 	cacheStore *cache.Store
+	budget     *ratelimit.BudgetManager
 }
 
 func (g githubMetadataSource) SyncRepo(ctx context.Context, repoID string, progress func(done, total int), onCursor func(cursor string, processed int)) (MetadataSnapshot, error) {
@@ -180,25 +191,39 @@ func (g githubMetadataSource) SyncRepo(ctx context.Context, repoID string, progr
 		PerPage:  100,
 		Progress: progress,
 		OnCursor: onCursor,
+		OnPage: func(page []types.PR, cursor string) error {
+			if g.cacheStore == nil {
+				return nil
+			}
+			for _, pr := range page {
+				if saveErr := g.cacheStore.UpsertPR(pr); saveErr != nil {
+					return fmt.Errorf("upsert PR %d from cursor %q: %w", pr.Number, cursor, saveErr)
+				}
+			}
+			return nil
+		},
 	}
-
 	if g.cacheStore != nil {
-		if lastSync, err := g.cacheStore.LastSync(repoID); err == nil && !lastSync.IsZero() {
+		if progressState, ok, err := g.cacheStore.GetSyncProgress(repoID); err == nil && ok && progressState.Cursor != "" {
+			opts.Cursor = progressState.Cursor
+		} else if lastSync, err := g.cacheStore.LastSync(repoID); err == nil && !lastSync.IsZero() {
 			opts.UpdatedSince = lastSync
+		}
+	}
+	if g.budget != nil {
+		if g.budget.WouldPause() {
+			return MetadataSnapshot{}, fmt.Errorf("rate limit budget exhausted")
+		}
+		chunkSize := CalculateChunkSize(g.budget)
+		if chunkSize > 0 {
+			opts.PerPage = chunkSize
+			opts.MaxPRs = chunkSize
 		}
 	}
 
 	prs, err := g.client.FetchPullRequests(ctx, repoID, opts)
 	if err != nil {
 		return MetadataSnapshot{}, fmt.Errorf("fetch pull requests: %w", err)
-	}
-
-	if g.cacheStore != nil {
-		for _, pr := range prs {
-			if saveErr := g.cacheStore.UpsertPR(pr); saveErr != nil {
-				return MetadataSnapshot{}, fmt.Errorf("save pull request %d: %w", pr.Number, saveErr)
-			}
-		}
 	}
 
 	openPRs := make([]int, 0, len(prs))

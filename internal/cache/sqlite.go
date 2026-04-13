@@ -64,13 +64,17 @@ func (s *Store) UpsertPR(pr types.PR) error {
 	if err != nil {
 		return fmt.Errorf("marshal files changed: %w", err)
 	}
+	provenanceJSON, err := json.Marshal(pr.Provenance)
+	if err != nil {
+		return fmt.Errorf("marshal provenance: %w", err)
+	}
 
 	_, err = s.db.Exec(`
 		INSERT INTO pull_requests (
 			id, repo, number, title, body, url, author, labels_json, files_changed_json,
 			review_status, ci_status, mergeable, base_branch, head_branch, cluster_id,
-			created_at, updated_at, is_draft, is_bot, additions, deletions, changed_files_count
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			created_at, updated_at, is_draft, is_bot, additions, deletions, changed_files_count, provenance_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(repo, number) DO UPDATE SET
 			id = excluded.id,
 			title = excluded.title,
@@ -91,11 +95,12 @@ func (s *Store) UpsertPR(pr types.PR) error {
 			is_bot = excluded.is_bot,
 			additions = excluded.additions,
 			deletions = excluded.deletions,
-			changed_files_count = excluded.changed_files_count
+			changed_files_count = excluded.changed_files_count,
+			provenance_json = excluded.provenance_json
 	`,
 		pr.ID, pr.Repo, pr.Number, pr.Title, pr.Body, pr.URL, pr.Author, string(labelsJSON), string(filesJSON),
 		pr.ReviewStatus, pr.CIStatus, pr.Mergeable, pr.BaseBranch, pr.HeadBranch, pr.ClusterID,
-		pr.CreatedAt, pr.UpdatedAt, pr.IsDraft, pr.IsBot, pr.Additions, pr.Deletions, pr.ChangedFilesCount,
+		pr.CreatedAt, pr.UpdatedAt, pr.IsDraft, pr.IsBot, pr.Additions, pr.Deletions, pr.ChangedFilesCount, string(provenanceJSON),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert pull request %d: %w", pr.Number, err)
@@ -109,7 +114,7 @@ func (s *Store) ListPRs(filter PRFilter) ([]types.PR, error) {
 		SELECT
 			id, repo, number, title, body, url, author, labels_json, files_changed_json,
 			review_status, ci_status, mergeable, base_branch, head_branch, cluster_id,
-			created_at, updated_at, is_draft, is_bot, additions, deletions, changed_files_count
+			created_at, updated_at, is_draft, is_bot, additions, deletions, changed_files_count, provenance_json
 		FROM pull_requests
 		WHERE repo = ?
 	`
@@ -141,11 +146,12 @@ func (s *Store) ListPRs(filter PRFilter) ([]types.PR, error) {
 		var pr types.PR
 		var labelsJSON string
 		var filesJSON string
+		var provenanceJSON string
 
 		if err := rows.Scan(
 			&pr.ID, &pr.Repo, &pr.Number, &pr.Title, &pr.Body, &pr.URL, &pr.Author, &labelsJSON, &filesJSON,
 			&pr.ReviewStatus, &pr.CIStatus, &pr.Mergeable, &pr.BaseBranch, &pr.HeadBranch, &pr.ClusterID,
-			&pr.CreatedAt, &pr.UpdatedAt, &pr.IsDraft, &pr.IsBot, &pr.Additions, &pr.Deletions, &pr.ChangedFilesCount,
+			&pr.CreatedAt, &pr.UpdatedAt, &pr.IsDraft, &pr.IsBot, &pr.Additions, &pr.Deletions, &pr.ChangedFilesCount, &provenanceJSON,
 		); err != nil {
 			return nil, fmt.Errorf("scan pull request: %w", err)
 		}
@@ -155,6 +161,11 @@ func (s *Store) ListPRs(filter PRFilter) ([]types.PR, error) {
 		}
 		if err := json.Unmarshal([]byte(filesJSON), &pr.FilesChanged); err != nil {
 			return nil, fmt.Errorf("unmarshal files changed: %w", err)
+		}
+		if provenanceJSON != "" {
+			if err := json.Unmarshal([]byte(provenanceJSON), &pr.Provenance); err != nil {
+				return nil, fmt.Errorf("unmarshal provenance: %w", err)
+			}
 		}
 
 		prs = append(prs, pr)
@@ -425,19 +436,52 @@ func (s *Store) UpdateSyncJobProgress(jobID string, progress SyncProgress) error
 
 func (s *Store) SaveCursor(repo string, cursor string, processedPRs int, totalPRs int) error {
 	now := s.now().UTC().Format(time.RFC3339)
+	estimatedRequests := 0
+	if totalPRs > processedPRs {
+		estimatedRequests = (totalPRs - processedPRs) * 3
+	}
 	_, err := s.db.Exec(`
-		INSERT INTO sync_progress (repo, job_id, cursor, processed_prs, total_prs, last_sync_at, updated_at)
-		VALUES (?, '', ?, ?, ?, '', ?)
+		INSERT INTO sync_progress (repo, job_id, cursor, processed_prs, total_prs, estimated_requests, last_sync_at, updated_at)
+		VALUES (?, '', ?, ?, ?, ?, '', ?)
 		ON CONFLICT(repo) DO UPDATE SET
 			cursor = excluded.cursor,
 			processed_prs = excluded.processed_prs,
 			total_prs = excluded.total_prs,
+			estimated_requests = excluded.estimated_requests,
 			updated_at = excluded.updated_at
-	`, repo, cursor, processedPRs, totalPRs, now)
+	`, repo, cursor, processedPRs, totalPRs, estimatedRequests, now)
 	if err != nil {
 		return fmt.Errorf("save cursor: %w", err)
 	}
 	return nil
+}
+
+func (s *Store) GetSyncProgress(repo string) (SyncProgress, bool, error) {
+	row := s.db.QueryRow(`
+		SELECT cursor, processed_prs, total_prs, COALESCE(next_scheduled_at, ''), COALESCE(estimated_requests, 0),
+		       COALESCE(scheduled_resume_at, ''), COALESCE(pause_reason, ''), COALESCE(last_budget_check, '')
+		FROM sync_progress
+		WHERE repo = ?
+	`, repo)
+
+	var progress SyncProgress
+	var nextScheduledAt string
+	var estimatedRequests int
+	var scheduledResumeAt string
+	var pauseReason string
+	var lastBudgetCheck string
+	if err := row.Scan(&progress.Cursor, &progress.ProcessedPRs, &progress.TotalPRs, &nextScheduledAt, &estimatedRequests, &scheduledResumeAt, &pauseReason, &lastBudgetCheck); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return SyncProgress{}, false, nil
+		}
+		return SyncProgress{}, false, fmt.Errorf("get sync progress: %w", err)
+	}
+	progress.NextScheduledAt = parseOptionalTime(nextScheduledAt)
+	progress.EstimatedRequests = estimatedRequests
+	progress.ScheduledResumeAt = parseOptionalTime(scheduledResumeAt)
+	progress.PauseReason = pauseReason
+	progress.LastBudgetCheck = parseOptionalTime(lastBudgetCheck)
+	return progress, true, nil
 }
 
 func (s *Store) GetSyncJob(jobID string) (SyncJob, error) {
@@ -849,7 +893,7 @@ func (s *Store) GetPausedSyncJobByRepo(repo string) (SyncJob, error) {
 }
 
 func (s *Store) init(ctx context.Context) error {
-	const supportedSchemaVersion = 3
+	const supportedSchemaVersion = 4
 
 	var currentVersion int
 	if err := s.db.QueryRowContext(ctx, `PRAGMA user_version;`).Scan(&currentVersion); err != nil {
@@ -886,6 +930,9 @@ func (s *Store) init(ctx context.Context) error {
 		`INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
 		 VALUES (3, 'sync_progress_scheduling', '2026-04-02T00:00:00Z');`,
 		`PRAGMA user_version = 3;`,
+		`INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
+		 VALUES (4, 'field_provenance', '2026-04-12T00:00:00Z');`,
+		`PRAGMA user_version = 4;`,
 		`CREATE TABLE IF NOT EXISTS audit_log (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			timestamp TEXT NOT NULL,
@@ -917,6 +964,7 @@ func (s *Store) init(ctx context.Context) error {
 			additions INTEGER NOT NULL,
 			deletions INTEGER NOT NULL,
 			changed_files_count INTEGER NOT NULL,
+			provenance_json TEXT NOT NULL DEFAULT '{}',
 			PRIMARY KEY (repo, number)
 		);`,
 		`CREATE TABLE IF NOT EXISTS pr_files (
@@ -985,6 +1033,9 @@ func (s *Store) init(ctx context.Context) error {
 		return err
 	}
 	if err := s.addColumnIfNotExists("sync_progress", "last_budget_check", "TEXT"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfNotExists("pull_requests", "provenance_json", "TEXT NOT NULL DEFAULT '{}' "); err != nil {
 		return err
 	}
 

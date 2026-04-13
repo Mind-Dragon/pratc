@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
+	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
+	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
 type Mirror interface {
@@ -17,6 +19,10 @@ type Mirror interface {
 
 type MetadataSource interface {
 	SyncRepo(ctx context.Context, repo string, progress func(done, total int), onCursor func(cursor string, processed int)) (MetadataSnapshot, error)
+}
+
+type BootstrapSource interface {
+	Bootstrap(ctx context.Context, repo string) ([]types.PR, error)
 }
 
 type MirrorFactory func(ctx context.Context, repo string) (Mirror, error)
@@ -40,7 +46,9 @@ type SyncResult struct {
 type Worker struct {
 	MirrorFactory MirrorFactory
 	Metadata      MetadataSource
+	Bootstrap     BootstrapSource
 	CacheStore    *cache.Store
+	Budget        *ratelimit.BudgetManager
 	Now           func() time.Time
 }
 
@@ -54,6 +62,24 @@ func (w Worker) SyncJob(ctx context.Context, repo string, progress func(stage st
 	now := w.Now
 	if now == nil {
 		now = func() time.Time { return time.Now().UTC() }
+	}
+
+	if w.Bootstrap != nil && w.CacheStore != nil {
+		progress, ok, err := w.CacheStore.GetSyncProgress(repo)
+		if err != nil {
+			return nil, fmt.Errorf("load sync progress: %w", err)
+		}
+		if !ok || (progress.Cursor == "" && progress.ProcessedPRs == 0) {
+			bootstrapPRS, err := w.Bootstrap.Bootstrap(ctx, repo)
+			if err != nil {
+				return nil, fmt.Errorf("bootstrap sync data: %w", err)
+			}
+			for _, pr := range bootstrapPRS {
+				if err := w.CacheStore.UpsertPR(pr); err != nil {
+					return nil, fmt.Errorf("persist bootstrap pr %d: %w", pr.Number, err)
+				}
+			}
+		}
 	}
 
 	snapshot, err := w.Metadata.SyncRepo(ctx, repo, func(done, total int) {

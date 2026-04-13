@@ -30,6 +30,37 @@ func TestLegacyMirrorPath(t *testing.T) {
 	}
 }
 
+func TestDefaultBaseDirPrefersPrimaryCacheDir(t *testing.T) {
+	primaryDir := t.TempDir()
+	secondaryDir := t.TempDir()
+	t.Setenv("PRATC_CACHE_DIR", primaryDir)
+	t.Setenv("PRATC_SECONDARY_CACHE_DIR", secondaryDir)
+
+	baseDir, err := DefaultBaseDir()
+	if err != nil {
+		t.Fatalf("default base dir: %v", err)
+	}
+	want := filepath.Join(primaryDir, "repos")
+	if baseDir != want {
+		t.Fatalf("default base dir should prefer PRATC_CACHE_DIR, got %q want %q", baseDir, want)
+	}
+}
+
+func TestDefaultBaseDirUsesSecondaryCacheDirWhenPrimaryUnset(t *testing.T) {
+	secondaryDir := t.TempDir()
+	t.Setenv("PRATC_CACHE_DIR", "")
+	t.Setenv("PRATC_SECONDARY_CACHE_DIR", secondaryDir)
+
+	baseDir, err := DefaultBaseDir()
+	if err != nil {
+		t.Fatalf("default base dir: %v", err)
+	}
+	want := filepath.Join(secondaryDir, "repos")
+	if baseDir != want {
+		t.Fatalf("default base dir should prefer PRATC_SECONDARY_CACHE_DIR, got %q want %q", baseDir, want)
+	}
+}
+
 func TestPlanLegacyMirrorMigration(t *testing.T) {
 	t.Parallel()
 

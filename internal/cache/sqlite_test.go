@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	supportedSchemaVersion = 3
+	supportedSchemaVersion = 4
 )
 
 func TestCacheUpsertAndQuery(t *testing.T) {
@@ -47,6 +47,9 @@ func TestCacheUpsertAndQuery(t *testing.T) {
 	}
 	if len(releasePRs) != 5 {
 		t.Fatalf("expected 5 release prs, got %d", len(releasePRs))
+	}
+	if got := mainPRs[0].Provenance["files_changed"]; got != "local_mirror" {
+		t.Fatalf("expected provenance for files_changed to survive round trip, got %q", got)
 	}
 }
 
@@ -84,7 +87,6 @@ func TestCacheLastSyncRoundTrip(t *testing.T) {
 
 	store := newTestStore(t)
 	want := mustParseTime(t, "2026-03-12T13:00:00Z")
-
 	if err := store.SetLastSync("owner/repo", want); err != nil {
 		t.Fatalf("set last sync: %v", err)
 	}
@@ -95,6 +97,28 @@ func TestCacheLastSyncRoundTrip(t *testing.T) {
 	}
 	if !got.Equal(want) {
 		t.Fatalf("expected %s, got %s", want, got)
+	}
+}
+
+func TestCacheSyncProgressRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	if err := store.SaveCursor("owner/repo", "cursor-42", 7, 9); err != nil {
+		t.Fatalf("save cursor: %v", err)
+	}
+	progress, ok, err := store.GetSyncProgress("owner/repo")
+	if err != nil {
+		t.Fatalf("get sync progress: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected progress row to exist")
+	}
+	if progress.Cursor != "cursor-42" || progress.ProcessedPRs != 7 || progress.TotalPRs != 9 {
+		t.Fatalf("unexpected progress round trip: %+v", progress)
+	}
+	if progress.EstimatedRequests != 6 {
+		t.Fatalf("expected estimated requests 6, got %+v", progress)
 	}
 }
 
@@ -330,6 +354,24 @@ func samplePR(number int) types.PR {
 		Additions:         10 + number,
 		Deletions:         number,
 		ChangedFilesCount: 1,
+		Provenance: map[string]string{
+			"title":               "live_api",
+			"body":                "live_api",
+			"url":                 "live_api",
+			"author":              "live_api",
+			"labels":              "live_api",
+			"files_changed":       "local_mirror",
+			"review_status":       "live_api",
+			"ci_status":           "live_api",
+			"mergeable":           "live_api",
+			"base_branch":         "live_api",
+			"head_branch":         "live_api",
+			"created_at":          "live_api",
+			"updated_at":          "live_api",
+			"additions":           "live_api",
+			"deletions":           "live_api",
+			"changed_files_count": "live_api",
+		},
 	}
 }
 
@@ -367,8 +409,8 @@ func TestMigrationFreshInstall(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT version, name, applied_at FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &name, &appliedAt); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 3 || name != "sync_progress_scheduling" {
-		t.Fatalf("expected version=3 name=sync_progress_scheduling, got version=%d name=%s", version, name)
+	if version != 4 || name != "field_provenance" {
+		t.Fatalf("expected version=4 name=field_provenance, got version=%d name=%s", version, name)
 	}
 
 	requiredTables := []string{
@@ -466,8 +508,8 @@ func TestMigrationUpgradeFromNminus1(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations after upgrade: %v", err)
 	}
-	if version != supportedSchemaVersion || name != "sync_progress_scheduling" {
-		t.Fatalf("expected migration version=%d name=sync_progress_scheduling, got version=%d name=%s", supportedSchemaVersion, version, name)
+	if version != supportedSchemaVersion || name != "field_provenance" {
+		t.Fatalf("expected migration version=%d name=field_provenance, got version=%d name=%s", supportedSchemaVersion, version, name)
 	}
 
 	requiredTables := []string{
@@ -818,8 +860,8 @@ func TestMigrationIdempotency(t *testing.T) {
 	if err := store2.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if count != 3 {
-		t.Fatalf("expected 3 migration records, got %d", count)
+	if count != 4 {
+		t.Fatalf("expected 4 migration records, got %d", count)
 	}
 
 	var userVersion int

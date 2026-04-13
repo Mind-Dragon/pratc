@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"sort"
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
+	gh "github.com/jeffersonnunn/pratc/internal/github"
 	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
@@ -103,7 +103,10 @@ func (d *DeltaDetector) fetchGitHubPRList(ctx context.Context, repo string) ([]P
 		return nil, err
 	}
 
-	token := os.Getenv("GITHUB_TOKEN")
+	token, err := gh.ResolveToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("resolve GitHub auth: %w", err)
+	}
 	baseURL := "https://api.github.com/graphql"
 
 	var allPRs []PRInfo

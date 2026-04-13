@@ -72,6 +72,14 @@ func DefaultBaseDir() (string, error) {
 	if cacheDir := os.Getenv("PRATC_CACHE_DIR"); cacheDir != "" {
 		return filepath.Join(cacheDir, "repos"), nil
 	}
+	if secondaryDir := os.Getenv("PRATC_SECONDARY_CACHE_DIR"); secondaryDir != "" {
+		return filepath.Join(secondaryDir, "repos"), nil
+	}
+	for _, candidate := range []string{"/mnt/clawdata2/pratc", "/mnt/clawdata1/pratc"} {
+		if _, err := os.Stat(candidate); err == nil {
+			return filepath.Join(candidate, "repos"), nil
+		}
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
