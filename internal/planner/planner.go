@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/filter"
@@ -429,15 +430,7 @@ func (p *Planner) jaccard(left, right []string) float64 {
 }
 
 func (p *Planner) trimAndLower(s string) string {
-	result := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		result[i] = c
-	}
-	return string(result)
+	return strings.ToLower(strings.TrimSpace(s))
 }
 
 func (p *Planner) round(value float64, places int) float64 {
@@ -473,11 +466,13 @@ func stringsJoin(slice []string, sep string) string {
 	if len(slice) == 0 {
 		return ""
 	}
-	result := slice[0]
+	var b strings.Builder
+	b.WriteString(slice[0])
 	for _, s := range slice[1:] {
-		result += sep + s
+		b.WriteString(sep)
+		b.WriteString(s)
 	}
-	return result
+	return b.String()
 }
 
 func min(a, b int) int {

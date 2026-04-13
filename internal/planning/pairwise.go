@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -618,9 +619,11 @@ func joinStrings(strs []string, sep string) string {
 	if len(strs) == 0 {
 		return ""
 	}
-	result := strs[0]
+	var b strings.Builder
+	b.WriteString(strs[0])
 	for _, s := range strs[1:] {
-		result += sep + s
+		b.WriteString(sep)
+		b.WriteString(s)
 	}
-	return result
+	return b.String()
 }

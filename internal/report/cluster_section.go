@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-pdf/fpdf"
@@ -183,21 +184,16 @@ func formatPRNumbers(prs []int) string {
 		return ""
 	}
 	if len(prs) <= 5 {
-		result := ""
-		for i, pr := range prs {
-			if i > 0 {
-				result += ", "
-			}
-			result += fmt.Sprintf("#%d", pr)
+		var b strings.Builder
+		b.WriteString(fmt.Sprintf("#%d", prs[0]))
+		for _, pr := range prs[1:] {
+			b.WriteString(", ")
+			b.WriteString(fmt.Sprintf("#%d", pr))
 		}
-		return result
+		return b.String()
 	}
 	// Show first 3 and last 2
-	result := fmt.Sprintf("#%d, #%d, #%d", prs[0], prs[1], prs[2])
-	if len(prs) > 3 {
-		result += fmt.Sprintf(", ... #%d, #%d", prs[len(prs)-2], prs[len(prs)-1])
-	}
-	return result
+	return fmt.Sprintf("#%d, #%d, #%d, ... #%d, #%d", prs[0], prs[1], prs[2], prs[len(prs)-2], prs[len(prs)-1])
 }
 
 // LoadClusterSection loads cluster data from step-3-cluster.json and returns a ClusterSection.
