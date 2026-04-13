@@ -108,6 +108,7 @@ func TestTypeScriptInterfacesMirrorCanonicalFields(t *testing.T) {
 	for _, token := range []string{
 		"export interface PR",
 		"files_changed: string[];",
+		"provenance?: Record<string, string>;",
 		"cluster_id: string;",
 		"export interface PRCluster",
 		"cluster_label: string;",

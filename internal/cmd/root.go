@@ -242,6 +242,10 @@ func startAnalyzeBackgroundSync(repo string) (string, error) {
 		return "", fmt.Errorf("create sync job: %w", err)
 	}
 
+	if _, err := github.ResolveToken(context.Background()); err != nil {
+		return "", err
+	}
+
 	manager := newRepoSyncManager(dbPath, job.ID)
 	if err := manager.Start(repo); err != nil {
 		if markErr := store.MarkSyncJobFailed(job.ID, err.Error()); markErr != nil {
@@ -354,9 +358,9 @@ func formatAnalyzeSyncWarning(repo string, openPRCount int, hasOpenPRCount bool)
 	return fmt.Sprintf(`⚠️  No recent sync data found for %s
 %s   Sync in progress — background sync job started.
    Recommended workflow:
-   1) pratc sync --repo=%s
-   2) pratc analyze --repo=%s
-   Tip: use 'pratc sync --repo=%s --watch' to monitor progress.
+   1) pratc workflow --repo=%s --progress
+   2) pratc monitor --repo=%s
+   Tip: use 'pratc sync --repo=%s --watch' for periodic refreshes.
 
 `, repo, estimateLine, repo, repo, repo)
 }
@@ -724,6 +728,9 @@ Examples:
 			}
 			defer store.Close()
 
+			if _, err := github.ResolveToken(ctx); err != nil {
+				return err
+			}
 			metrics := ratelimit.NewMetrics()
 			innerRunner := prsync.NewDefaultRunner(nil, "", store)
 
@@ -961,6 +968,10 @@ func parseMode(raw string) (formula.Mode, error) {
 }
 
 func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst bool) error {
+	token, err := github.ResolveToken(ctx)
+	if err != nil {
+		return err
+	}
 	service := app.NewService(buildCacheFirstConfig(useCacheFirst))
 	settingsStore, err := openSettingsStore()
 	if err != nil {
@@ -1012,13 +1023,9 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst 
 	mux.HandleFunc("/api/sync/events", handleSyncEvents(cacheStore))
 
 	// Monitor WebSocket endpoint
-	githubClient := github.NewClient(github.Config{
-		Token:           os.Getenv("GITHUB_TOKEN"),
-		ReserveRequests: 200,
-	})
 	monitorBroadcaster := data.NewBroadcaster(
 		data.NewStore(cacheStore),
-		data.NewRateLimitFetcher(githubClient),
+		data.NewRateLimitFetcher(token),
 		data.NewTimelineAggregator(cacheStore),
 	)
 	go monitorBroadcaster.Start(ctx)
@@ -1848,6 +1855,20 @@ func mirrorDBPath() string {
 	return dbPath
 }
 
+func classifyMirrorVolume(path string) string {
+	cleaned := filepath.Clean(strings.TrimSpace(path))
+	switch {
+	case strings.HasPrefix(cleaned, "/mnt/clawdata2/"):
+		return "clawdata2"
+	case strings.HasPrefix(cleaned, "/mnt/clawdata1/"):
+		return "clawdata1"
+	case strings.Contains(cleaned, ".cache/pratc"):
+		return "home-cache"
+	default:
+		return cleaned
+	}
+}
+
 func mirrorDirectorySize(path string) (int64, error) {
 	var total int64
 	err := filepath.WalkDir(path, func(_ string, entry os.DirEntry, err error) error {
@@ -1970,6 +1991,48 @@ func writeMirrorInfo(cmd *cobra.Command, baseDir, repoIdentifier string) error {
 	return nil
 }
 
+func writeMirrorDoctor(cmd *cobra.Command, baseDir, repoIdentifier string) error {
+	resolvedBaseDir, err := filepath.EvalSymlinks(baseDir)
+	if err != nil {
+		resolvedBaseDir = baseDir
+	}
+	if resolvedBaseDir == "" {
+		resolvedBaseDir = baseDir
+	}
+	volume := classifyMirrorVolume(resolvedBaseDir)
+	expectedVolume := classifyMirrorVolume(baseDir)
+	onExpectedDisk := volume == expectedVolume
+
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Mirror base: %s\n", baseDir)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Resolved base: %s\n", resolvedBaseDir)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Storage volume: %s\n", volume)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Expected volume: %s\n", expectedVolume)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "On expected data disk: %v\n", onExpectedDisk)
+
+	if stat, err := os.Stat(resolvedBaseDir); err == nil && stat.IsDir() {
+		if size, sizeErr := mirrorDirectorySize(resolvedBaseDir); sizeErr == nil {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Mirror size: %d bytes\n", size)
+		}
+	}
+
+	store, err := cache.Open(mirrorDBPath())
+	if err != nil {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Last sync: unavailable (cache open failed)")
+	} else {
+		defer store.Close()
+		if repoIdentifier != "" {
+			if syncedAt, err := store.LastSync(repoIdentifier); err == nil {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Last sync: %s\n", formatMirrorTimestamp(syncedAt))
+			} else {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Last sync: unavailable for %s\n", repoIdentifier)
+			}
+		} else if jobs, err := store.ListSyncJobs(); err == nil && len(jobs) > 0 {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Last sync: %s (%s)\n", formatMirrorTimestamp(jobs[0].LastSyncAt), jobs[0].Repo)
+		}
+	}
+	return nil
+}
+
 func RegisterMirrorCommand() {
 	baseDir, err := repo.DefaultBaseDir()
 	if err != nil {
@@ -2006,6 +2069,23 @@ func RegisterMirrorCommand() {
 			log := logger.FromContext(ctx)
 			log.Info("mirror info", "repo", args[0])
 			return writeMirrorInfo(cmd, baseDir, args[0])
+		},
+	}
+
+	doctorCmd := &cobra.Command{
+		Use:   "doctor [owner/repo]",
+		Short: "Inspect mirror storage health and placement",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			requestID := uuid.New().String()
+			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
+			log := logger.FromContext(ctx)
+			log.Info("mirror doctor", "repo", strings.Join(args, " "))
+			repoIdentifier := ""
+			if len(args) > 0 {
+				repoIdentifier = args[0]
+			}
+			return writeMirrorDoctor(cmd, baseDir, repoIdentifier)
 		},
 	}
 
@@ -2140,7 +2220,7 @@ func RegisterMirrorCommand() {
 		},
 	}
 
-	mirrorCmd.AddCommand(listCmd, infoCmd, pruneCmd, cleanCmd, migrateCmd)
+	mirrorCmd.AddCommand(listCmd, infoCmd, doctorCmd, pruneCmd, cleanCmd, migrateCmd)
 	rootCmd.AddCommand(mirrorCmd)
 }
 

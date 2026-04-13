@@ -11,8 +11,9 @@ import (
 
 type Model struct {
 	// Broadcaster for receiving data updates
-	broadcaster *data.Broadcaster
-	updateChan  chan data.DataUpdate
+	broadcaster     *data.Broadcaster
+	updateChan      chan data.DataUpdate
+	refreshInterval time.Duration
 
 	// Panel components for real data display
 	JobsPanel      *JobsList
@@ -59,6 +60,7 @@ func New(broadcaster *data.Broadcaster) Model {
 	m := Model{
 		broadcaster:     broadcaster,
 		updateChan:      make(chan data.DataUpdate, 64),
+		refreshInterval: time.Second,
 		JobsPanel:       NewJobsList(),
 		TimelinePanel:   NewTimelinePanel(),
 		RateLimitPanel:  NewRateLimitPanel(),
@@ -72,12 +74,26 @@ func New(broadcaster *data.Broadcaster) Model {
 	return m
 }
 
+func (m *Model) SetRefreshInterval(interval time.Duration) {
+	if interval <= 0 {
+		return
+	}
+	m.refreshInterval = interval
+}
+
+func (m *Model) tickInterval() time.Duration {
+	if m.refreshInterval <= 0 {
+		return time.Second
+	}
+	return m.refreshInterval
+}
+
 func (m *Model) Init() tea.Cmd {
 	if m.broadcaster != nil {
 		ch := m.broadcaster.Subscribe()
 		go m.receiveUpdates(ch)
 	}
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+	return tea.Tick(m.tickInterval(), func(t time.Time) tea.Msg {
 		return TickMsg(t)
 	})
 }
@@ -96,7 +112,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.HandleKey(msg)
 	case TickMsg:
 		m.JobsPanel.Update(TickMsg(msg))
-		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return m, tea.Tick(m.tickInterval(), func(t time.Time) tea.Msg {
 			return TickMsg(t)
 		})
 	case data.DataUpdate:

@@ -476,7 +476,7 @@ func TestBroadcasterPollAndBroadcastJobsNoChange(t *testing.T) {
 }
 
 func TestBroadcasterPollAndBroadcastRateLimit(t *testing.T) {
-	fetcher := NewRateLimitFetcher(nil)
+	fetcher := NewRateLimitFetcher("")
 	fetcher.cached = &RateLimitView{
 		Remaining: 4000,
 		Total:     5000,
@@ -501,7 +501,7 @@ func TestBroadcasterPollAndBroadcastRateLimit(t *testing.T) {
 }
 
 func TestBroadcasterPollAndBroadcastRateLimitError(t *testing.T) {
-	fetcher := NewRateLimitFetcher(nil)
+	fetcher := NewRateLimitFetcher("")
 	fetcher.httpClient = &mockHTTPClient{
 		doErr: errors.New("fetch error"),
 	}

@@ -6,16 +6,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
+	"strings"
 	"time"
-
-	"github.com/jeffersonnunn/pratc/internal/github"
 )
 
 const rateLimitCacheTTL = 10 * time.Second
 
 type RateLimitFetcher struct {
 	httpClient HTTPClient
+	token      string
 	cached     *RateLimitView
 	cacheUntil time.Time
 }
@@ -24,9 +23,10 @@ type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-func NewRateLimitFetcher(client *github.Client) *RateLimitFetcher {
+func NewRateLimitFetcher(token string) *RateLimitFetcher {
 	return &RateLimitFetcher{
 		httpClient: http.DefaultClient,
+		token:      strings.TrimSpace(token),
 	}
 }
 
@@ -53,15 +53,14 @@ func (f *RateLimitFetcher) Fetch(ctx context.Context) (RateLimitView, error) {
 
 func (f *RateLimitFetcher) fetchFromGitHub(ctx context.Context) (RateLimitView, error) {
 	baseURL := "https://api.github.com"
-	token := os.Getenv("GITHUB_TOKEN")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/rate_limit", nil)
 	if err != nil {
 		return RateLimitView{}, fmt.Errorf("create rate limit request: %w", err)
 	}
 
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if f.token != "" {
+		req.Header.Set("Authorization", "Bearer "+f.token)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 

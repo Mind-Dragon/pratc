@@ -252,7 +252,6 @@ func TestHandleAnalyzeReturnsImmediateSyncInProgressResponseWhenBackgroundSyncSt
 
 	req := httptest.NewRequest(http.MethodGet, "/api/repos/octo/repo/analyze", nil)
 	rr := httptest.NewRecorder()
-
 	handleAnalyze(rr, req, app.Service{}, "octo/repo")
 
 	if rr.Code != http.StatusAccepted {
@@ -266,9 +265,33 @@ func TestHandleAnalyzeReturnsImmediateSyncInProgressResponseWhenBackgroundSyncSt
 	if resp["sync_status"] != "in_progress" {
 		t.Fatalf("expected sync_status in_progress, got %v", resp["sync_status"])
 	}
-	if jobID, _ := resp["job_id"].(string); jobID == "" {
+	jobID, _ := resp["job_id"].(string)
+	if jobID == "" {
 		t.Fatalf("expected job_id in response, got %v", resp)
 	}
+	waitForSyncJobStatus(t, dbPath, jobID, string(cache.SyncJobStatusCompleted), 5*time.Second)
+}
+
+func waitForSyncJobStatus(t *testing.T, dbPath, jobID, wantStatus string, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		store, err := cache.Open(dbPath)
+		if err == nil {
+			jobs, listErr := store.ListSyncJobs()
+			_ = store.Close()
+			if listErr == nil {
+				for _, job := range jobs {
+					if job.ID == jobID && string(job.Status) == wantStatus {
+						return
+					}
+				}
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("sync job %s did not reach status %s within %s", jobID, wantStatus, timeout)
 }
 
 func TestDefaultRunnerMarksFailedJobWhenWorkerErrors(t *testing.T) {

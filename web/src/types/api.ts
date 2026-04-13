@@ -21,6 +21,7 @@ export interface PR {
   additions: number;
   deletions: number;
   changed_files_count: number;
+  provenance?: Record<string, string>;
 }
 
 export interface PRCluster {

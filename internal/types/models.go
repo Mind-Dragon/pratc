@@ -23,7 +23,8 @@ type PR struct {
 	IsBot             bool     `json:"is_bot"`
 	Additions         int      `json:"additions"`
 	Deletions         int      `json:"deletions"`
-	ChangedFilesCount int      `json:"changed_files_count"`
+	ChangedFilesCount int               `json:"changed_files_count"`
+	Provenance        map[string]string `json:"provenance,omitempty"`
 }
 
 type PRCluster struct {

@@ -98,8 +98,8 @@ func TestFormatAnalyzeSyncWarningIncludesRecommendedWorkflow(t *testing.T) {
 	for _, want := range []string{
 		"No recent sync data found for owner/repo",
 		"Estimated GitHub API calls: ~7 (based on 2 open PRs)",
-		"1) pratc sync --repo=owner/repo",
-		"2) pratc analyze --repo=owner/repo",
+		"1) pratc workflow --repo=owner/repo --progress",
+		"2) pratc monitor --repo=owner/repo",
 		"Sync in progress",
 	} {
 		if !strings.Contains(warning, want) {

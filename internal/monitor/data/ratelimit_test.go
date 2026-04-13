@@ -47,7 +47,7 @@ func TestRateLimitFetcher_Fetch_Success(t *testing.T) {
 		},
 	}
 
-	fetcher := NewRateLimitFetcher(nil)
+	fetcher := NewRateLimitFetcher("")
 	fetcher.httpClient = mockClient
 
 	ctx := context.Background()
@@ -85,7 +85,7 @@ func TestRateLimitFetcher_Cache(t *testing.T) {
 		},
 	}
 
-	fetcher := NewRateLimitFetcher(nil)
+	fetcher := NewRateLimitFetcher("")
 	fetcher.httpClient = mockClient
 
 	ctx := context.Background()
@@ -115,7 +115,7 @@ func TestRateLimitFetcher_NoCacheOnError(t *testing.T) {
 		},
 	}
 
-	fetcher := NewRateLimitFetcher(nil)
+	fetcher := NewRateLimitFetcher("")
 	fetcher.httpClient = mockClient
 
 	ctx := context.Background()
@@ -130,7 +130,7 @@ func TestRateLimitFetcher_NoCacheOnError(t *testing.T) {
 }
 
 func TestRateLimitFetcher_HTTPError(t *testing.T) {
-	fetcher := NewRateLimitFetcher(nil)
+	fetcher := NewRateLimitFetcher("")
 	fetcher.httpClient = &mockHTTPClient{
 		doErr: errors.New("network error"),
 	}
@@ -160,7 +160,7 @@ func TestRateLimitFetcher_CacheExpiration(t *testing.T) {
 		},
 	}
 
-	fetcher := NewRateLimitFetcher(nil)
+	fetcher := NewRateLimitFetcher("")
 	fetcher.httpClient = mockClient
 
 	ctx := context.Background()
@@ -222,7 +222,7 @@ func TestRateLimitFetcher_StaleCacheFallback(t *testing.T) {
 		},
 	}
 
-	fetcher := NewRateLimitFetcher(nil)
+	fetcher := NewRateLimitFetcher("")
 	fetcher.httpClient = mockClient
 
 	ctx := context.Background()
@@ -254,7 +254,7 @@ func TestRateLimitFetcher_InvalidJSON(t *testing.T) {
 		},
 	}
 
-	fetcher := NewRateLimitFetcher(nil)
+	fetcher := NewRateLimitFetcher("")
 	fetcher.httpClient = mockClient
 
 	ctx := context.Background()
@@ -271,7 +271,7 @@ func TestRateLimitFetcher_Non200Status(t *testing.T) {
 		},
 	}
 
-	fetcher := NewRateLimitFetcher(nil)
+	fetcher := NewRateLimitFetcher("")
 	fetcher.httpClient = mockClient
 
 	ctx := context.Background()
@@ -289,7 +289,7 @@ func TestRateLimitFetcher_EmptyResponse(t *testing.T) {
 		},
 	}
 
-	fetcher := NewRateLimitFetcher(nil)
+	fetcher := NewRateLimitFetcher("")
 	fetcher.httpClient = mockClient
 
 	ctx := context.Background()
@@ -323,7 +323,7 @@ func TestRateLimitFetcher_RequestPath(t *testing.T) {
 		},
 	}
 
-	fetcher := NewRateLimitFetcher(nil)
+	fetcher := NewRateLimitFetcher("")
 	fetcher.httpClient = mockClient
 
 	ctx := context.Background()
@@ -347,7 +347,7 @@ func TestRateLimitFetcher_ResetTime(t *testing.T) {
 		},
 	}
 
-	fetcher := NewRateLimitFetcher(nil)
+	fetcher := NewRateLimitFetcher("")
 	fetcher.httpClient = mockClient
 
 	ctx := context.Background()

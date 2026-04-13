@@ -81,12 +81,11 @@ Examples:
 
 			store := data.NewStore(cacheStore)
 
-			token := os.Getenv("GITHUB_TOKEN")
-			ghClient := github.NewClient(github.Config{
-				Token:           token,
-				ReserveRequests: 200,
-			})
-			rateLimitFetcher := data.NewRateLimitFetcher(ghClient)
+			token, err := github.ResolveToken(ctx)
+			if err != nil {
+				return err
+			}
+			rateLimitFetcher := data.NewRateLimitFetcher(token)
 
 			timelineAgg := data.NewTimelineAggregator(cacheStore)
 
@@ -97,7 +96,7 @@ Examples:
 			}
 
 			model := tui.New(broadcaster)
-
+			model.SetRefreshInterval(refresh)
 			broadcaster.Start(ctx)
 
 			p := tea.NewProgram(&model, tea.WithAltScreen())
