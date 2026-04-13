@@ -53,6 +53,23 @@ type ConflictPair struct {
 	Reason       string   `json:"reason"`
 }
 
+// PRFile represents a single file changed in a pull request.
+// It captures metadata about the change including additions, deletions, and patch content.
+type PRFile struct {
+	// Path is the file path relative to the repository root.
+	Path string `json:"path"`
+	// Status is the change status: "added", "removed", "modified", or "renamed".
+	Status string `json:"status"`
+	// Additions is the number of lines added in this file.
+	Additions int `json:"additions"`
+	// Deletions is the number of lines deleted in this file.
+	Deletions int `json:"deletions"`
+	// Patch is the unified diff patch for this file, if available.
+	Patch string `json:"patch,omitempty"`
+	// PreviousPath is the previous file path for renames, if applicable.
+	PreviousPath string `json:"previous_path,omitempty"`
+}
+
 type StalenessReport struct {
 	PRNumber     int      `json:"pr_number"`
 	Score        float64  `json:"score"`
@@ -342,6 +359,45 @@ type ReviewResponse struct {
 	Results []ReviewResult `json:"results"`
 }
 
+// CodeLocation references a specific location in a source file.
+// Used to pinpoint where an analyzer finding applies within the codebase.
+type CodeLocation struct {
+	// FilePath is the relative path to the file within the repository.
+	FilePath string `json:"file_path"`
+	// LineStart is the starting line number (1-indexed) of the relevant code.
+	LineStart int `json:"line_start,omitempty"`
+	// LineEnd is the ending line number (1-indexed) of the relevant code.
+	// If only a single line is relevant, LineEnd equals LineStart.
+	LineEnd int `json:"line_end,omitempty"`
+	// ColumnStart is the starting column position (1-indexed), if known.
+	ColumnStart int `json:"column_start,omitempty"`
+	// ColumnEnd is the ending column position, if known.
+	ColumnEnd int `json:"column_end,omitempty"`
+	// Snippet is a short excerpt of the relevant code (up to ~200 chars).
+	Snippet string `json:"snippet,omitempty"`
+}
+
+// DiffHunk represents a single hunk from a unified diff.
+// It captures the before/after state of a code change with line numbers.
+type DiffHunk struct {
+	// OldPath is the file path before the change (e.g., "a/path/to/file.go").
+	OldPath string `json:"old_path"`
+	// NewPath is the file path after the change (e.g., "b/path/to/file.go").
+	NewPath string `json:"new_path"`
+	// OldStart is the starting line number in the old file (1-indexed).
+	OldStart int `json:"old_start"`
+	// OldLines is the number of lines in the old file hunk.
+	OldLines int `json:"old_lines"`
+	// NewStart is the starting line number in the new file (1-indexed).
+	NewStart int `json:"new_start"`
+	// NewLines is the number of lines in the new file hunk.
+	NewLines int `json:"new_lines"`
+	// Content is the actual diff content including +/- prefixes.
+	Content string `json:"content"`
+	// Section is the optional function/context header (e.g., "@@ -10,5 +10,7 @@ func Foo()").
+	Section string `json:"section,omitempty"`
+}
+
 // AnalyzerFinding represents a single finding from an analyzer in the agentic review system.
 // It captures the analyzer's output with version information for traceability.
 type AnalyzerFinding struct {
@@ -353,6 +409,12 @@ type AnalyzerFinding struct {
 	Finding string `json:"finding"`
 	// Confidence is the analyzer's confidence in this finding, ranging from 0.0 to 1.0.
 	Confidence float64 `json:"confidence"`
+	// Location points to the specific code location this finding relates to, if applicable.
+	Location *CodeLocation `json:"location,omitempty"`
+	// DiffHunk contains the diff context for this finding, if available.
+	DiffHunk *DiffHunk `json:"diff_hunk,omitempty"`
+	// EvidenceHash is a SHA-256 hash of the evidence used for this finding (for deduplication).
+	EvidenceHash string `json:"evidence_hash,omitempty"`
 }
 
 // ReviewResult represents the outcome of an agentic PR review.

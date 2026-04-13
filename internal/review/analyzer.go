@@ -77,6 +77,12 @@ type PRData struct {
 
 	// AnalyzedAt is when this PR data was assembled for analysis.
 	AnalyzedAt time.Time
+
+	// Files contains the changed files in this PR with patch data.
+	Files []types.PRFile
+
+	// DiffHunks are the parsed diff hunks from the PR, if available.
+	DiffHunks []types.DiffHunk
 }
 
 // AnalyzerResult wraps the review result with metadata and error handling fields.

@@ -50,6 +50,15 @@ export interface ConflictPair {
   reason: string;
 }
 
+export interface PRFile {
+  path: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  patch?: string;
+  previous_path?: string;
+}
+
 export interface StalenessReport {
   pr_number: number;
   score: number;
@@ -216,11 +225,34 @@ export type ReviewCategory = "merge_now" | "merge_after_focused_review" | "dupli
 
 export type PriorityTier = "fast_merge" | "review_required" | "blocked";
 
+export interface CodeLocation {
+  file_path: string;
+  line_start?: number;
+  line_end?: number;
+  column_start?: number;
+  column_end?: number;
+  snippet?: string;
+}
+
+export interface DiffHunk {
+  old_path: string;
+  new_path: string;
+  old_start: number;
+  old_lines: number;
+  new_start: number;
+  new_lines: number;
+  content: string;
+  section?: string;
+}
+
 export interface AnalyzerFinding {
   analyzer_name: string;
   analyzer_version: string;
   finding: string;
   confidence: number;
+  location?: CodeLocation;
+  diff_hunk?: DiffHunk;
+  evidence_hash?: string;
 }
 
 export interface AnalyzerMetadata {
