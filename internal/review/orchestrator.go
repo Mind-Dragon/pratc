@@ -195,11 +195,16 @@ type Orchestrator struct {
 }
 
 func NewOrchestrator(cfg settings.AnalyzerConfig, store *settings.Store) *Orchestrator {
-	return &Orchestrator{
+	o := &Orchestrator{
 		analyzers:     make([]Analyzer, 0),
 		config:        cfg,
 		settingsStore: store,
 	}
+	o.RegisterAnalyzer(NewSecurityAnalyzer())
+	o.RegisterAnalyzer(NewReliabilityAnalyzer())
+	o.RegisterAnalyzer(NewPerformanceAnalyzer())
+	o.RegisterAnalyzer(NewQualityAnalyzer())
+	return o
 }
 
 func (o *Orchestrator) RegisterAnalyzer(a Analyzer) {
@@ -290,8 +295,11 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 	})
 
 	// Collect findings from all analyzers
+	// Collect findings and category votes from all analyzers
 	var allFindings []types.AnalyzerFinding
 	var skippedReasons []string
+	categoryCounts := make(map[types.ReviewCategory]int)
+	categoryConfidence := make(map[types.ReviewCategory]float64)
 
 	for _, analyzer := range sortedAnalyzers {
 		analyzerName := analyzer.Metadata().Name
@@ -301,7 +309,6 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 
 		// Run analyzer
 		result, err := analyzer.Analyze(analyzerCtx, prData)
-
 		// Always cancel context to prevent context leak
 		cancel()
 
@@ -317,26 +324,46 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 			continue
 		}
 
-		// Merge findings from this analyzer
 		allFindings = append(allFindings, result.Result.AnalyzerFindings...)
+		categoryCounts[result.Result.Category]++
+		categoryConfidence[result.Result.Category] += result.Result.Confidence
 	}
 
-	// Aggregate findings into final result
+	// Aggregate analyzer result categories into a final category
 	var finalCategory types.ReviewCategory
 	var finalConfidence float64
 	var finalReasons []string
 
-	if len(allFindings) == 0 {
-		// No successful analyzers - return partial result
+	if len(categoryCounts) == 0 {
 		finalCategory = types.ReviewCategoryNeedsReview
 		finalConfidence = 0.0
 		finalReasons = []string{"all analyzers failed or timed out"}
 	} else {
-		// Resolve disagreement among findings
-		resolved := ResolveDisagreement(allFindings)
-		finalCategory = resolved.Category
-		finalConfidence = resolved.Confidence
-		finalReasons = resolved.Reasons
+		type categoryPair struct {
+			category   types.ReviewCategory
+			count      int
+			confidence float64
+		}
+		pairs := make([]categoryPair, 0, len(categoryCounts))
+		for cat, count := range categoryCounts {
+			pairs = append(pairs, categoryPair{category: cat, count: count, confidence: categoryConfidence[cat]})
+		}
+		sort.Slice(pairs, func(i, j int) bool {
+			if pairs[i].count != pairs[j].count {
+				return pairs[i].count > pairs[j].count
+			}
+			if pairs[i].confidence != pairs[j].confidence {
+				return pairs[i].confidence > pairs[j].confidence
+			}
+			return pairs[i].category < pairs[j].category
+		})
+		finalCategory = pairs[0].category
+		finalConfidence = categoryConfidence[finalCategory] / float64(categoryCounts[finalCategory])
+		if len(pairs) > 1 {
+			finalReasons = []string{fmt.Sprintf("majority agreement among %d analyzers", categoryCounts[finalCategory])}
+		} else {
+			finalReasons = []string{"single analyzer result"}
+		}
 	}
 
 	reviewResult := types.ReviewResult{

@@ -96,9 +96,8 @@ func LoadSummarySection(inputDir, repo string) (*SummarySection, error) {
 		GeneratedAt: time.Now(),
 	}
 
-	// Load analyze data (step-2-analyze.json)
-	analyzePath := inputDir + "/step-2-analyze.json"
-	analyzeData, err := os.ReadFile(analyzePath)
+	// Load analyze data (step-2-analyze.json or analyze.json)
+	analyzeData, err := readAnalyzeArtifact(inputDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read analyze file: %w", err)
 	}

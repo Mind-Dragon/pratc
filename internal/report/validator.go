@@ -46,6 +46,12 @@ func ValidateRequiredFiles(dir string) []string {
 	for _, file := range RequiredFiles {
 		path := filepath.Join(dir, file)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
+			if file == "step-2-analyze.json" {
+				alt := filepath.Join(dir, "analyze.json")
+				if _, altErr := os.Stat(alt); !os.IsNotExist(altErr) {
+					continue
+				}
+			}
 			missing = append(missing, file)
 		}
 	}

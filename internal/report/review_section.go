@@ -3,7 +3,6 @@ package report
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/go-pdf/fpdf"
@@ -145,8 +144,7 @@ func LoadReviewSection(inputDir, repo string) (*ReviewSection, error) {
 		Dashboard:   ReviewDashboard{},
 	}
 
-	analyzePath := inputDir + "/step-2-analyze.json"
-	analyzeData, err := os.ReadFile(analyzePath)
+	analyzeData, err := readAnalyzeArtifact(inputDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read analyze file: %w", err)
 	}

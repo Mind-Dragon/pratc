@@ -573,8 +573,7 @@ func LoadMetricsSection(inputDir, repo string) (*MetricsSection, error) {
 	}
 
 	// Load analyze.json
-	analyzePath := inputDir + "/step-2-analyze.json"
-	analyzeData, err := os.ReadFile(analyzePath)
+	analyzeData, err := readAnalyzeArtifact(inputDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read analyze file: %w", err)
 	}
