@@ -14,12 +14,12 @@ import (
 // 1. Explicit runtime env vars: GITHUB_TOKEN, GH_TOKEN, GITHUB_PAT
 // 2. `gh auth token` from a logged-in gh CLI session
 //
-// When a token is found, it is also injected back into GITHUB_TOKEN and GH_TOKEN
-// so downstream code that reads environment variables sees the same auth.
+// The token is returned directly and must be passed explicitly to components
+// that need it (e.g., via github.Client Config.Token). It is NOT injected
+// into os.environ to avoid leaking credentials to subprocesses.
 func ResolveToken(ctx context.Context) (string, error) {
 	for _, key := range []string{"GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT"} {
 		if token := strings.TrimSpace(os.Getenv(key)); token != "" {
-			injectTokenEnv(token)
 			return token, nil
 		}
 	}
@@ -44,11 +44,5 @@ func ResolveToken(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("GitHub auth unavailable: gh auth token returned an empty token")
 	}
 
-	injectTokenEnv(token)
 	return token, nil
-}
-
-func injectTokenEnv(token string) {
-	_ = os.Setenv("GITHUB_TOKEN", token)
-	_ = os.Setenv("GH_TOKEN", token)
 }

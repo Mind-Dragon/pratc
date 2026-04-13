@@ -20,9 +20,6 @@ func TestResolveTokenUsesEnvToken(t *testing.T) {
 	if token != "env-token" {
 		t.Fatalf("ResolveToken() token = %q, want env-token", token)
 	}
-	if got := os.Getenv("GH_TOKEN"); got != "env-token" {
-		t.Fatalf("expected GH_TOKEN injection, got %q", got)
-	}
 }
 
 func TestResolveTokenUsesGHCLIWhenEnvMissing(t *testing.T) {
