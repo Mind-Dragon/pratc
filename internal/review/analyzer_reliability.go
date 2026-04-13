@@ -62,7 +62,10 @@ func (r *ReliabilityAnalyzer) Analyze(ctx context.Context, prData PRData) (Analy
 	findings = append(findings, reviewFindings...)
 
 	// Determine overall category and priority based on findings
-	category, priority, confidence := r.classifyReliabilityRisk(findings)
+	category, priority, _ := r.classifyReliabilityRisk(findings)
+
+	confidence := calculateConfidenceFromFindings(findings)
+	confidence = capConfidenceByCategory(category, confidence)
 
 	result := types.ReviewResult{
 		Category:         category,

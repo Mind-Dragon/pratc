@@ -151,6 +151,9 @@ func (s *SecurityAnalyzer) Analyze(ctx context.Context, prData PRData) (Analyzer
 	// Determine overall category and priority based on findings
 	category, priority, confidence := s.classifySecurityRisk(findings)
 
+	confidence = calculateConfidenceFromFindings(findings)
+	confidence = capConfidenceByCategory(category, confidence)
+
 	result := types.ReviewResult{
 		Category:         category,
 		PriorityTier:     priority,

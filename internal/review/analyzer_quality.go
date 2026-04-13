@@ -99,8 +99,11 @@ func (q *QualityAnalyzer) Analyze(ctx context.Context, prData PRData) (AnalyzerR
 		reasons = append(reasons, "PR has excessive changes without clear purpose or description")
 	}
 
-	// Determine category and priority tier
-	category, priorityTier, confidence := q.classifyPR(findings)
+	// Classify based on findings
+	category, priorityTier, _ := q.classifyPR(findings)
+
+	confidence := calculateConfidenceFromFindings(findings)
+	confidence = capConfidenceByCategory(category, confidence)
 
 	completedAt := time.Now()
 

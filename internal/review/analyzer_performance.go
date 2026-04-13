@@ -197,7 +197,10 @@ func (p *PerformanceAnalyzer) Analyze(ctx context.Context, prData PRData) (Analy
 	findings = append(findings, configFindings...)
 
 	// Determine overall category and priority based on findings
-	category, priority, confidence := p.classifyPerformanceRisk(findings)
+	category, priority, _ := p.classifyPerformanceRisk(findings)
+
+	confidence := calculateConfidenceFromFindings(findings)
+	confidence = capConfidenceByCategory(category, confidence)
 
 	result := types.ReviewResult{
 		Category:         category,
