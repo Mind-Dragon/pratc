@@ -127,10 +127,10 @@ func TestAnalyzeReviewResultHasValidCategoryAndPriorityTier(t *testing.T) {
 
 	// Validate that categories are valid ReviewCategory values
 	validCategories := map[types.ReviewCategory]bool{
-		types.ReviewCategoryMergeSafe:   true,
-		types.ReviewCategoryDuplicate:   true,
-		types.ReviewCategoryProblematic: true,
-		types.ReviewCategoryNeedsReview: true,
+		types.ReviewCategoryMergeNow:                true,
+		types.ReviewCategoryDuplicateSuperseded:     true,
+		types.ReviewCategoryProblematicQuarantine:   true,
+		types.ReviewCategoryMergeAfterFocusedReview: true,
 	}
 
 	validPriorityTiers := map[types.PriorityTier]bool{

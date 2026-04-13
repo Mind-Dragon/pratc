@@ -212,7 +212,7 @@ export interface HealthResponse {
   version: string;
 }
 
-export type ReviewCategory = "merge_safe" | "duplicate" | "problematic" | "needs_review";
+export type ReviewCategory = "merge_now" | "merge_after_focused_review" | "duplicate_superseded" | "problematic_quarantine" | "unknown_escalate";
 
 export type PriorityTier = "fast_merge" | "review_required" | "blocked";
 

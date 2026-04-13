@@ -381,7 +381,7 @@ func (p *PerformanceAnalyzer) detectConfigChanges(files []string) []types.Analyz
 // classifyPerformanceRisk determines the review category and priority tier based on findings.
 func (p *PerformanceAnalyzer) classifyPerformanceRisk(findings []types.AnalyzerFinding) (types.ReviewCategory, types.PriorityTier, float64) {
 	if len(findings) == 0 {
-		return types.ReviewCategoryMergeSafe, types.PriorityTierFastMerge, 0.95
+		return types.ReviewCategoryMergeNow, types.PriorityTierFastMerge, 0.95
 	}
 
 	// Count findings by type
@@ -410,35 +410,35 @@ func (p *PerformanceAnalyzer) classifyPerformanceRisk(findings []types.AnalyzerF
 
 	// High severity: large diff with critical path changes
 	if largeDiffCount > 0 && criticalPathCount > 0 {
-		return types.ReviewCategoryProblematic, types.PriorityTierBlocked, 0.85
+		return types.ReviewCategoryProblematicQuarantine, types.PriorityTierBlocked, 0.85
 	}
 
 	// High severity: many files with performance-sensitive changes
 	if manyFilesCount > 0 && perfSensitiveCount > 0 {
-		return types.ReviewCategoryProblematic, types.PriorityTierBlocked, 0.80
+		return types.ReviewCategoryProblematicQuarantine, types.PriorityTierBlocked, 0.80
 	}
 
 	// Medium severity: large diff without critical path
 	if largeDiffCount > 0 {
-		return types.ReviewCategoryNeedsReview, types.PriorityTierReviewRequired, 0.75
+		return types.ReviewCategoryMergeAfterFocusedReview, types.PriorityTierReviewRequired, 0.75
 	}
 
 	// Medium severity: many files changed
 	if manyFilesCount > 0 {
-		return types.ReviewCategoryNeedsReview, types.PriorityTierReviewRequired, 0.70
+		return types.ReviewCategoryMergeAfterFocusedReview, types.PriorityTierReviewRequired, 0.70
 	}
 
 	// Medium severity: critical path changes or performance-sensitive changes
 	if criticalPathCount > 0 || perfSensitiveCount > 0 {
-		return types.ReviewCategoryNeedsReview, types.PriorityTierReviewRequired, 0.75
+		return types.ReviewCategoryMergeAfterFocusedReview, types.PriorityTierReviewRequired, 0.75
 	}
 
 	// Lower severity: high additions/deletions or config changes
 	if highAddDelCount > 0 || configChangeCount > 0 {
-		return types.ReviewCategoryNeedsReview, types.PriorityTierReviewRequired, 0.65
+		return types.ReviewCategoryMergeAfterFocusedReview, types.PriorityTierReviewRequired, 0.65
 	}
 
-	return types.ReviewCategoryNeedsReview, types.PriorityTierReviewRequired, 0.60
+	return types.ReviewCategoryMergeAfterFocusedReview, types.PriorityTierReviewRequired, 0.60
 }
 
 // extractReasons extracts human-readable reason codes from findings.

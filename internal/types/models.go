@@ -277,14 +277,16 @@ type AuditResponse struct {
 type ReviewCategory string
 
 const (
-	// ReviewCategoryMergeSafe indicates the PR is safe to merge with minimal review.
-	ReviewCategoryMergeSafe ReviewCategory = "merge_safe"
-	// ReviewCategoryDuplicate indicates the PR is a duplicate of another PR.
-	ReviewCategoryDuplicate ReviewCategory = "duplicate"
-	// ReviewCategoryProblematic indicates the PR has issues that need attention.
-	ReviewCategoryProblematic ReviewCategory = "problematic"
-	// ReviewCategoryNeedsReview indicates the PR requires standard human review.
-	ReviewCategoryNeedsReview ReviewCategory = "needs_review"
+	// ReviewCategoryMergeNow indicates the PR is safe to merge with minimal review.
+	ReviewCategoryMergeNow ReviewCategory = "merge_now"
+	// ReviewCategoryMergeAfterFocusedReview indicates the PR requires focused review before merge.
+	ReviewCategoryMergeAfterFocusedReview ReviewCategory = "merge_after_focused_review"
+	// ReviewCategoryDuplicateSuperseded indicates the PR is a duplicate or superseded by another PR.
+	ReviewCategoryDuplicateSuperseded ReviewCategory = "duplicate_superseded"
+	// ReviewCategoryProblematicQuarantine indicates the PR has issues and should be quarantined.
+	ReviewCategoryProblematicQuarantine ReviewCategory = "problematic_quarantine"
+	// ReviewCategoryUnknownEscalate indicates the PR needs escalation due to insufficient evidence.
+	ReviewCategoryUnknownEscalate ReviewCategory = "unknown_escalate"
 )
 
 // PriorityTier represents the urgency/priority level for PR review and merge.

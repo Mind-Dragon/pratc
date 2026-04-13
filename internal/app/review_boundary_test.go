@@ -91,7 +91,7 @@ func TestV13_AdvisoryOnlyReview(t *testing.T) {
 	// They are for human consumption and decision-making
 
 	result := types.ReviewResult{
-		Category:     types.ReviewCategoryMergeSafe,
+		Category:     types.ReviewCategoryMergeNow,
 		Confidence:   0.95,
 		PriorityTier: types.PriorityTierFastMerge,
 		NextAction:   "merge", // This is a recommendation, not a command
@@ -175,7 +175,7 @@ func TestV13_ReviewPayloadStructure(t *testing.T) {
 		},
 		Results: []types.ReviewResult{
 			{
-				Category:     types.ReviewCategoryMergeSafe,
+				Category:     types.ReviewCategoryMergeNow,
 				Confidence:   0.92,
 				PriorityTier: types.PriorityTierFastMerge,
 				NextAction:   "merge",

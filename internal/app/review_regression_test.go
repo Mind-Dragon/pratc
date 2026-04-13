@@ -67,10 +67,10 @@ func TestReviewContractRegression(t *testing.T) {
 
 	// Contract: Each result must have valid category and priority tier
 	validCategories := map[types.ReviewCategory]bool{
-		types.ReviewCategoryMergeSafe:   true,
-		types.ReviewCategoryDuplicate:   true,
-		types.ReviewCategoryProblematic: true,
-		types.ReviewCategoryNeedsReview: true,
+		types.ReviewCategoryMergeNow:   true,
+		types.ReviewCategoryDuplicateSuperseded:   true,
+		types.ReviewCategoryProblematicQuarantine: true,
+		types.ReviewCategoryMergeAfterFocusedReview: true,
 	}
 
 	validTiers := map[types.PriorityTier]bool{
@@ -199,10 +199,10 @@ func TestBucketVisibilityRegression(t *testing.T) {
 
 	// Verify bucket-to-category mapping consistency
 	bucketCategoryMap := map[string]types.ReviewCategory{
-		"Merge now":                  types.ReviewCategoryMergeSafe,
-		"Merge after focused review": types.ReviewCategoryNeedsReview,
-		"Duplicate / superseded":     types.ReviewCategoryDuplicate,
-		"Problematic / quarantine":   types.ReviewCategoryProblematic,
+		"Merge now":                  types.ReviewCategoryMergeNow,
+		"Merge after focused review": types.ReviewCategoryMergeAfterFocusedReview,
+		"Duplicate / superseded":     types.ReviewCategoryDuplicateSuperseded,
+		"Problematic / quarantine":   types.ReviewCategoryProblematicQuarantine,
 	}
 
 	// Count PRs by category from results
@@ -236,7 +236,7 @@ func TestBucketVisibilityRegression(t *testing.T) {
 	// Fast merge should only come from merge_safe category
 	for _, result := range response.ReviewPayload.Results {
 		if result.PriorityTier == types.PriorityTierFastMerge {
-			if result.Category != types.ReviewCategoryMergeSafe {
+			if result.Category != types.ReviewCategoryMergeNow {
 				t.Errorf("PR with fast_merge tier should be merge_safe category, got %s", result.Category)
 			}
 			if result.Confidence < 0.8 {

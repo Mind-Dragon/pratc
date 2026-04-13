@@ -45,7 +45,7 @@ type ResolvedFinding struct {
 func ResolveDisagreement(findings []types.AnalyzerFinding) ResolvedFinding {
 	if len(findings) == 0 {
 		return ResolvedFinding{
-			Category:             types.ReviewCategoryNeedsReview,
+			Category:             types.ReviewCategoryUnknownEscalate,
 			Confidence:           0.0,
 			Reasons:              []string{"no findings to analyze"},
 			DisagreementDetected: false,
@@ -265,7 +265,7 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 	if len(analyzers) == 0 {
 		// No analyzers registered - return empty result
 		placeholderResult := types.ReviewResult{
-			Category:           types.ReviewCategoryNeedsReview,
+			Category:           types.ReviewCategoryUnknownEscalate,
 			PriorityTier:       types.PriorityTierReviewRequired,
 			Confidence:         0.0,
 			Reasons:            []string{"no analyzers registered"},
@@ -335,7 +335,7 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 	var finalReasons []string
 
 	if len(categoryCounts) == 0 {
-		finalCategory = types.ReviewCategoryNeedsReview
+		finalCategory = types.ReviewCategoryUnknownEscalate
 		finalConfidence = 0.0
 		finalReasons = []string{"all analyzers failed or timed out"}
 	} else {
@@ -402,16 +402,16 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 
 	// Determine next action based on category
 	switch finalCategory {
-	case types.ReviewCategoryMergeSafe:
+	case types.ReviewCategoryMergeNow:
 		reviewResult.NextAction = "merge"
 		reviewResult.PriorityTier = types.PriorityTierFastMerge
-	case types.ReviewCategoryDuplicate:
-		reviewResult.NextAction = "close_duplicate"
+	case types.ReviewCategoryDuplicateSuperseded:
+		reviewResult.NextAction = "resolve_duplicate"
 		reviewResult.PriorityTier = types.PriorityTierBlocked
-	case types.ReviewCategoryProblematic:
+	case types.ReviewCategoryProblematicQuarantine:
 		reviewResult.NextAction = "address_issues"
 		reviewResult.PriorityTier = types.PriorityTierBlocked
-	case types.ReviewCategoryNeedsReview:
+	case types.ReviewCategoryUnknownEscalate:
 		reviewResult.NextAction = "human_review"
 		reviewResult.PriorityTier = types.PriorityTierReviewRequired
 	default:

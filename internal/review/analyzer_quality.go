@@ -247,7 +247,7 @@ func (q *QualityAnalyzer) isNoisyPR(body string, changedFiles, additions, deleti
 // classifyPR determines the category, priority tier, and confidence based on findings.
 func (q *QualityAnalyzer) classifyPR(findings []types.AnalyzerFinding) (types.ReviewCategory, types.PriorityTier, float64) {
 	if len(findings) == 0 {
-		return types.ReviewCategoryNeedsReview, types.PriorityTierReviewRequired, 0.5
+		return types.ReviewCategoryMergeAfterFocusedReview, types.PriorityTierReviewRequired, 0.5
 	}
 
 	// Count findings by severity
@@ -267,16 +267,16 @@ func (q *QualityAnalyzer) classifyPR(findings []types.AnalyzerFinding) (types.Re
 
 	// Classify based on severity
 	if highSeverity >= 2 {
-		return types.ReviewCategoryProblematic, types.PriorityTierBlocked, 0.85
+		return types.ReviewCategoryProblematicQuarantine, types.PriorityTierBlocked, 0.85
 	}
 
 	if highSeverity == 1 || mediumSeverity >= 2 {
-		return types.ReviewCategoryProblematic, types.PriorityTierReviewRequired, 0.75
+		return types.ReviewCategoryProblematicQuarantine, types.PriorityTierReviewRequired, 0.75
 	}
 
 	if mediumSeverity == 1 {
-		return types.ReviewCategoryNeedsReview, types.PriorityTierReviewRequired, 0.65
+		return types.ReviewCategoryMergeAfterFocusedReview, types.PriorityTierReviewRequired, 0.65
 	}
 
-	return types.ReviewCategoryNeedsReview, types.PriorityTierReviewRequired, 0.5
+	return types.ReviewCategoryMergeAfterFocusedReview, types.PriorityTierReviewRequired, 0.5
 }

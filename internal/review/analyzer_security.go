@@ -266,7 +266,7 @@ func (s *SecurityAnalyzer) detectSecuritySensitiveDeletions(files []string, tota
 // classifySecurityRisk determines the review category and priority tier based on findings.
 func (s *SecurityAnalyzer) classifySecurityRisk(findings []types.AnalyzerFinding) (types.ReviewCategory, types.PriorityTier, float64) {
 	if len(findings) == 0 {
-		return types.ReviewCategoryMergeSafe, types.PriorityTierFastMerge, 0.95
+		return types.ReviewCategoryMergeNow, types.PriorityTierFastMerge, 0.95
 	}
 
 	// Count findings by type
@@ -289,20 +289,20 @@ func (s *SecurityAnalyzer) classifySecurityRisk(findings []types.AnalyzerFinding
 
 	// High severity: risky files or large auth changes
 	if riskyFileCount > 0 || authChangeCount > 2 {
-		return types.ReviewCategoryProblematic, types.PriorityTierBlocked, 0.85
+		return types.ReviewCategoryProblematicQuarantine, types.PriorityTierBlocked, 0.85
 	}
 
 	// Medium severity: dependency changes or moderate auth changes
 	if dependencyChangeCount > 0 || authChangeCount > 0 {
-		return types.ReviewCategoryNeedsReview, types.PriorityTierReviewRequired, 0.80
+		return types.ReviewCategoryMergeAfterFocusedReview, types.PriorityTierReviewRequired, 0.80
 	}
 
 	// Low severity: only security-sensitive deletions
 	if securityDeletionCount > 0 {
-		return types.ReviewCategoryNeedsReview, types.PriorityTierReviewRequired, 0.75
+		return types.ReviewCategoryMergeAfterFocusedReview, types.PriorityTierReviewRequired, 0.75
 	}
 
-	return types.ReviewCategoryNeedsReview, types.PriorityTierReviewRequired, 0.70
+	return types.ReviewCategoryMergeAfterFocusedReview, types.PriorityTierReviewRequired, 0.70
 }
 
 // extractReasons extracts human-readable reason codes from findings.

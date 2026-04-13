@@ -878,14 +878,16 @@ func writeJSON(cmd *cobra.Command, payload any) error {
 
 func reviewBucketLabel(category types.ReviewCategory) string {
 	switch category {
-	case types.ReviewCategoryMergeSafe:
+	case types.ReviewCategoryMergeNow:
 		return "Merge now"
-	case types.ReviewCategoryNeedsReview:
+	case types.ReviewCategoryMergeAfterFocusedReview:
 		return "Merge after focused review"
-	case types.ReviewCategoryDuplicate:
+	case types.ReviewCategoryDuplicateSuperseded:
 		return "Duplicate / superseded"
-	case types.ReviewCategoryProblematic:
+	case types.ReviewCategoryProblematicQuarantine:
 		return "Problematic / quarantine"
+	case types.ReviewCategoryUnknownEscalate:
+		return "Unknown / escalate"
 	default:
 		return "Unknown / escalate"
 	}

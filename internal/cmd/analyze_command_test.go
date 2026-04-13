@@ -170,10 +170,10 @@ func TestWriteAnalyzeTextShowsReviewBucketVocabulary(t *testing.T) {
 			TotalPRs:    10,
 			ReviewedPRs: 10,
 			Categories: []types.ReviewCategoryCount{
-				{Category: "merge_safe", Count: 3},
-				{Category: "needs_review", Count: 4},
-				{Category: "duplicate", Count: 2},
-				{Category: "problematic", Count: 1},
+				{Category: "merge_now", Count: 3},
+				{Category: "merge_after_focused_review", Count: 4},
+				{Category: "duplicate_superseded", Count: 2},
+				{Category: "problematic_quarantine", Count: 1},
 			},
 			Buckets: []types.BucketCount{
 				{Bucket: "Merge now", Count: 3},

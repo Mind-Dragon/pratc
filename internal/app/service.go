@@ -518,17 +518,17 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 
 func buildReviewBuckets(categoryCount map[types.ReviewCategory]int) []types.BucketCount {
 	bucketLabels := map[types.ReviewCategory]string{
-		types.ReviewCategoryMergeSafe:   "Merge now",
-		types.ReviewCategoryNeedsReview: "Merge after focused review",
-		types.ReviewCategoryDuplicate:   "Duplicate / superseded",
-		types.ReviewCategoryProblematic: "Problematic / quarantine",
+		types.ReviewCategoryMergeNow:                "Merge now",
+		types.ReviewCategoryMergeAfterFocusedReview: "Merge after focused review",
+		types.ReviewCategoryDuplicateSuperseded:     "Duplicate / superseded",
+		types.ReviewCategoryProblematicQuarantine:   "Problematic / quarantine",
 	}
 
 	bucketCounts := make(map[string]int)
 	for cat, label := range bucketLabels {
 		bucketCounts[label] = categoryCount[cat]
 	}
-	bucketCounts["Unknown / escalate"] = categoryCount[types.ReviewCategory("")]
+	bucketCounts["Unknown / escalate"] = categoryCount[types.ReviewCategoryUnknownEscalate] + categoryCount[types.ReviewCategory("")]
 
 	var buckets []types.BucketCount
 	for _, label := range []string{

@@ -337,7 +337,7 @@ func TestReviewPayloadOmittedWhenNil(t *testing.T) {
 			Categories:    []ReviewCategoryCount{},
 			PriorityTiers: []PriorityTierCount{},
 			Results: []ReviewResult{{
-				Category:           ReviewCategoryMergeSafe,
+				Category:           ReviewCategoryMergeNow,
 				PriorityTier:       PriorityTierFastMerge,
 				Confidence:         0.98,
 				Reasons:            []string{"high_confidence"},

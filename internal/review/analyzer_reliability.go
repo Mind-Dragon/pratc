@@ -235,7 +235,7 @@ func (r *ReliabilityAnalyzer) detectReviewChurn(reviewStatus string, labels []st
 // classifyReliabilityRisk determines the review category and priority tier based on findings.
 func (r *ReliabilityAnalyzer) classifyReliabilityRisk(findings []types.AnalyzerFinding) (types.ReviewCategory, types.PriorityTier, float64) {
 	if len(findings) == 0 {
-		return types.ReviewCategoryMergeSafe, types.PriorityTierFastMerge, 0.95
+		return types.ReviewCategoryMergeNow, types.PriorityTierFastMerge, 0.95
 	}
 
 	// Count findings by severity
@@ -256,20 +256,20 @@ func (r *ReliabilityAnalyzer) classifyReliabilityRisk(findings []types.AnalyzerF
 
 	// Critical severity: CI failure or merge conflict blocks merge
 	if criticalCount > 0 {
-		return types.ReviewCategoryProblematic, types.PriorityTierBlocked, 0.90
+		return types.ReviewCategoryProblematicQuarantine, types.PriorityTierBlocked, 0.90
 	}
 
 	// High severity: flaky patterns indicate potential instability
 	if highCount > 0 {
-		return types.ReviewCategoryNeedsReview, types.PriorityTierReviewRequired, 0.80
+		return types.ReviewCategoryMergeAfterFocusedReview, types.PriorityTierReviewRequired, 0.80
 	}
 
 	// Medium severity: review churn suggests potential issues
 	if mediumCount > 0 {
-		return types.ReviewCategoryNeedsReview, types.PriorityTierReviewRequired, 0.75
+		return types.ReviewCategoryMergeAfterFocusedReview, types.PriorityTierReviewRequired, 0.75
 	}
 
-	return types.ReviewCategoryNeedsReview, types.PriorityTierReviewRequired, 0.70
+	return types.ReviewCategoryMergeAfterFocusedReview, types.PriorityTierReviewRequired, 0.70
 }
 
 // extractReasons extracts human-readable reason codes from findings.
