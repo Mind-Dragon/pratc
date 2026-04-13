@@ -37,7 +37,7 @@ Returned in `PlanRejection.Reason`:
 
 ## Gotchas
 
-- `ScoreAndSortPool` uses O(n²) bubble sort; ~15M comparisons at 5.5k PR scale. Replace with `sort.Slice`.
-- Pool cap (64) is hardcoded in `pipeline.go:34`. Not configurable.
+- `ScoreAndSortPool` was O(n²) bubble sort — FIXED in Phase 2, now uses `sort.Slice`
+- Pool cap is `types.DefaultPoolCap` (100), configurable via constants
 - `ApplyFilters` returns two slices; both must be preserved for `plan` output.
 - `PlannerRationale` strings used in plan output for human-readable justification.

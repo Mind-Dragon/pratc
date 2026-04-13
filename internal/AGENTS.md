@@ -63,8 +63,8 @@ internal/sync/ → internal/repo/
 **Decision point**: Wire up in v1.4+ OR delete before release. Do NOT import planning types into app/ until decided.
 See `internal/planning/AGENTS.md` for full details.
 
-### filter/scorer.go uses bubble sort
-`rankByConflictScore()` is O(n²). Acceptable for n<500 (current scale) but replace with `sort.Slice` if pool caps increase.
+### filter/scorer.go bubble sort — FIXED
+`rankByConflictScore()` was O(n²) — FIXED in Phase 2, now uses `sort.Slice`
 
 ## Deviation from Standard Go
 
