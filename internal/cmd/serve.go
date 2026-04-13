@@ -105,37 +105,37 @@ func sanitizedError(err error) string {
 	// Known safe error patterns that provide useful feedback without leaking internals
 	safeMessages := map[string]string{
 		// Settings errors
-		"key is required":              "key is required",
-		"scope is required":            "scope is required",
-		"invalid scope":                "invalid scope",
-		"invalid key":                  "invalid key",
-		"value is required":            "value is required",
+		"key is required":   "key is required",
+		"scope is required": "scope is required",
+		"invalid scope":     "invalid scope",
+		"invalid key":       "invalid key",
+		"value is required": "value is required",
 		// Repo errors
-		"repo is required":             "repo is required",
-		"invalid repo format":          "invalid repo format",
-		"repository not found":         "repository not found",
-		"repo not found":               "repo not found",
+		"repo is required":     "repo is required",
+		"invalid repo format":  "invalid repo format",
+		"repository not found": "repository not found",
+		"repo not found":       "repo not found",
 		// Sync errors
-		"sync in progress":             "sync already in progress",
-		"no active sync job":           "no active sync job",
-		"sync job not found":           "sync job not found",
+		"sync in progress":   "sync already in progress",
+		"no active sync job": "no active sync job",
+		"sync job not found": "sync job not found",
 		// Plan errors
-		"invalid target parameter":      "invalid target parameter",
-		"target must be positive":      "target must be a positive number",
-		"invalid mode":                 "invalid mode",
+		"invalid target parameter": "invalid target parameter",
+		"target must be positive":  "target must be a positive number",
+		"invalid mode":             "invalid mode",
 		// Auth errors
-		"missing API key":              "missing API key",
-		"invalid API key":              "invalid API key",
-		"API key unavailable":         "API key unavailable",
+		"missing API key":     "missing API key",
+		"invalid API key":     "invalid API key",
+		"API key unavailable": "API key unavailable",
 		// General safe messages
-		"route not found":             "route not found",
-		"method not allowed":           "method not allowed",
-		"invalid JSON body":            "invalid JSON body",
-		"failed to read request body":  "failed to read request body",
-		"streaming not supported":      "streaming not supported",
-		"sync API unavailable":         "sync API unavailable",
+		"route not found":                 "route not found",
+		"method not allowed":              "method not allowed",
+		"invalid JSON body":               "invalid JSON body",
+		"failed to read request body":     "failed to read request body",
+		"streaming not supported":         "streaming not supported",
+		"sync API unavailable":            "sync API unavailable",
 		"review endpoint not implemented": "review endpoint not implemented",
-		"analysis unavailable":        "analysis unavailable",
+		"analysis unavailable":            "analysis unavailable",
 	}
 
 	// Check for exact match first
@@ -384,7 +384,7 @@ func handleSyncEvents(store *cache.Store) http.HandlerFunc {
 				data := map[string]any{
 					"processed": progress.ProcessedPRs,
 					"total":     progress.TotalPRs,
-					"percent":    percent,
+					"percent":   percent,
 				}
 				fmt.Fprintf(w, "data: %s\n\n", mustMarshalJSON(data))
 				flusher.Flush()

@@ -51,8 +51,6 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/version"
 )
 
-
-
 type Config struct {
 	Now                     func() time.Time
 	AllowLive               bool

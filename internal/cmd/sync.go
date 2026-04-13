@@ -14,8 +14,8 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/github"
 	"github.com/jeffersonnunn/pratc/internal/logger"
-	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
 	prsync "github.com/jeffersonnunn/pratc/internal/sync"
+	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
 	"github.com/spf13/cobra"
 )
 

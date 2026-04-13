@@ -104,25 +104,25 @@ func TestBuildClusterPayload(t *testing.T) {
 			repo: "owner/repo",
 			prs: []types.PR{
 				{
-					ID:         "pr-1",
-					Number:     1,
-					Title:      "Fix bug",
-					Body:       "Fixes a bug",
-					Author:     "user1",
-					FilesChanged: []string{"a.go", "b.go"},
-					Labels:     []string{"bug", "urgent"},
-					ReviewStatus: "APPROVED",
-					CIStatus:   "SUCCESS",
-					Mergeable:  "true",
-					BaseBranch: "main",
-					HeadBranch: "fix-bug",
-					ClusterID:  "",
-					CreatedAt:  "2024-01-01T00:00:00Z",
-					UpdatedAt:  "2024-01-02T00:00:00Z",
-					IsDraft:    false,
-					IsBot:      false,
-					Additions: 10,
-					Deletions: 5,
+					ID:                "pr-1",
+					Number:            1,
+					Title:             "Fix bug",
+					Body:              "Fixes a bug",
+					Author:            "user1",
+					FilesChanged:      []string{"a.go", "b.go"},
+					Labels:            []string{"bug", "urgent"},
+					ReviewStatus:      "APPROVED",
+					CIStatus:          "SUCCESS",
+					Mergeable:         "true",
+					BaseBranch:        "main",
+					HeadBranch:        "fix-bug",
+					ClusterID:         "",
+					CreatedAt:         "2024-01-01T00:00:00Z",
+					UpdatedAt:         "2024-01-02T00:00:00Z",
+					IsDraft:           false,
+					IsBot:             false,
+					Additions:         10,
+					Deletions:         5,
 					ChangedFilesCount: 2,
 				},
 			},
@@ -176,21 +176,21 @@ func TestBuildClusterPayload(t *testing.T) {
 
 func TestBuildDuplicatePayload(t *testing.T) {
 	tests := []struct {
-		name              string
-		repo              string
-		prs               []types.PR
+		name               string
+		repo               string
+		prs                []types.PR
 		duplicateThreshold float64
 		overlapThreshold   float64
-		requestID         string
-		check             func(t *testing.T, payload map[string]any)
+		requestID          string
+		check              func(t *testing.T, payload map[string]any)
 	}{
 		{
-			name:       "basic duplicate payload",
-			repo:       "owner/repo",
-			prs:        []types.PR{{Number: 1, Title: "PR 1"}},
+			name:               "basic duplicate payload",
+			repo:               "owner/repo",
+			prs:                []types.PR{{Number: 1, Title: "PR 1"}},
 			duplicateThreshold: 0.75,
 			overlapThreshold:   0.50,
-			requestID:         "dup-req",
+			requestID:          "dup-req",
 			check: func(t *testing.T, payload map[string]any) {
 				if action := payload["action"]; action != "duplicates" {
 					t.Errorf("action = %v, want duplicates", action)
@@ -204,12 +204,12 @@ func TestBuildDuplicatePayload(t *testing.T) {
 			},
 		},
 		{
-			name:              "with request id",
-			repo:              "owner/repo",
-			prs:               []types.PR{{Number: 1}},
+			name:               "with request id",
+			repo:               "owner/repo",
+			prs:                []types.PR{{Number: 1}},
 			duplicateThreshold: 0.8,
 			overlapThreshold:   0.6,
-			requestID:         "req-456",
+			requestID:          "req-456",
 			check: func(t *testing.T, payload map[string]any) {
 				if reqID := payload["request_id"]; reqID != "req-456" {
 					t.Errorf("request_id = %v, want req-456", reqID)
@@ -288,27 +288,27 @@ func TestPrToML(t *testing.T) {
 		{
 			name: "full pr conversion",
 			pr: types.PR{
-				ID:           "pr-123",
-				Repo:         "owner/repo",
-				Number:       42,
-				Title:        "Add new feature",
-				Body:         "This PR adds a new feature",
-				URL:          types.GitHubURLPrefix + "owner/repo/pull/42",
-				Author:       "developer",
-				Labels:       []string{"enhancement", "needs-review"},
-				FilesChanged: []string{"feature.go", "feature_test.go"},
-				ReviewStatus: "CHANGES_REQUESTED",
-				CIStatus:     "FAILURE",
-				Mergeable:    "false",
-				BaseBranch:   "main",
-				HeadBranch:   "feature",
-				ClusterID:    "cluster-1",
-				CreatedAt:    "2024-01-15T10:30:00Z",
-				UpdatedAt:    "2024-01-16T14:00:00Z",
-				IsDraft:      true,
-				IsBot:        false,
-				Additions:    150,
-				Deletions:     20,
+				ID:                "pr-123",
+				Repo:              "owner/repo",
+				Number:            42,
+				Title:             "Add new feature",
+				Body:              "This PR adds a new feature",
+				URL:               types.GitHubURLPrefix + "owner/repo/pull/42",
+				Author:            "developer",
+				Labels:            []string{"enhancement", "needs-review"},
+				FilesChanged:      []string{"feature.go", "feature_test.go"},
+				ReviewStatus:      "CHANGES_REQUESTED",
+				CIStatus:          "FAILURE",
+				Mergeable:         "false",
+				BaseBranch:        "main",
+				HeadBranch:        "feature",
+				ClusterID:         "cluster-1",
+				CreatedAt:         "2024-01-15T10:30:00Z",
+				UpdatedAt:         "2024-01-16T14:00:00Z",
+				IsDraft:           true,
+				IsBot:             false,
+				Additions:         150,
+				Deletions:         20,
 				ChangedFilesCount: 2,
 			},
 			check: func(t *testing.T, result map[string]any) {
@@ -384,13 +384,13 @@ func TestPrToML(t *testing.T) {
 
 func TestPayloadJSONSerialization(t *testing.T) {
 	pr := types.PR{
-		ID:         "pr-test",
-		Number:     10,
-		Title:      "Test PR",
-		Labels:     []string{"test"},
-		FilesChanged: []string{"test.go"},
-		Additions:  5,
-		Deletions:  3,
+		ID:                "pr-test",
+		Number:            10,
+		Title:             "Test PR",
+		Labels:            []string{"test"},
+		FilesChanged:      []string{"test.go"},
+		Additions:         5,
+		Deletions:         3,
 		ChangedFilesCount: 1,
 	}
 

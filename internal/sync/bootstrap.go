@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	SourceLiveAPI      = "live_api"
-	SourceLocalMirror  = "local_mirror"
+	SourceLiveAPI       = "live_api"
+	SourceLocalMirror   = "local_mirror"
 	SourcePublicArchive = "public_archive"
-	SourceBackfill     = "backfill"
+	SourceBackfill      = "backfill"
 )
 
 type BootstrapFileSource struct {

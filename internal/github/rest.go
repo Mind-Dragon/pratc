@@ -15,21 +15,21 @@ import (
 
 // restPRNode is the GitHub REST API PR response shape.
 type restPRNode struct {
-	ID       int64  `json:"id"`
-	Number   int    `json:"number"`
-	Title    string `json:"title"`
-	Body     string `json:"body"`
-	HTMLURL  string `json:"html_url"`
-	Draft    bool   `json:"draft"`
-	State    string `json:"state"`
-	Locked   bool   `json:"locked"`
-	ClosedAt string `json:"closed_at,omitempty"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
-	Additions int    `json:"additions"`
-	Deletions int    `json:"deletions"`
-	ChangedFiles int `json:"changed_files"`
-	Mergeable *bool  `json:"mergeable"`
+	ID             int64  `json:"id"`
+	Number         int    `json:"number"`
+	Title          string `json:"title"`
+	Body           string `json:"body"`
+	HTMLURL        string `json:"html_url"`
+	Draft          bool   `json:"draft"`
+	State          string `json:"state"`
+	Locked         bool   `json:"locked"`
+	ClosedAt       string `json:"closed_at,omitempty"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
+	Additions      int    `json:"additions"`
+	Deletions      int    `json:"deletions"`
+	ChangedFiles   int    `json:"changed_files"`
+	Mergeable      *bool  `json:"mergeable"`
 	MergeableState string `json:"mergeable_state"`
 
 	User struct {

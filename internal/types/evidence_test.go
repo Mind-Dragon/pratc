@@ -54,7 +54,7 @@ func TestDiffHunkJSON(t *testing.T) {
 		NewStart: 40,
 		NewLines: 8,
 		Content:  "@@ -40,5 +40,8 @@\n func Analyze() {\n+    // new line\n     return\n }",
-		Section: "@@ -40,5 +40,8 @@ func Analyze()",
+		Section:  "@@ -40,5 +40,8 @@ func Analyze()",
 	}
 
 	data, err := json.Marshal(hunk)
@@ -203,7 +203,7 @@ func TestReviewResultWithFindings(t *testing.T) {
 				Finding:         "sql_injection",
 				Confidence:      0.95,
 				Location: &CodeLocation{
-					FilePath: "internal/db/query.go",
+					FilePath:  "internal/db/query.go",
 					LineStart: 42,
 				},
 			},

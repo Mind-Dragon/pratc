@@ -22,8 +22,7 @@ var allowedKeys = map[string]struct{}{
 }
 
 // globalOnlyKeys are keys that cannot be set at repo scope.
-var globalOnlyKeys = map[string]struct{}{
-}
+var globalOnlyKeys = map[string]struct{}{}
 
 func ValidateSettings(values map[string]any) error {
 	return ValidateSettingsWithScope(values, ScopeGlobal)

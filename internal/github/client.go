@@ -164,20 +164,20 @@ func (c *Client) FetchPullRequests(ctx context.Context, repo string, opts PullRe
 			UpdatedSince: opts.UpdatedSince,
 		})
 
-	var response struct {
-		Data struct {
-			Repository struct {
-				PullRequests struct {
-					TotalCount int `json:"totalCount"`
-					PageInfo struct {
-						HasNextPage bool    `json:"hasNextPage"`
-						EndCursor   *string `json:"endCursor"`
-					} `json:"pageInfo"`
-					Nodes []pullRequestNode `json:"nodes"`
-				} `json:"pullRequests"`
-			} `json:"repository"`
-		} `json:"data"`
-	}
+		var response struct {
+			Data struct {
+				Repository struct {
+					PullRequests struct {
+						TotalCount int `json:"totalCount"`
+						PageInfo   struct {
+							HasNextPage bool    `json:"hasNextPage"`
+							EndCursor   *string `json:"endCursor"`
+						} `json:"pageInfo"`
+						Nodes []pullRequestNode `json:"nodes"`
+					} `json:"pullRequests"`
+				} `json:"repository"`
+			} `json:"data"`
+		}
 
 		if err := c.graphQL(ctx, query, variables, &response); err != nil {
 			// If GraphQL fails with rate limit, fall back to REST

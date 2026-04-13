@@ -2,27 +2,27 @@ package types
 
 // PR is the shared pull request payload exchanged by the CLI, API, ML service, and web UI.
 type PR struct {
-	ID                string   `json:"id"`
-	Repo              string   `json:"repo"`
-	Number            int      `json:"number"`
-	Title             string   `json:"title"`
-	Body              string   `json:"body"`
-	URL               string   `json:"url"`
-	Author            string   `json:"author"`
-	Labels            []string `json:"labels"`
-	FilesChanged      []string `json:"files_changed"`
-	ReviewStatus      string   `json:"review_status"`
-	CIStatus          string   `json:"ci_status"`
-	Mergeable         string   `json:"mergeable"`
-	BaseBranch        string   `json:"base_branch"`
-	HeadBranch        string   `json:"head_branch"`
-	ClusterID         string   `json:"cluster_id"`
-	CreatedAt         string   `json:"created_at"`
-	UpdatedAt         string   `json:"updated_at"`
-	IsDraft           bool     `json:"is_draft"`
-	IsBot             bool     `json:"is_bot"`
-	Additions         int      `json:"additions"`
-	Deletions         int      `json:"deletions"`
+	ID                string            `json:"id"`
+	Repo              string            `json:"repo"`
+	Number            int               `json:"number"`
+	Title             string            `json:"title"`
+	Body              string            `json:"body"`
+	URL               string            `json:"url"`
+	Author            string            `json:"author"`
+	Labels            []string          `json:"labels"`
+	FilesChanged      []string          `json:"files_changed"`
+	ReviewStatus      string            `json:"review_status"`
+	CIStatus          string            `json:"ci_status"`
+	Mergeable         string            `json:"mergeable"`
+	BaseBranch        string            `json:"base_branch"`
+	HeadBranch        string            `json:"head_branch"`
+	ClusterID         string            `json:"cluster_id"`
+	CreatedAt         string            `json:"created_at"`
+	UpdatedAt         string            `json:"updated_at"`
+	IsDraft           bool              `json:"is_draft"`
+	IsBot             bool              `json:"is_bot"`
+	Additions         int               `json:"additions"`
+	Deletions         int               `json:"deletions"`
 	ChangedFilesCount int               `json:"changed_files_count"`
 	Provenance        map[string]string `json:"provenance,omitempty"`
 }

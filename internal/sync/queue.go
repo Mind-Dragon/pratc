@@ -275,7 +275,7 @@ func (p *SingleRepoQueuePolicy) NextBatch(ctx context.Context, store QueueStore,
 // PRQueueItem represents a single PR in the sync queue
 type PRQueueItem struct {
 	PRNumber    int
-	Priority    int       // Higher = process first
+	Priority    int // Higher = process first
 	Attempts    int
 	LastError   error
 	NextAttempt time.Time // When this item is eligible for processing
@@ -284,10 +284,10 @@ type PRQueueItem struct {
 
 // PRQueue is a thread-safe priority queue with rate limit awareness
 type PRQueue struct {
-	items       []PRQueueItem
-	minBackoff  time.Duration
-	store       *cache.Store
-	mu          sync.Mutex
+	items      []PRQueueItem
+	minBackoff time.Duration
+	store      *cache.Store
+	mu         sync.Mutex
 }
 
 // NewPRQueue creates a new PR queue

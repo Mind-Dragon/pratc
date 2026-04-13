@@ -313,9 +313,9 @@ func TestCorsMiddlewareMultipleAllowedOrigins(t *testing.T) {
 	corsHandler := corsMiddleware(handler)
 
 	tests := []struct {
-		name        string
-		origin      string
-		expectCORS  bool
+		name       string
+		origin     string
+		expectCORS bool
 	}{
 		{"localhost:3000 allowed", "http://localhost:3000", true},
 		{"localhost:8080 allowed", "http://localhost:8080", true},

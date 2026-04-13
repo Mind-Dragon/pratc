@@ -478,11 +478,11 @@ func (m *Mirror) GetDiffStatsBatch(ctx context.Context, prNumbers []int, baseBra
 
 // CommitInfo holds commit metadata from git log.
 type CommitInfo struct {
-	SHA      string
-	Author   string
-	Date     string
-	Subject  string
-	Body     string
+	SHA     string
+	Author  string
+	Date    string
+	Subject string
+	Body    string
 }
 
 // GetCommitLog returns commit history for a PR using git log.

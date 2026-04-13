@@ -67,9 +67,9 @@ func TestReviewContractRegression(t *testing.T) {
 
 	// Contract: Each result must have valid category and priority tier
 	validCategories := map[types.ReviewCategory]bool{
-		types.ReviewCategoryMergeNow:   true,
-		types.ReviewCategoryDuplicateSuperseded:   true,
-		types.ReviewCategoryProblematicQuarantine: true,
+		types.ReviewCategoryMergeNow:                true,
+		types.ReviewCategoryDuplicateSuperseded:     true,
+		types.ReviewCategoryProblematicQuarantine:   true,
 		types.ReviewCategoryMergeAfterFocusedReview: true,
 	}
 
