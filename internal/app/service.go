@@ -51,11 +51,7 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/version"
 )
 
-const (
-	defaultMaxPRs      = 1000
-	duplicateThreshold = 0.90
-	overlapThreshold   = 0.70
-)
+
 
 type Config struct {
 	Now                     func() time.Time
@@ -314,7 +310,7 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 
 	// Attempt ML-backed duplicate detection via Voyage if configured.
 	if s.mlBridge != nil && s.mlBridge.Available() {
-		if mlDups, mlOverlaps, err := s.mlBridge.Duplicates(ctx, repoName, prs, duplicateThreshold, overlapThreshold, logger.RequestIDFromContext(ctx)); err == nil {
+		if mlDups, mlOverlaps, err := s.mlBridge.Duplicates(ctx, repoName, prs, types.DuplicateThreshold, types.OverlapThreshold, logger.RequestIDFromContext(ctx)); err == nil {
 			if len(mlDups) > 0 {
 				duplicates = mlDups
 			}
@@ -600,8 +596,8 @@ func (s Service) Cluster(ctx context.Context, repo string) (types.ClusterRespons
 		DeepCandidateSubsetSize: 0,
 		Model:                   model,
 		Thresholds: types.Thresholds{
-			Duplicate: duplicateThreshold,
-			Overlap:   overlapThreshold,
+			Duplicate: types.DuplicateThreshold,
+			Overlap:   types.OverlapThreshold,
 		},
 		Clusters: clusters,
 	}, nil
@@ -1258,7 +1254,7 @@ func (s Service) applyIntakeControls(input []types.PR) ([]types.PR, truncationMe
 
 	effectiveMaxPRs := s.maxPRs
 	if effectiveMaxPRs == -1 {
-		effectiveMaxPRs = defaultMaxPRs
+		effectiveMaxPRs = types.MaxTarget
 	}
 	if effectiveMaxPRs > 0 && len(output) > effectiveMaxPRs {
 		output = output[:effectiveMaxPRs]
@@ -1278,14 +1274,14 @@ func classifyDuplicates(prs []types.PR, mergedPRs []review.MergedPRRecord) ([]ty
 	for i := 0; i < len(prs); i++ {
 		for j := i + 1; j < len(prs); j++ {
 			score := similarity(prs[i], prs[j])
-			if score < overlapThreshold {
+			if score < types.OverlapThreshold {
 				continue
 			}
 
 			canonical := min(prs[i].Number, prs[j].Number)
 			other := max(prs[i].Number, prs[j].Number)
 
-			if score > duplicateThreshold {
+			if score > types.DuplicateThreshold {
 				group := duplicatesByCanonical[canonical]
 				if group == nil {
 					group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity above duplicate threshold"}
@@ -1310,14 +1306,14 @@ func classifyDuplicates(prs []types.PR, mergedPRs []review.MergedPRRecord) ([]ty
 	for i := 0; i < len(prs); i++ {
 		for _, merged := range mergedPRs {
 			score := similarityWithMerged(prs[i], merged)
-			if score < overlapThreshold {
+			if score < types.OverlapThreshold {
 				continue
 			}
 
 			canonical := prs[i].Number
 			other := -merged.PRNumber
 
-			if score > duplicateThreshold {
+			if score > types.DuplicateThreshold {
 				group := duplicatesByCanonical[canonical]
 				if group == nil {
 					group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity above duplicate threshold (compared against merged history)"}

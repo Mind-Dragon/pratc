@@ -104,8 +104,8 @@ func ClassifyMergeSafety(pr types.PR, conflictPairs []types.ConflictPair) MergeS
 		}
 	}
 
-	if isHighRiskPR(pr) && confidence > 0.79 {
-		confidence = 0.79
+	if isHighRiskPR(pr) && confidence > types.HighRiskConfidenceCap {
+		confidence = types.HighRiskConfidenceCap
 	}
 
 	return MergeSafetyResult{

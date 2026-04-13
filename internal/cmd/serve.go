@@ -24,6 +24,7 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/monitor/data"
 	"github.com/jeffersonnunn/pratc/internal/monitor/server"
 	prsync "github.com/jeffersonnunn/pratc/internal/sync"
+	"github.com/jeffersonnunn/pratc/internal/types"
 	"github.com/spf13/cobra"
 	"golang.org/x/time/rate"
 )
@@ -456,7 +457,7 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 		return
 	}
 	log := logger.FromContext(r.Context())
-	target := 20
+	target := types.DefaultTarget
 	if t := r.URL.Query().Get("target"); t != "" {
 		if parsed, err := strconv.Atoi(t); err == nil && parsed > 0 {
 			target = parsed
