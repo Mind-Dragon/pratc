@@ -24,11 +24,15 @@ Go backend packages. Parent AGENTS.md covers top-level contracts; this covers pa
 | `repo/` | ~300 | Git mirror management (bare repos) | Production |
 | `report/` | ~200 | PDF via fpdf | Production |
 | `testutil/` | ~100 | Fixture loader for fixtures/*.json | Test only |
-| `telemetry/` | 0 | **Empty placeholder** | Not implemented |
-| `models/` | 0 | **Empty placeholder** | Not implemented |
-| `mq/` | 0 | **Empty placeholder** | Not implemented |
-| `search/` | 0 | **Empty placeholder** | Not implemented |
-| `config/` | 0 | **Empty placeholder** | Not implemented |
+| `util/` | ~50 | Shared utilities (strings, tokenization, Jaccard) | Production |
+| `telemetry/ratelimit/` | 1821 | Rate limiting infrastructure (used by sync/, github/, cmd/) | Production |
+| `monitor/` | ~300 | WebSocket server, SSE sync events | Production |
+| `review/` | ~800 | PR review analyzers (quality, reliability, security) | Production |
+| `version/` | ~50 | Build info, version constants | Production |
+| `models/` | — | **Does not exist** | N/A |
+| `mq/` | — | **Does not exist** | N/A |
+| `search/` | — | **Does not exist** | N/A |
+| `config/` | — | **Does not exist** | N/A |
 
 ## Cross-Package Call Graph
 
@@ -48,12 +52,16 @@ internal/sync/ → internal/repo/
 
 ## Known Code Smells
 
-### app/ duplicates planner/ (~70% overlap)
-Both implement: `jaccard()`, `tokenize()`, `buildClusters()`, `clusterKey()`, `sanitizeClusterID()`.
-**Rule:** New clustering logic goes in `planner/`; `app/service.go` calls `planner.New()` instead of duplicating.
+### planning/ is intentional future architecture
+`internal/planning/` (6651 LOC) contains sophisticated planning algorithms with full test coverage:
+- `PoolSelector`: Weighted multi-component priority scoring
+- `HierarchicalPlanner`: 3-level planning reducing O(C(n,k)) to O(C(clusters,c) × C(avg,s))
+- `PairwiseExecutor`: Sharded parallel conflict detection
+- `TimeDecayWindow`: Exponential decay with protected lanes
 
-### planning/ is mostly dead code
-`HierarchicalPlanner`, `PoolSelector` have **zero production callers**. Only `planning/pool.go` utilities are wired. Do not import planning types into app/ until explicitly requested.
+**Status**: NOT wired to production. Production uses `internal/filter/` + `internal/planner/` instead.
+**Decision point**: Wire up in v1.4+ OR delete before release. Do NOT import planning types into app/ until decided.
+See `internal/planning/AGENTS.md` for full details.
 
 ### filter/scorer.go uses bubble sort
 `rankByConflictScore()` is O(n²). Acceptable for n<500 (current scale) but replace with `sort.Slice` if pool caps increase.
