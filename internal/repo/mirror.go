@@ -70,13 +70,23 @@ func (m *Mirror) SetPRFilesCache(cacheStore *cache.Store) {
 }
 
 func DefaultBaseDir() (string, error) {
+	// PRATC_BASE_DIR takes absolute precedence
+	if baseDir := os.Getenv("PRATC_BASE_DIR"); baseDir != "" {
+		return filepath.Join(baseDir, "repos"), nil
+	}
 	if cacheDir := os.Getenv("PRATC_CACHE_DIR"); cacheDir != "" {
 		return filepath.Join(cacheDir, "repos"), nil
 	}
 	if secondaryDir := os.Getenv("PRATC_SECONDARY_CACHE_DIR"); secondaryDir != "" {
 		return filepath.Join(secondaryDir, "repos"), nil
 	}
-	for _, candidate := range []string{"/mnt/clawdata2/pratc", "/mnt/clawdata1/pratc"} {
+	// Build mnt paths from configurable prefix
+	mntPrefix := os.Getenv("PRATC_MNT_PATH_PREFIX")
+	if mntPrefix == "" {
+		mntPrefix = "/mnt/clawdata"
+	}
+	for _, idx := range []string{"2", "1"} {
+		candidate := filepath.Join(mntPrefix+idx, "pratc")
 		if _, err := os.Stat(candidate); err == nil {
 			return filepath.Join(candidate, "repos"), nil
 		}

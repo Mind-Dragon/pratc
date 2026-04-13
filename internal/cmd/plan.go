@@ -49,7 +49,7 @@ func RegisterPlanCommand() {
 				dryRun = true
 			}
 
-			cfg := buildCacheFirstConfig(useCacheFirst)
+			cfg := buildCacheFirstConfig(useCacheFirst, nil)
 			if maxPRs > 0 {
 				cfg.MaxPRs = maxPRs
 			} else if maxPRs == -1 {

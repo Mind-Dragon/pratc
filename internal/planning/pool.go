@@ -428,6 +428,7 @@ const (
 // SelectCandidatesWithClusterCoherence is like SelectCandidates but calculates
 // cluster coherence in the context of all PRs.
 func (ps *PoolSelector) SelectCandidatesWithClusterCoherence(ctx context.Context, repo string, prs []types.PR, targetSize int, decayConfig TimeDecayConfig) *PoolResult {
+	startTime := time.Now()
 	now := ps.Now()
 
 	// First pass: score without cluster context
@@ -465,7 +466,7 @@ func (ps *PoolSelector) SelectCandidatesWithClusterCoherence(ctx context.Context
 		}
 	}
 
-	elapsed := time.Since(now)
+	elapsed := time.Since(startTime)
 
 	return &PoolResult{
 		Repo:          repo,

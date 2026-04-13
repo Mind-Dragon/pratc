@@ -2,7 +2,9 @@ package cache
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -360,8 +362,21 @@ func (s *Store) ClearPRFiles(repo string, prNumber int) error {
 
 func (s *Store) CreateSyncJob(repo string) (SyncJob, error) {
 	now := s.now().UTC()
+
+	// Generate random bytes for unpredictable ID
+	var randBytes [8]byte
+	if _, err := rand.Read(randBytes[:]); err != nil {
+		return SyncJob{}, fmt.Errorf("generate random ID: %w", err)
+	}
+
+	// Combine repo + timestamp + random bytes, hash for final ID
+	hasher := fmt.Sprintf("%s-%d", repo, now.UnixNano())
+	hashed := append([]byte(hasher), randBytes[:]...)
+	sum := make([]byte, hex.EncodedLen(len(hashed)))
+	hex.Encode(sum, hashed)
+
 	job := SyncJob{
-		ID:        fmt.Sprintf("%s-%d", repo, now.UnixNano()),
+		ID:        fmt.Sprintf("%s-%s", repo, hex.EncodeToString(randBytes[:])),
 		Repo:      repo,
 		Status:    SyncJobStatusInProgress,
 		CreatedAt: now,

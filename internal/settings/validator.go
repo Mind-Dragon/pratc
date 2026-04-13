@@ -1,8 +1,15 @@
 package settings
 
 import (
+	"errors"
 	"fmt"
 	"math"
+)
+
+// Sentinel errors for validation wrapping
+var (
+	ErrNotWholeNumber  = errors.New("value is not a whole number")
+	ErrUnsupportedType = errors.New("unsupported type")
 )
 
 var allowedKeys = map[string]struct{}{
@@ -11,13 +18,11 @@ var allowedKeys = map[string]struct{}{
 	"beginning_pr_number": {},
 	"ending_pr_number":    {},
 	"max_prs":             {},
-	"github_token":        {},
 	"analyzer_config":     {},
 }
 
 // globalOnlyKeys are keys that cannot be set at repo scope.
 var globalOnlyKeys = map[string]struct{}{
-	"github_token": {},
 }
 
 func ValidateSettings(values map[string]any) error {
@@ -106,15 +111,15 @@ func toInt(value any) (int, error) {
 		return int(typed), nil
 	case float64:
 		if math.Mod(typed, 1) != 0 {
-			return 0, fmt.Errorf("expected whole number, got %v", typed)
+			return 0, fmt.Errorf("expected whole number, got %v: %w", typed, ErrNotWholeNumber)
 		}
 		return int(typed), nil
 	case float32:
 		if math.Mod(float64(typed), 1) != 0 {
-			return 0, fmt.Errorf("expected whole number, got %v", typed)
+			return 0, fmt.Errorf("expected whole number, got %v: %w", typed, ErrNotWholeNumber)
 		}
 		return int(typed), nil
 	default:
-		return 0, fmt.Errorf("unsupported type %T", value)
+		return 0, fmt.Errorf("unsupported type %T: %w", value, ErrUnsupportedType)
 	}
 }

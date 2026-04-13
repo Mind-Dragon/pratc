@@ -269,8 +269,7 @@ func estimatePairwiseShards(poolSize int) int {
 	if poolSize <= 0 {
 		return 1
 	}
-	const shardSize = 256
-	shards := (poolSize + shardSize - 1) / shardSize
+	shards := (poolSize + types.PairwiseShardSize - 1) / types.PairwiseShardSize
 	if shards < 1 {
 		return 1
 	}

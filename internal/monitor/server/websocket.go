@@ -10,12 +10,38 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/monitor/data"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+// allowedOrigins holds the list of permitted origins for WebSocket connections.
+// It is configured at server startup via NewWebSocketServer.
+var allowedOrigins []string
+
+// SetAllowedOrigins configures the global allowed origins list for WebSocket connections.
+func SetAllowedOrigins(origins []string) {
+	allowedOrigins = origins
+}
+
+// isOriginAllowed checks if the given origin is in the allowed list.
+func isOriginAllowed(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	for _, a := range allowedOrigins {
+		if a == origin {
+			return true
+		}
+	}
+	return false
+}
+
+// newUpgrader creates a websocket.Upgrader with proper origin validation.
+func newUpgrader() websocket.Upgrader {
+	return websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			return isOriginAllowed(origin)
+		},
+	}
 }
 
 // WebSocketServer broadcasts data updates to connected WebSocket clients.
@@ -36,6 +62,7 @@ func NewWebSocketServer(broadcaster *data.Broadcaster) *WebSocketServer {
 
 // ServeHTTP handles WebSocket upgrade requests at /monitor/stream.
 func (s *WebSocketServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	upgrader := newUpgrader()
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return

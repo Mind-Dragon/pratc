@@ -451,3 +451,18 @@ type AnalyzerMetadata struct {
 	// Confidence is the analyzer's confidence scale, ranging from 0.0 to 1.0.
 	Confidence float64 `json:"confidence"`
 }
+
+// Shared constants for the codebase.
+const (
+	// PairwiseShardSize is the number of PRs processed per shard in pairwise comparison.
+	PairwiseShardSize = 256
+
+	// DefaultPoolCap is the default maximum size of a candidate pool.
+	DefaultPoolCap = 64
+
+	// SLO thresholds in milliseconds.
+	AnalyzeSLOMS = 300000 // 300 seconds
+	ClusterSLOMS = 180000 // 180 seconds
+	GraphSLOMS   = 120000 // 120 seconds
+	PlanSLOMS    = 90000  // 90 seconds
+)

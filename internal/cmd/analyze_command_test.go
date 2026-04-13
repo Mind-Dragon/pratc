@@ -38,7 +38,7 @@ func TestBuildAnalyzeConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := buildAnalyzeConfig(tt.useCacheFirst, tt.forceLive, -1, false)
+			cfg := buildAnalyzeConfig(tt.useCacheFirst, tt.forceLive, -1)
 			if cfg.UseCacheFirst != tt.useCacheFirst {
 				t.Fatalf("expected UseCacheFirst=%t, got %t", tt.useCacheFirst, cfg.UseCacheFirst)
 			}
@@ -79,12 +79,12 @@ func TestShouldWarnAnalyzeSync(t *testing.T) {
 func TestBuildCacheFirstConfig(t *testing.T) {
 	t.Parallel()
 
-	cfg := buildCacheFirstConfig(true)
+	cfg := buildCacheFirstConfig(true, nil)
 	if !cfg.UseCacheFirst {
 		t.Fatal("expected UseCacheFirst=true")
 	}
 
-	cfg = buildCacheFirstConfig(false)
+	cfg = buildCacheFirstConfig(false, nil)
 	if cfg.UseCacheFirst {
 		t.Fatal("expected UseCacheFirst=false")
 	}

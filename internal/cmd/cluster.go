@@ -23,7 +23,7 @@ func RegisterClusterCommand() {
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
 
-			service := app.NewService(buildCacheFirstConfig(useCacheFirst))
+			service := app.NewService(buildCacheFirstConfig(useCacheFirst, nil))
 			log.Info("starting cluster", "repo", repo)
 			response, err := service.Cluster(ctx, repo)
 			if err != nil {

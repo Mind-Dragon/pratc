@@ -199,7 +199,7 @@ func RegisterAnalyzeCommand() {
 			)
 			log.Info("analyze budget initialized", "budget", budget.String())
 
-			cfg := buildAnalyzeConfig(useCacheFirst, forceLive, maxPRs, enableReview)
+			cfg := buildAnalyzeConfig(useCacheFirst, forceLive, maxPRs)
 			service := app.NewService(cfg)
 
 			if shouldWarnAnalyzeSync(useCacheFirst, force, forceLive) {
@@ -244,13 +244,12 @@ func RegisterAnalyzeCommand() {
 	rootCmd.AddCommand(command)
 }
 
-func buildAnalyzeConfig(useCacheFirst, forceLive bool, maxPRs int, includeReview bool) app.Config {
-	_ = includeReview
+func buildAnalyzeConfig(useCacheFirst, forceLive bool, maxPRs int) app.Config {
 	return app.Config{AllowLive: forceLive, UseCacheFirst: useCacheFirst, MaxPRs: maxPRs, IncludeReview: true}
 }
 
-func buildCacheFirstConfig(useCacheFirst bool) app.Config {
-	return app.Config{UseCacheFirst: useCacheFirst}
+func buildCacheFirstConfig(useCacheFirst bool, cacheStore *cache.Store) app.Config {
+	return app.Config{UseCacheFirst: useCacheFirst, CacheStore: cacheStore}
 }
 
 func shouldWarnAnalyzeSync(useCacheFirst, force, forceLive bool) bool {

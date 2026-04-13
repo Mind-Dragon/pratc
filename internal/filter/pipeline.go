@@ -31,7 +31,7 @@ func (p *Pipeline) BuildCandidatePool(prs []types.PR, clusterByPR map[int]string
 
 	pool = SortPoolByPriority(pool, p.now)
 
-	cappedPool, capRejections := CapPool(pool, 64)
+	cappedPool, capRejections := CapPool(pool, types.DefaultPoolCap)
 	pool = cappedPool
 	rejections = append(rejections, capRejections...)
 

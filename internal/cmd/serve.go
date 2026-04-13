@@ -310,6 +310,18 @@ func handleAnalyze(w http.ResponseWriter, r *http.Request, service app.Service, 
 	if !ensureGET(w, r) || !ensureRepo(w, repo) {
 		return
 	}
+
+	// Check for active sync job — return 202 Accepted if one is running
+	hasActive, jobID, err := service.GetActiveSyncJob(repo)
+	if err == nil && hasActive {
+		writeHTTPJSON(w, http.StatusAccepted, map[string]any{
+			"sync_status": "in_progress",
+			"job_id":      jobID,
+			"message":     "sync in progress, retry after completion",
+		})
+		return
+	}
+
 	result, err := service.Analyze(r.Context(), repo)
 	if err != nil {
 		writeHTTPError(w, http.StatusInternalServerError, err.Error())
@@ -568,12 +580,6 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst 
 	if err != nil {
 		return err
 	}
-	service := app.NewService(buildCacheFirstConfig(useCacheFirst))
-	settingsStore, err := openSettingsStore()
-	if err != nil {
-		return err
-	}
-	defer settingsStore.Close()
 
 	dbPath := strings.TrimSpace(os.Getenv("PRATC_DB_PATH"))
 	if dbPath == "" {
@@ -585,6 +591,13 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst 
 		return fmt.Errorf("open cache store: %w", err)
 	}
 	defer cacheStore.Close()
+
+	service := app.NewService(buildCacheFirstConfig(useCacheFirst, cacheStore))
+	settingsStore, err := openSettingsStore()
+	if err != nil {
+		return err
+	}
+	defer settingsStore.Close()
 
 	repoSync := newRepoSyncManager("", "")
 
@@ -627,6 +640,8 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst 
 	go monitorBroadcaster.Start(ctx)
 	defer monitorBroadcaster.Stop()
 
+	// Configure WebSocket server with same origin allowlist as CORS
+	server.SetAllowedOrigins(corsAllowedOrigins())
 	websocketServer := server.NewWebSocketServer(monitorBroadcaster)
 	mux.HandleFunc("/monitor/stream", websocketServer.ServeHTTP)
 

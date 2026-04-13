@@ -145,9 +145,9 @@ func (l *Logger) Error(msg string, keyValues ...any) {
 	l.Logger.Error(msg, keyValues...)
 }
 
-// Debug logs a message at ERROR level (DEBUG=ERROR for example).
+// Debug logs a message at DEBUG level.
 func (l *Logger) Debug(msg string, keyValues ...any) {
-	l.Logger.Error(msg, keyValues...)
+	l.Logger.Debug(msg, keyValues...)
 }
 
 // Warn logs a message at WARN level.

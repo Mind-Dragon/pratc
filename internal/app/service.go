@@ -67,6 +67,7 @@ type Config struct {
 	EndingPRNumber          int
 	PrecisionMode           string
 	DeepCandidateSubsetSize int
+	CacheStore              *cache.Store
 }
 
 type Service struct {
@@ -101,30 +102,6 @@ func NewService(cfg Config) Service {
 	token := strings.TrimSpace(cfg.Token)
 
 	if token == "" {
-		settingsDB := os.Getenv("PRATC_SETTINGS_DB")
-		if settingsDB == "" {
-			home, err := os.UserHomeDir()
-			if err == nil {
-				settingsDB = filepath.Join(home, ".pratc", "pratc-settings.db")
-			} else {
-				settingsDB = "./pratc-settings.db"
-			}
-		}
-		if settingsDB != "" {
-			store, err := settings.Open(settingsDB)
-			if err == nil {
-				defer store.Close()
-				globalSettings, err := store.Get(context.Background(), "")
-				if err == nil {
-					if githubToken, ok := globalSettings["github_token"].(string); ok && githubToken != "" {
-						token = strings.TrimSpace(githubToken)
-					}
-				}
-			}
-		}
-	}
-
-	if token == "" {
 		if resolved, err := gh.ResolveToken(context.Background()); err == nil {
 			token = resolved
 		}
@@ -143,7 +120,9 @@ func NewService(cfg Config) Service {
 	includeReview := cfg.IncludeReview
 
 	var cacheStore *cache.Store
-	if useCacheFirst {
+	if cfg.CacheStore != nil {
+		cacheStore = cfg.CacheStore
+	} else if useCacheFirst {
 		dbPath := os.Getenv("PRATC_DB_PATH")
 		if dbPath == "" {
 			home, err := os.UserHomeDir()
@@ -257,18 +236,37 @@ func (s Service) Health() types.HealthResponse {
 	return types.HealthResponse{Status: "ok", Version: version.Version}
 }
 
+// GetActiveSyncJob returns (true, jobID) if there is an active sync job for the given repo.
+func (s Service) GetActiveSyncJob(repo string) (bool, string, error) {
+	if s.cacheStore == nil {
+		return false, "", nil
+	}
+	job, ok, err := s.cacheStore.ResumeSyncJob(repo)
+	if err != nil {
+		return false, "", err
+	}
+	if !ok {
+		return false, "", nil
+	}
+	return true, job.ID, nil
+}
+
 func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisResponse, error) {
 	log := logger.New("app")
 	if ctx != nil {
 		log = logger.FromContext(ctx)
 	}
 
-	startTime := s.now()
+	nowFn := s.now
+	if nowFn == nil {
+		nowFn = func() time.Time { return time.Now().UTC() }
+	}
+	startTime := nowFn()
 	defer func() {
-		durationMs := int(s.now().Sub(startTime).Milliseconds())
+		durationMs := int(nowFn().Sub(startTime).Milliseconds())
 		log.Info("analyze operation completed", "duration_ms", durationMs)
-		if durationMs > 300000 { // 300 seconds = 300000 ms
-			log.Error("analyze operation exceeded SLO", "duration_ms", durationMs, "slo_ms", 300000)
+		if durationMs > types.AnalyzeSLOMS {
+			log.Error("analyze operation exceeded SLO", "duration_ms", durationMs, "slo_ms", types.AnalyzeSLOMS)
 		}
 	}()
 
@@ -304,7 +302,11 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 	dupStart := time.Now()
 	var mergedPRs []review.MergedPRRecord
 	if s.cacheStore != nil {
-		mergedPRs, _ = review.FetchMergedPRs(ctx, s.cacheStore, repoName)
+		var err error
+		mergedPRs, err = review.FetchMergedPRs(ctx, s.cacheStore, repoName)
+		if err != nil {
+			log.Warn("failed to fetch merged PRs", "error", err)
+		}
 	}
 	duplicates, overlaps := classifyDuplicates(prs, mergedPRs)
 	telemetry.StageLatenciesMS["duplicates_ms"] = int(time.Since(dupStart).Milliseconds())
@@ -340,12 +342,12 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 		}
 	}
 	staleStart := time.Now()
-	staleness := buildStaleness(prs, duplicates, s.now())
+	staleness := buildStaleness(prs, duplicates, nowFn())
 	telemetry.StageLatenciesMS["staleness_ms"] = int(time.Since(staleStart).Milliseconds())
 
 	response := types.AnalysisResponse{
 		Repo:                    repoName,
-		GeneratedAt:             s.now().Format(time.RFC3339),
+		GeneratedAt:             nowFn().Format(time.RFC3339),
 		AnalysisTruncated:       meta.AnalysisTruncated,
 		TruncationReason:        meta.TruncationReason,
 		MaxPRsApplied:           meta.MaxPRsApplied,
@@ -386,6 +388,11 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 }
 
 func (s Service) buildReviewPayload(ctx context.Context, repo string, response types.AnalysisResponse) (*types.ReviewResponse, error) {
+	nowFn := s.now
+	if nowFn == nil {
+		nowFn = func() time.Time { return time.Now().UTC() }
+	}
+
 	if len(response.PRs) == 0 {
 		return &types.ReviewResponse{
 			TotalPRs:      0,
@@ -472,7 +479,7 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 			DuplicateGroups: duplicateMap[pr.Number],
 			ConflictPairs:   conflictMap[pr.Number],
 			Staleness:       nil,
-			AnalyzedAt:      s.now(),
+			AnalyzedAt:      nowFn(),
 		}
 		if stale, ok := staleMap[pr.Number]; ok {
 			prData.Staleness = &stale
@@ -546,12 +553,16 @@ func (s Service) Cluster(ctx context.Context, repo string) (types.ClusterRespons
 		log = logger.FromContext(ctx)
 	}
 
-	startTime := s.now()
+	nowFn := s.now
+	if nowFn == nil {
+		nowFn = func() time.Time { return time.Now().UTC() }
+	}
+	startTime := nowFn()
 	defer func() {
-		durationMs := int(s.now().Sub(startTime).Milliseconds())
+		durationMs := int(nowFn().Sub(startTime).Milliseconds())
 		log.Info("cluster operation completed", "duration_ms", durationMs)
-		if durationMs > 180000 { // 180 seconds = 180000 ms
-			log.Error("cluster operation exceeded SLO", "duration_ms", durationMs, "slo_ms", 180000)
+		if durationMs > types.ClusterSLOMS {
+			log.Error("cluster operation exceeded SLO", "duration_ms", durationMs, "slo_ms", types.ClusterSLOMS)
 		}
 	}()
 
@@ -579,7 +590,7 @@ func (s Service) Cluster(ctx context.Context, repo string) (types.ClusterRespons
 
 	return types.ClusterResponse{
 		Repo:                    repoName,
-		GeneratedAt:             s.now().Format(time.RFC3339),
+		GeneratedAt:             nowFn().Format(time.RFC3339),
 		AnalysisTruncated:       meta.AnalysisTruncated,
 		TruncationReason:        meta.TruncationReason,
 		MaxPRsApplied:           meta.MaxPRsApplied,
@@ -601,12 +612,16 @@ func (s Service) Graph(ctx context.Context, repo string) (types.GraphResponse, e
 		log = logger.FromContext(ctx)
 	}
 
-	startTime := s.now()
+	nowFn := s.now
+	if nowFn == nil {
+		nowFn = func() time.Time { return time.Now().UTC() }
+	}
+	startTime := nowFn()
 	defer func() {
-		durationMs := int(s.now().Sub(startTime).Milliseconds())
+		durationMs := int(nowFn().Sub(startTime).Milliseconds())
 		log.Info("graph operation completed", "duration_ms", durationMs)
-		if durationMs > 120000 { // 120 seconds = 120000 ms
-			log.Error("graph operation exceeded SLO", "duration_ms", durationMs, "slo_ms", 120000)
+		if durationMs > types.GraphSLOMS {
+			log.Error("graph operation exceeded SLO", "duration_ms", durationMs, "slo_ms", types.GraphSLOMS)
 		}
 	}()
 
@@ -618,7 +633,7 @@ func (s Service) Graph(ctx context.Context, repo string) (types.GraphResponse, e
 	g := graph.Build(repoName, prs)
 	return types.GraphResponse{
 		Repo:        repoName,
-		GeneratedAt: s.now().Format(time.RFC3339),
+		GeneratedAt: nowFn().Format(time.RFC3339),
 		Nodes:       g.Nodes,
 		Edges:       g.Edges,
 		DOT:         g.DOT(),
@@ -631,12 +646,16 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 		log = logger.FromContext(ctx)
 	}
 
-	startTime := s.now()
+	nowFn := s.now
+	if nowFn == nil {
+		nowFn = func() time.Time { return time.Now().UTC() }
+	}
+	startTime := nowFn()
 	defer func() {
-		durationMs := int(s.now().Sub(startTime).Milliseconds())
+		durationMs := int(nowFn().Sub(startTime).Milliseconds())
 		log.Info("plan operation completed", "duration_ms", durationMs)
-		if durationMs > 90000 { // 90 seconds = 90000 ms
-			log.Error("plan operation exceeded SLO", "duration_ms", durationMs, "slo_ms", 90000)
+		if durationMs > types.PlanSLOMS {
+			log.Error("plan operation exceeded SLO", "duration_ms", durationMs, "slo_ms", types.PlanSLOMS)
 		}
 	}()
 
@@ -698,7 +717,7 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 	if len(pool) == 0 {
 		return types.PlanResponse{
 			Repo:                    repoName,
-			GeneratedAt:             s.now().Format(time.RFC3339),
+			GeneratedAt:             nowFn().Format(time.RFC3339),
 			AnalysisTruncated:       meta.AnalysisTruncated,
 			TruncationReason:        meta.TruncationReason,
 			MaxPRsApplied:           meta.MaxPRsApplied,
@@ -716,20 +735,20 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 	}
 
 	sort.Slice(pool, func(i, j int) bool {
-		left := plannerPriority(pool[i], s.now())
-		right := plannerPriority(pool[j], s.now())
+		left := plannerPriority(pool[i], nowFn())
+		right := plannerPriority(pool[j], nowFn())
 		if left == right {
 			return pool[i].Number < pool[j].Number
 		}
 		return left > right
 	})
 
-	if len(pool) > 64 {
-		for _, pr := range pool[64:] {
+	if len(pool) > types.DefaultPoolCap {
+		for _, pr := range pool[types.DefaultPoolCap:] {
 			rejections = append(rejections, types.PlanRejection{PRNumber: pr.Number, Reason: "candidate pool cap"})
 			planTelemetry.StageDropCounts["candidate_pool_cap"]++
 		}
-		pool = pool[:64]
+		pool = pool[:types.DefaultPoolCap]
 		planTelemetry.PoolSizeAfter = len(pool)
 	}
 
@@ -746,7 +765,7 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 		Pool:        pool,
 		Target:      pickCount,
 		PreFiltered: true,
-		Now:         s.now(),
+		Now:         nowFn(),
 	})
 	if err != nil {
 		return types.PlanResponse{}, fmt.Errorf("plan search: %w", err)
@@ -781,7 +800,7 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 	planTelemetry.StageLatenciesMS["ordering_ms"] = int(time.Since(orderStart).Milliseconds())
 	selected := make([]types.MergePlanCandidate, 0, len(selectedPRs))
 	for _, pr := range selectedPRs {
-		selected = append(selected, candidateFromPR(pr, plannerPriority(pr, s.now()), nil))
+		selected = append(selected, candidateFromPR(pr, plannerPriority(pr, nowFn()), nil))
 	}
 
 	warningGraph := graph.Build(repoName, orderedPRs)
@@ -792,7 +811,7 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 	}
 	ordering := make([]types.MergePlanCandidate, 0, len(orderedPRs))
 	for _, pr := range orderedPRs {
-		ordering = append(ordering, candidateFromPR(pr, plannerPriority(pr, s.now()), warningsByPR[pr.Number]))
+		ordering = append(ordering, candidateFromPR(pr, plannerPriority(pr, nowFn()), warningsByPR[pr.Number]))
 	}
 
 	sort.Slice(rejections, func(i, j int) bool {
@@ -801,7 +820,7 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 
 	return types.PlanResponse{
 		Repo:                    repoName,
-		GeneratedAt:             s.now().Format(time.RFC3339),
+		GeneratedAt:             nowFn().Format(time.RFC3339),
 		AnalysisTruncated:       meta.AnalysisTruncated,
 		TruncationReason:        meta.TruncationReason,
 		MaxPRsApplied:           meta.MaxPRsApplied,
@@ -826,9 +845,13 @@ func (s Service) PlanOmni(ctx context.Context, repo string, selector string) (ty
 		log = logger.FromContext(ctx)
 	}
 
-	startTime := s.now()
+	nowFn := s.now
+	if nowFn == nil {
+		nowFn = func() time.Time { return time.Now().UTC() }
+	}
+	startTime := nowFn()
 	defer func() {
-		durationMs := int(s.now().Sub(startTime).Milliseconds())
+		durationMs := int(nowFn().Sub(startTime).Milliseconds())
 		log.Info("plan omni operation completed", "duration_ms", durationMs)
 	}()
 
@@ -839,11 +862,10 @@ func (s Service) PlanOmni(ctx context.Context, repo string, selector string) (ty
 	}
 
 	// Get all PRs for the repo
-	prs, repoName, _meta, err := s.loadPRs(ctx, repo)
+	prs, repoName, _, err := s.loadPRs(ctx, repo)
 	if err != nil {
 		return types.OmniPlanResponse{}, err
 	}
-	_ = _meta // TODO: use metadata in response
 
 	// Build candidate pool using standard filtering
 	pool := make([]types.PR, 0, len(prs))
@@ -862,8 +884,8 @@ func (s Service) PlanOmni(ctx context.Context, repo string, selector string) (ty
 
 	// Sort by priority
 	sort.Slice(pool, func(i, j int) bool {
-		left := plannerPriority(pool[i], s.now())
-		right := plannerPriority(pool[j], s.now())
+		left := plannerPriority(pool[i], nowFn())
+		right := plannerPriority(pool[j], nowFn())
 		if left == right {
 			return pool[i].Number < pool[j].Number
 		}
@@ -907,7 +929,7 @@ func (s Service) PlanOmni(ctx context.Context, repo string, selector string) (ty
 
 	return types.OmniPlanResponse{
 		Repo:        repoName,
-		GeneratedAt: s.now().Format(time.RFC3339),
+		GeneratedAt: nowFn().Format(time.RFC3339),
 		Selector:    selector,
 		Mode:        "omni_batch",
 		StageCount:  len(stageResults),
@@ -1067,8 +1089,12 @@ func (s Service) tryLoadFromCache(repo string) ([]types.PR, bool) {
 	if s.cacheStore == nil {
 		return nil, false
 	}
+	nowFn := s.now
+	if nowFn == nil {
+		nowFn = func() time.Time { return time.Now().UTC() }
+	}
 	lastSync, err := s.cacheStore.LastSync(repo)
-	if err != nil || s.now().Sub(lastSync) > s.cacheTTL {
+	if err != nil || nowFn().Sub(lastSync) > s.cacheTTL {
 		return nil, false
 	}
 	prs, err := s.cacheStore.ListPRs(cache.PRFilter{Repo: repo})
@@ -1705,8 +1731,7 @@ func estimatePairwiseShards(poolSize int) int {
 	if poolSize <= 0 {
 		return 1
 	}
-	const shardSize = 256
-	shards := (poolSize + shardSize - 1) / shardSize
+	shards := (poolSize + types.PairwiseShardSize - 1) / types.PairwiseShardSize
 	if shards < 1 {
 		return 1
 	}

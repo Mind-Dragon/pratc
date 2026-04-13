@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -25,8 +24,7 @@ func RegisterReportCommand() {
 			}
 
 			// TODO: Implement report generation via internal/report package
-			fmt.Fprintf(os.Stderr, "Report generation not yet implemented. Output would be: %s\n", output)
-			return nil
+			return fmt.Errorf("report generation not yet implemented")
 		},
 	}
 
