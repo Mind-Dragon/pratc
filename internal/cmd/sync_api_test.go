@@ -252,7 +252,9 @@ func TestHandleAnalyzeReturnsImmediateSyncInProgressResponseWhenBackgroundSyncSt
 
 	req := httptest.NewRequest(http.MethodGet, "/api/repos/octo/repo/analyze", nil)
 	rr := httptest.NewRecorder()
-	handleAnalyze(rr, req, app.Service{}, "octo/repo")
+	// Use a properly initialized service with now function
+	svc := app.NewService(app.Config{UseCacheFirst: false})
+	handleAnalyze(rr, req, svc, "octo/repo")
 
 	if rr.Code != http.StatusAccepted {
 		t.Fatalf("expected status 202, got %d body=%s", rr.Code, rr.Body.String())

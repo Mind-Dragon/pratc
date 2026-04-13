@@ -382,31 +382,28 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 // 	writeHTTPJSON(w, http.StatusOK, result)
 // }
 
-// handlePlanOmni is not implemented - service.PlanOmni does not exist
-// func handlePlanOmni(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
-// 	if !ensureGET(w, r) || !ensureRepo(w, repo) {
-// 		return
-// 	}
-// 	target := 20
-// 	if t := r.URL.Query().Get("target"); t != "" {
-// 		if parsed, err := strconv.Atoi(t); err == nil && parsed > 0 {
-// 			target = parsed
-// 		}
-// 	}
-// 	result, err := service.PlanOmni(r.Context(), repo, target)
-// 	if err != nil {
-// 		writeHTTPError(w, http.StatusInternalServerError, err.Error())
-// 		return
-// 	}
-// 	writeHTTPJSON(w, http.StatusOK, result)
-// }
+// handlePlanOmni handles the omni-batch plan endpoint.
+func handlePlanOmni(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
+	if !ensureGET(w, r) || !ensureRepo(w, repo) {
+		return
+	}
+	selector := r.URL.Query().Get("selector")
+	result, err := service.PlanOmni(r.Context(), repo, selector)
+	if err != nil {
+		writeHTTPError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeHTTPJSON(w, http.StatusOK, result)
+}
 
 func parseRepoActionPath(path string) (repo, action string, ok bool) {
 	parts := strings.Split(strings.TrimPrefix(path, "/api/repos/"), "/")
 	if len(parts) < 3 {
 		return "", "", false
 	}
-	return parts[0] + "/" + parts[1], parts[2], true
+	// Join remaining parts for nested actions like sync/stream
+	action = strings.Join(parts[2:], "/")
+	return parts[0] + "/" + parts[1], action, true
 }
 
 func getSyncStatus(repo string) map[string]any {
@@ -649,9 +646,15 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst 
 	mux.HandleFunc("/api/repos/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if strings.HasPrefix(path, "/api/repos/") && strings.Contains(path, "/plan/omni") {
-			// handlePlanOmni is not implemented
-			writeHTTPError(w, http.StatusNotImplemented, "plan/omni endpoint not implemented")
-			return
+			// Extract repo from path
+			parts := strings.Split(strings.TrimPrefix(path, "/api/repos/"), "/")
+			if len(parts) >= 3 {
+				owner := parts[0]
+				repoName := parts[1]
+				fullRepo := owner + "/" + repoName
+				handlePlanOmni(w, r, service, fullRepo)
+				return
+			}
 		}
 		handleRepoAction(w, r, service, repoSync)
 	})

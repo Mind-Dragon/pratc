@@ -31,6 +31,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,7 +42,6 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/logger"
 	"github.com/jeffersonnunn/pratc/internal/ml"
 	"github.com/jeffersonnunn/pratc/internal/planner"
-	"github.com/jeffersonnunn/pratc/internal/planning"
 	"github.com/jeffersonnunn/pratc/internal/repo"
 	"github.com/jeffersonnunn/pratc/internal/review"
 	"github.com/jeffersonnunn/pratc/internal/settings"
@@ -85,14 +85,6 @@ type Service struct {
 	cacheTTL                time.Duration
 	mirrorBaseDir           string
 	mirrorAvailable         bool
-}
-
-type OmniBatchResult struct {
-	Selector   string
-	StageCount int
-	Stages     []StageResult
-	Selected   []int
-	Ordering   []int
 }
 
 const (
@@ -202,55 +194,56 @@ func normalizePrecisionMode(raw string) string {
 	}
 }
 
-func (s *Service) ProcessOmniBatch(selector string, stageSize int, target int) (*OmniBatchResult, error) {
-	expr, err := planning.Parse(selector)
-	if err != nil {
-		return nil, err
-	}
-
-	if s.cacheStore == nil {
-		return nil, fmt.Errorf("cache unavailable")
-	}
-
-	repos, err := s.cacheStore.ListAllRepos()
-	if err != nil {
-		return nil, fmt.Errorf("cache: %w", err)
-	}
-
-	availableIDs := make([]int, 0)
-	for _, repoName := range repos {
-		prs, err := s.cacheStore.ListPRs(cache.PRFilter{Repo: repoName})
-		if err != nil {
-			return nil, fmt.Errorf("cache: %w", err)
-		}
-		for _, pr := range prs {
-			availableIDs = append(availableIDs, pr.Number)
-		}
-	}
-
-	bp := NewBatchProcessor(StageConfig{StageSize: stageSize})
-	stages := bp.Process(expr, availableIDs)
-
-	var allSelected []int
-	for _, stage := range stages {
-		allSelected = append(allSelected, stage.OutputIDs...)
-	}
-
-	if target < 0 {
-		target = 0
-	}
-	if len(allSelected) > target {
-		allSelected = allSelected[:target]
-	}
-
-	return &OmniBatchResult{
-		Selector:   selector,
-		StageCount: len(stages),
-		Stages:     stages,
-		Selected:   allSelected,
-		Ordering:   allSelected,
-	}, nil
-}
+// ProcessOmniBatch is deprecated - use PlanOmni instead
+// func (s *Service) ProcessOmniBatch(selector string, stageSize int, target int) (*OmniBatchResult, error) {
+// 	expr, err := planning.Parse(selector)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+//
+// 	if s.cacheStore == nil {
+// 		return nil, fmt.Errorf("cache unavailable")
+// 	}
+//
+// 	repos, err := s.cacheStore.ListAllRepos()
+// 	if err != nil {
+// 		return nil, fmt.Errorf("cache: %w", err)
+// 	}
+//
+// 	availableIDs := make([]int, 0)
+// 	for _, repoName := range repos {
+// 		prs, err := s.cacheStore.ListPRs(cache.PRFilter{Repo: repoName})
+// 		if err != nil {
+// 			return nil, fmt.Errorf("cache: %w", err)
+// 		}
+// 		for _, pr := range prs {
+// 			availableIDs = append(availableIDs, pr.Number)
+// 		}
+// 	}
+//
+// 	bp := NewBatchProcessor(StageConfig{StageSize: stageSize})
+// 	stages := bp.Process(expr, availableIDs)
+//
+// 	var allSelected []int
+// 	for _, stage := range stages {
+// 		allSelected = append(allSelected, stage.OutputIDs...)
+// 	}
+//
+// 	if target < 0 {
+// 		target = 0
+// 	}
+// 	if len(allSelected) > target {
+// 		allSelected = allSelected[:target]
+// 	}
+//
+// 	return &OmniBatchResult{
+// 		Selector:   selector,
+// 		StageCount: len(stages),
+// 		Stages:     stages,
+// 		Selected:   allSelected,
+// 		Ordering:   allSelected,
+// 	}, nil
+// }
 
 type truncationMeta struct {
 	AnalysisTruncated bool
@@ -823,6 +816,168 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 		Rejections:              rejections,
 		Telemetry:               &planTelemetry,
 	}, nil
+}
+
+// PlanOmni executes an omni-batch plan using selector expressions to define stages.
+// The selector syntax supports ranges (1-5), individual numbers (1,3,5), and wildcards (*).
+func (s Service) PlanOmni(ctx context.Context, repo string, selector string) (types.OmniPlanResponse, error) {
+	log := logger.New("app")
+	if ctx != nil {
+		log = logger.FromContext(ctx)
+	}
+
+	startTime := s.now()
+	defer func() {
+		durationMs := int(s.now().Sub(startTime).Milliseconds())
+		log.Info("plan omni operation completed", "duration_ms", durationMs)
+	}()
+
+	// Parse selector expression into stages
+	stages, err := parseOmniSelector(selector)
+	if err != nil {
+		return types.OmniPlanResponse{}, fmt.Errorf("parse selector: %w", err)
+	}
+
+	// Get all PRs for the repo
+	prs, repoName, _meta, err := s.loadPRs(ctx, repo)
+	if err != nil {
+		return types.OmniPlanResponse{}, err
+	}
+	_ = _meta // TODO: use metadata in response
+
+	// Build candidate pool using standard filtering
+	pool := make([]types.PR, 0, len(prs))
+	for _, pr := range prs {
+		if pr.IsDraft {
+			continue
+		}
+		if pr.Mergeable == "conflicting" {
+			continue
+		}
+		if pr.CIStatus == "failure" {
+			continue
+		}
+		pool = append(pool, pr)
+	}
+
+	// Sort by priority
+	sort.Slice(pool, func(i, j int) bool {
+		left := plannerPriority(pool[i], s.now())
+		right := plannerPriority(pool[j], s.now())
+		if left == right {
+			return pool[i].Number < pool[j].Number
+		}
+		return left > right
+	})
+
+	// Apply selector to get selected PRs
+	selected := make([]int, 0)
+	ordering := make([]int, 0)
+	stageResults := make([]types.OmniPlanStage, 0, len(stages))
+
+	for _, stage := range stages {
+		matched := 0
+		stageSelected := 0
+
+		for _, idx := range stage.Indices {
+			if idx >= 0 && idx < len(pool) {
+				matched++
+				// Check if not already selected
+				alreadySelected := false
+				for _, sel := range selected {
+					if sel == pool[idx].Number {
+						alreadySelected = true
+						break
+					}
+				}
+				if !alreadySelected && stageSelected < stage.Size {
+					selected = append(selected, pool[idx].Number)
+					ordering = append(ordering, pool[idx].Number)
+					stageSelected++
+				}
+			}
+		}
+
+		stageResults = append(stageResults, types.OmniPlanStage{
+			StageSize: stage.Size,
+			Matched:   matched,
+			Selected:  stageSelected,
+		})
+	}
+
+	return types.OmniPlanResponse{
+		Repo:        repoName,
+		GeneratedAt: s.now().Format(time.RFC3339),
+		Selector:    selector,
+		Mode:        "omni_batch",
+		StageCount:  len(stageResults),
+		Stages:      stageResults,
+		Selected:    selected,
+		Ordering:    ordering,
+	}, nil
+}
+
+// omniStage represents a parsed stage from selector expression.
+type omniStage struct {
+	Indices []int // Pool indices to consider
+	Size    int   // Max PRs to select from this stage
+}
+
+// parseOmniSelector parses a selector expression like "1-5,10-15,*" into stages.
+func parseOmniSelector(selector string) ([]omniStage, error) {
+	if selector == "" {
+		return []omniStage{{Indices: []int{}, Size: 20}}, nil
+	}
+
+	parts := strings.Split(selector, ",")
+	stages := make([]omniStage, 0, len(parts))
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		stage := omniStage{Size: 20} // default stage size
+
+		if part == "*" {
+			// Wildcard - will be filled at runtime
+			stage.Indices = []int{}
+		} else if strings.Contains(part, "-") {
+			// Range like "1-5"
+			rangeParts := strings.Split(part, "-")
+			if len(rangeParts) != 2 {
+				return nil, fmt.Errorf("invalid range: %s", part)
+			}
+			start, err1 := strconv.Atoi(rangeParts[0])
+			end, err2 := strconv.Atoi(rangeParts[1])
+			if err1 != nil || err2 != nil {
+				return nil, fmt.Errorf("invalid range numbers: %s", part)
+			}
+			if start > end {
+				return nil, fmt.Errorf("invalid range: start > end")
+			}
+			// Convert to 0-based indices
+			for i := start - 1; i < end; i++ {
+				stage.Indices = append(stage.Indices, i)
+			}
+		} else {
+			// Single number
+			num, err := strconv.Atoi(part)
+			if err != nil {
+				return nil, fmt.Errorf("invalid selector number: %s", part)
+			}
+			stage.Indices = []int{num - 1} // Convert to 0-based
+		}
+
+		stages = append(stages, stage)
+	}
+
+	if len(stages) == 0 {
+		return []omniStage{{Indices: []int{}, Size: 20}}, nil
+	}
+
+	return stages, nil
 }
 
 func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, truncationMeta, error) {

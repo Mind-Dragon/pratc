@@ -28,7 +28,7 @@ func TestV13_NoAutoMerge(t *testing.T) {
 	_ = svc.Graph
 	_ = svc.Plan
 	_ = svc.Health
-	_ = svc.ProcessOmniBatch
+	_ = svc.PlanOmni
 
 	// Verify no auto-merge configuration exists
 	cfg := Config{}
