@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -69,6 +70,15 @@ type Review struct {
 	Author string
 }
 
+func intFromEnv(key string, defaultVal int) int {
+	if v := os.Getenv(key); v != "" {
+		if i, err := strconv.Atoi(v); err == nil {
+			return i
+		}
+	}
+	return defaultVal
+}
+
 func NewClient(cfg Config) *Client {
 	baseURL := strings.TrimRight(cfg.BaseURL, "/")
 	if baseURL == "" {
@@ -76,7 +86,32 @@ func NewClient(cfg Config) *Client {
 	}
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		maxIdleConns := 100
+		if v := intFromEnv("PRATC_HTTP_MAX_IDLE", 0); v > 0 {
+			maxIdleConns = v
+		}
+		maxIdleConnsPerHost := 10
+		if v := intFromEnv("PRATC_HTTP_MAX_IDLE_PER_HOST", 0); v > 0 {
+			maxIdleConnsPerHost = v
+		}
+		idleConnTimeout := 90 * time.Second
+		if v := intFromEnv("PRATC_HTTP_IDLE_TIMEOUT", 0); v > 0 {
+			idleConnTimeout = time.Duration(v) * time.Second
+		}
+		requestTimeout := 30 * time.Second
+		if v := intFromEnv("PRATC_HTTP_TIMEOUT", 0); v > 0 {
+			requestTimeout = time.Duration(v) * time.Second
+		}
+
+		transport := &http.Transport{
+			MaxIdleConns:        maxIdleConns,
+			MaxIdleConnsPerHost: maxIdleConnsPerHost,
+			IdleConnTimeout:     idleConnTimeout,
+		}
+		httpClient = &http.Client{
+			Transport: transport,
+			Timeout:   requestTimeout,
+		}
 	}
 	now := cfg.Now
 	if now == nil {
