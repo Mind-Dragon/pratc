@@ -1,21 +1,82 @@
-MIT License
+# Functional Source License, Version 1.1, Apache 2.0 Future License
 
-Copyright (c) 2026 Jefferson Nunn and contributors
+## Abbreviation
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+FSL-1.1-Apache-2.0
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+## Notice
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Copyright 2026 Jefferson Nunn and contributors
+
+## Terms and Conditions
+
+### Licensor ("We")
+
+The party offering the Software under these Terms and Conditions.
+
+### The Software
+
+The "Software" is each version of the software that we make available under these Terms and Conditions, as indicated by our inclusion of these Terms and Conditions with the Software.
+
+### License Grant
+
+Subject to your compliance with this License Grant, you are hereby granted a non-exclusive, worldwide, non-transferable, royalty-free license under our copyrights to:
+
+1. Reproduce the Software
+2. Display the Software
+3. Distribute the Software
+4. Perform the Software
+5. Create derivative works of the Software
+
+**solely for Non-Commercial Purposes.**
+
+### Non-Commercial Purpose
+
+A "Non-Commercial Purpose" means any use of the Software that is not intended for or directed towards commercial advantage or monetary compensation. For purposes of this license:
+
+- Non-Commercial Purposes include: personal projects, academic research, educational use, internal tooling at non-profit organizations, and open source contributions
+- Commercial Purposes include: selling the Software or derivative works, using the Software in a commercial product or service, providing paid consulting services using the Software, or any use by a for-profit entity in connection with revenue-generating activities
+
+If you intend to use the Software for Commercial Purposes, you must obtain a commercial license from the Licensor. Contact: jefferson@heimdallstrategy.com
+
+### Apache 2.0 Future License
+
+On the date two (2) years after the date we first make the Software available under these Terms and Conditions (the "Change Date"), the Software will automatically be licensed under the Apache License, Version 2.0.
+
+The Apache License, Version 2.0 is available at: https://www.apache.org/licenses/LICENSE-2.0
+
+On the Change Date, all restrictions on Non-Commercial Purposes will cease, and you may use the Software for any purpose permitted under the Apache 2.0 License.
+
+### No Other Rights
+
+These Terms and Conditions do not grant any rights to use trademarks, trade names, or logos of the Licensor, except as required for reasonable attribution.
+
+### Disclaimer of Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+### Acceptance
+
+By using the Software, you agree to these Terms and Conditions. If you do not agree, you may not use the Software.
+
+## FAQ
+
+**Q: Can I use prATC for my company's internal PR management?**
+
+A: No, that would be a Commercial Purpose. You need a commercial license. Contact us at jefferson@heimdallstrategy.com.
+
+**Q: Can I use prATC for my open source project?**
+
+A: Yes! Non-commercial open source projects are permitted under this license.
+
+**Q: Can I host prATC as a service?**
+
+A: No, that would be a Commercial Purpose. You need a commercial license.
+
+**Q: When does prATC become Apache 2.0 licensed?**
+
+A: Two years after the first public release under FSL-1.1-Apache-2.0. After that date, anyone can use it for any purpose under Apache 2.0 terms.
+
+**Q: Can I contribute to prATC?**
+
+A: Yes! We welcome contributions. By contributing, you agree that your contributions are licensed under the same FSL-1.1-Apache-2.0 license.

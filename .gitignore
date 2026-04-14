@@ -3,6 +3,12 @@
 !.gitignore
 !.env.example
 
+# prATC analysis results and workflow outputs
+.pratc/
+.pratc-tree/
+*.pratc.json
+workflows/
+
 # OS / editor
 .DS_Store
 Thumbs.db
