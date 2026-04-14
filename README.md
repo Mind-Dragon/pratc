@@ -34,9 +34,11 @@ make verify-env
 make build
 make test
 
-# Run with Docker Compose
-docker-compose --profile local-ml up
-docker-compose --profile minimax-light up
+# Run API server
+pratc serve --port=7400
+
+# Run web dashboard (dev mode)
+cd web && bun run dev
 ```
 
 ## CLI Commands
@@ -345,26 +347,6 @@ Both dashboards provide:
 
 - **TUI Dashboard:** Terminal showing Jobs, Timeline, and Rate Limit panels with console logs below
 - **Web Dashboard:** Browser interface with interactive cards, timeline visualization, and rate limit gauge
-
-## Docker Compose Profiles
-
-Two profiles are available for different deployment scenarios:
-
-### local-ml
-Full local ML stack with Python clustering service.
-
-```bash
-docker-compose --profile local-ml up
-```
-
-### minimax-light
-Lightweight profile without local ML (uses external APIs).
-
-```bash
-docker-compose --profile minimax-light up
-```
-
-**Note:** The `minimax-light` profile replaces the previous `openrouter-light` naming.
 
 ## Repository Layout
 

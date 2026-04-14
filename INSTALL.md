@@ -140,15 +140,29 @@ cd web && bun run dev
 # Open http://localhost:3000/monitor
 ```
 
-### Docker Compose
+## Deployment Options
+
+### Local Development
 
 ```bash
-# Full stack with local ML service
-docker-compose --profile local-ml up -d
+# Start API server
+pratc serve --port=7400
 
-# Lightweight (no local ML)
-docker-compose --profile minimax-light up -d
+# In another terminal, start web dashboard
+cd web && bun run dev
+
+# Open http://localhost:3000/monitor
 ```
+
+### Production Deployment
+
+For production use, consider:
+
+1. **Systemd service** — Run `pratc serve` as a background service
+2. **Reverse proxy** — nginx or Caddy in front of prATC API
+3. **TLS termination** — Use Let's Encrypt or enterprise CA
+4. **Backup strategy** — Regular SQLite database backups
+5. **Monitoring** — Logs at INFO level for rate limit events
 
 ### Production Deployment
 

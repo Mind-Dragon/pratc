@@ -25,7 +25,7 @@ Run the following command to check that all required tools are installed:
 make verify-env
 ```
 
-This validates that Go, Python 3.11+, uv, Node.js, Bun, Docker, and docker-compose are available on your system.
+This validates that Go, Python 3.11+, uv, Node.js, and Bun are available on your system.
 
 ### Build the Project
 
