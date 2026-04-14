@@ -4,7 +4,7 @@ prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull re
 
 ## Project Status
 
-- **Current release line:** `0.2.x`
+- **Current release line:** `1.3.x`
 - **Current direction:** evidence-backed PR review workflows, merged/open duplicate detection, and safer operator-facing review output
 - **Default API port:** `7400` (reserved prATC range: `7400-7500`)
 

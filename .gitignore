@@ -9,6 +9,15 @@
 *.pratc.json
 workflows/
 
+# Development / agent workspaces (not part of release)
+.sisyphus/
+.worktrees/
+.archives/
+.beads/
+.ruff_cache/
+.docs/
+.plans/
+
 # OS / editor
 .DS_Store
 Thumbs.db

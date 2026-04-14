@@ -41,10 +41,27 @@ check_prerequisites() {
         missing+=("git")
     fi
     
-    # Check for Go (required for building from source)
+    # Check for Go
     if ! command -v go &> /dev/null; then
-        log_warn "Go not found. Will download pre-built binary if available."
+        log_error "Go is required but not installed"
+        log_info "Install Go: https://go.dev/dl/"
+        exit 1
     fi
+    
+    # Check Go version (1.21+)
+    local go_version
+    go_version=$(go version 2>&1 | cut -d' ' -f3 | cut -c3-)
+    local major minor
+    major=$(echo "$go_version" | cut -d'.' -f1)
+    minor=$(echo "$go_version" | cut -d'.' -f2)
+    
+    if [ "$major" -lt 1 ] || { [ "$major" -eq 1 ] && [ "$minor" -lt 21 ]; }; then
+        log_error "Go 1.21+ required (found: $go_version)"
+        log_info "Install Go: https://go.dev/dl/"
+        exit 1
+    fi
+    
+    log_success "Go $go_version detected"
     
     if [ ${#missing[@]} -ne 0 ]; then
         log_error "Missing required tools: ${missing[*]}"
@@ -83,48 +100,6 @@ detect_os() {
     esac
 }
 
-download_binary() {
-    local version="$1"
-    local arch="$2"
-    local os="$3"
-    local tarball="pratc_${version}_${os}_${arch}.tar.gz"
-    local url="https://github.com/${REPO}/releases/download/${version}/${tarball}"
-    
-    log_info "Downloading prATC ${version} for ${os}/${arch}..."
-    
-    if curl -fsSL "$url" -o "/tmp/${tarball}"; then
-        log_success "Downloaded release binary"
-        return 0
-    else
-        log_warn "Pre-built binary not available, building from source..."
-        return 1
-    fi
-}
-
-build_from_source() {
-    log_info "Building prATC from source..."
-    
-    local temp_dir
-    temp_dir=$(mktemp -d)
-    cd "$temp_dir"
-    
-    log_info "Cloning repository..."
-    git clone --depth 1 "https://github.com/${REPO}.git" .
-    
-    log_info "Building binary..."
-    if ! make build; then
-        log_error "Build failed"
-        rm -rf "$temp_dir"
-        exit 1
-    fi
-    
-    log_success "Build complete"
-    cp bin/pratc "${INSTALL_DIR}/pratc"
-    chmod +x "${INSTALL_DIR}/pratc"
-    
-    rm -rf "$temp_dir"
-}
-
 setup_directories() {
     log_info "Setting up directories..."
     
@@ -136,6 +111,28 @@ setup_directories() {
     echo "  Install: $INSTALL_DIR"
     echo "  Cache:   $CACHE_DIR"
     echo "  Config:  $CONFIG_DIR"
+}
+
+build_from_source() {
+    log_info "Building prATC from source..."
+    
+    local temp_dir
+    temp_dir=$(mktemp -d)
+    trap "rm -rf '$temp_dir'" EXIT
+    
+    log_info "Cloning repository..."
+    git clone --depth 1 "https://github.com/${REPO}.git" "$temp_dir"
+    cd "$temp_dir"
+    
+    log_info "Building binary..."
+    if ! make build; then
+        log_error "Build failed"
+        exit 1
+    fi
+    
+    log_success "Build complete"
+    cp bin/pratc "${INSTALL_DIR}/pratc"
+    chmod +x "${INSTALL_DIR}/pratc"
 }
 
 setup_environment() {
@@ -238,22 +235,10 @@ main() {
     arch=$(detect_arch)
     os=$(detect_os)
     
-    # Try to download latest release
-    local latest_version
-    latest_version=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | cut -d'"' -f4 || echo "")
+    log_info "Target: ${os}/${arch}"
+    log_info "Note: prATC builds from source (no pre-built binaries)"
     
-    if [ -n "$latest_version" ]; then
-        if download_binary "$latest_version" "$arch" "$os"; then
-            tar -xzf "/tmp/pratc_${latest_version}_${os}_${arch}.tar.gz" -C "$INSTALL_DIR"
-            rm -f "/tmp/pratc_${latest_version}_${os}_${arch}.tar.gz"
-        else
-            build_from_source
-        fi
-    else
-        log_warn "Could not determine latest version, building from source..."
-        build_from_source
-    fi
-    
+    build_from_source
     setup_environment
     create_example_config
     verify_installation
