@@ -457,21 +457,67 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 		return
 	}
 	log := logger.FromContext(r.Context())
+
+	// Validate target parameter
 	target := types.DefaultTarget
 	if t := r.URL.Query().Get("target"); t != "" {
-		if parsed, err := strconv.Atoi(t); err == nil && parsed > 0 {
-			target = parsed
+		parsed, err := strconv.Atoi(t)
+		if err != nil || parsed <= 0 {
+			writeHTTPError(w, http.StatusBadRequest, "invalid target: must be a positive integer")
+			return
+		}
+		target = parsed
+	}
+
+	// Validate exclude_conflicts parameter (must be true/false if provided)
+	if ec := r.URL.Query().Get("exclude_conflicts"); ec != "" && ec != "true" && ec != "false" {
+		writeHTTPError(w, http.StatusBadRequest, "invalid exclude_conflicts: must be true or false")
+		return
+	}
+
+	// Validate candidate_pool_cap parameter
+	if cpc := r.URL.Query().Get("candidate_pool_cap"); cpc != "" {
+		parsed, err := strconv.Atoi(cpc)
+		if err != nil || parsed <= 0 || parsed > 500 {
+			writeHTTPError(w, http.StatusBadRequest, "invalid candidate_pool_cap: must be an integer between 1 and 500")
+			return
 		}
 	}
+
+	// Validate stale_score_threshold parameter
+	if sst := r.URL.Query().Get("stale_score_threshold"); sst != "" {
+		parsed, err := strconv.ParseFloat(sst, 64)
+		if err != nil || parsed < 0 || parsed > 1 {
+			writeHTTPError(w, http.StatusBadRequest, "invalid stale_score_threshold: must be a float between 0 and 1")
+			return
+		}
+	}
+
+	// Validate score_min parameter
+	if sm := r.URL.Query().Get("score_min"); sm != "" {
+		parsed, err := strconv.ParseFloat(sm, 64)
+		if err != nil || parsed < 0 || parsed > 100 {
+			writeHTTPError(w, http.StatusBadRequest, "invalid score_min: must be a float between 0 and 100")
+			return
+		}
+	}
+
+	// Validate mode parameter
 	mode := formula.ModeCombination
 	if m := r.URL.Query().Get("mode"); m != "" {
 		switch m {
+		case "combination":
+			// already ModeCombination
 		case "permutation":
 			mode = formula.ModePermutation
 		case "with_replacement":
 			mode = formula.ModeWithReplacement
+		default:
+			writeHTTPError(w, http.StatusBadRequest, "invalid mode: must be one of: combination, permutation, with_replacement")
+			return
 		}
 	}
+
 	result, err := service.Plan(r.Context(), repo, target, mode)
 	if err != nil {
 		log.Error("handlePlan: service.Plan failed", "error", err.Error(), "repo", repo, "target", target, "mode", mode)

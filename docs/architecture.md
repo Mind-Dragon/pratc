@@ -563,19 +563,17 @@ psst GITHUB_TOKEN -- pratc analyze --repo=owner/repo
 
 ---
 
-## Code Smells (Known)
+## Code Smells (Historical — v1.4 resolution)
 
-1. **`app/` duplicates `planner/` (~70% overlap)**
-   - Both implement: `jaccard()`, `tokenize()`, `buildClusters()`
-   - Rule: New clustering logic goes in `planner/`
+1. ~~`app/` duplicates `planner/` (~70% overlap)`~~ — **Fixed in v1.4**: Extracted `Tokenize()` and `Jaccard()` to `internal/util/strings.go`. Both packages now import from shared utility.
 
-2. **`planning/` is mostly dead code**
-   - `HierarchicalPlanner`, `PoolSelector` have zero production callers
-   - Only `planning/pool.go` utilities are wired
+2. ~~`planning/` is mostly dead code`~~ — **Fixed in v1.4**: All four `internal/planning/` components are now wired into `planner/planner.go Planner.Plan()`:
+   - `PoolSelector` via `WithPoolSelector` option
+   - `HierarchicalPlanner` via `WithHierarchicalPlanner` option
+   - `PairwiseExecutor` via `WithPairwiseExecutor` option
+   - `TimeDecayWindow` via `WithTimeDecayWindow` option
 
-3. **`filter/scorer.go` uses bubble sort**
-   - `rankByConflictScore()` is O(n²)
-   - Acceptable for n<500, replace with `sort.Slice` if pool caps increase
+3. ~~`filter/scorer.go` uses bubble sort`~~ — **Fixed pre-v1.4**: `rankByConflictScore()` replaced with `sort.Slice`.
 
 ---
 

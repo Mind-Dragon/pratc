@@ -1,6 +1,6 @@
 # AGENTS.md — internal/planning/
 
-Advanced planning algorithms (4984 LOC, 8 files). **Mostly NOT wired into production yet.**
+Advanced planning algorithms (4984 LOC, 8 files). **Fully wired into production as of v1.4.**
 
 ## Architecture
 
@@ -37,14 +37,14 @@ Weighted priority scoring across 5 components. Weights must sum to 1.0.
 
 **Key types:** `HierarchicalConfig`, `HierarchyResult`, `ClusterSelection`
 
-**Status:** NOT wired in production. `useDependencyOrdering()` always returns true (field exists, not configurable).
+**Status:** Wired in production via `planner/planner.go Planner.Plan()`. `depOrderingEnabled` field controls whether dependency ordering is used (was previously hardcoded).
 
 ### PairwiseExecutor (`pairwise.go`)
 Sharded parallel conflict detection with worker pool (sem channel) and early exit.
 
 **Key types:** `ShardConfig`, `ShardMetrics`, `PairwiseResult`
 
-**Status:** NOT wired in production.
+**Status:** Wired in production via `planner/planner.go Planner.Plan()`. Runs as post-ordering enrichment with shard metrics.
 
 ### TimeDecayWindow (`time_decay.go`)
 Exponential decay: `score = e^(-ln(2) × ageHours / halfLifeHours)`
@@ -72,9 +72,9 @@ All implement `error` interface:
 
 ## Gotchas
 
-1. **Production gap:** PoolSelector, HierarchicalPlanner, PairwiseExecutor are implemented but NOT called. Production uses `internal/filter` + `internal/planner` instead.
+1. **HierarchicalPlanner fallback:** When `hierarchicalPlanner.Plan()` returns fewer than 2 candidates, `planner.Plan()` falls back to the standard filter+formula path. Hierarchical planning is optional.
 
-2. **HierarchicalPlanner hardcoded:** `UseDependencyOrdering` field exists but `useDependencyOrdering()` method ignores it (always returns true).
+2. **PairwiseExecutor as enrichment layer:** PairwiseExecutor runs post-ordering on the already-ordered candidate list. It does not replace the graph-based O(n) conflict detection — it enriches it with shard-level metrics.
 
 3. **Weight validation:** `PriorityWeights.Validate()` requires sum within 0.001 of 1.0.
 

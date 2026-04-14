@@ -6,7 +6,17 @@ prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull re
 
 - **Current release line:** `1.3.x`
 - **Current direction:** evidence-backed PR review workflows, merged/open duplicate detection, and safer operator-facing review output
+- **Next roadmap focus:** v1.4 planning integration — wire `internal/planning/` into production so merge planning uses the weighted pool selector, hierarchical planner, pairwise executor, and time-decay scoring
 - **Default API port:** `7400` (reserved prATC range: `7400-7500`)
+
+## Roadmap Snapshot
+
+- **v1.4 — Planning Integration (Q2 2026):** replace the simple scoring path with production use of `internal/planning/`
+  - PoolSelector integration with explainable weighted scoring
+  - HierarchicalPlanner for cluster-aware planning
+  - PairwiseExecutor for sharded conflict detection
+  - TimeDecayWindow for staleness-aware prioritization
+- See [ROADMAP.md](ROADMAP.md) for the full v1.4–v1.6 plan.
 
 ## Documentation
 

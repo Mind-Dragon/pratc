@@ -42,6 +42,7 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/logger"
 	"github.com/jeffersonnunn/pratc/internal/ml"
 	"github.com/jeffersonnunn/pratc/internal/planner"
+	"github.com/jeffersonnunn/pratc/internal/planning"
 	"github.com/jeffersonnunn/pratc/internal/repo"
 	"github.com/jeffersonnunn/pratc/internal/review"
 	"github.com/jeffersonnunn/pratc/internal/settings"
@@ -448,6 +449,10 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 	}
 
 	var allResults []types.ReviewResult
+	log := logger.New("app")
+	if ctx != nil {
+		log = logger.FromContext(ctx)
+	}
 	for _, pr := range response.PRs {
 		clusterLabel := ""
 		if cluster, ok := clusterMap[pr.ClusterID]; ok {
@@ -482,6 +487,8 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 
 		result, err := orchestrator.Review(ctx, prData)
 		if err != nil {
+			// Log but continue — individual PR review failure should not block others
+			log.Warn("review failed for PR", "pr", pr.Number, "repo", repo, "err", err)
 			continue
 		}
 		allResults = append(allResults, result.Result)
@@ -665,171 +672,49 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 		mode = formula.ModeCombination
 	}
 
-	planTelemetry := types.OperationTelemetry{
-		PoolStrategy:     "heuristic_prefilter+formula_tiers",
-		PoolSizeBefore:   len(prs),
-		PoolSizeAfter:    0,
-		GraphDeltaEdges:  0,
-		DecayPolicy:      "none",
-		PairwiseShards:   estimatePairwiseShards(len(prs)),
-		StageLatenciesMS: map[string]int{},
-		StageDropCounts:  map[string]int{},
+	// Create planner with all configured components
+	plannerOpts := []planner.Option{
+		planner.WithNow(nowFn()),
 	}
 
-	clusterStart := time.Now()
-	clusters := planner.New().BuildClusters(prs)
-	planTelemetry.StageLatenciesMS["clusters_ms"] = int(time.Since(clusterStart).Milliseconds())
-	clusterByPR := make(map[int]string)
-	for _, cluster := range clusters {
-		for _, prID := range cluster.PRIDs {
-			clusterByPR[prID] = cluster.ClusterID
+	// Load priority weights from settings store and create pool selector if available
+	settingsDB := os.Getenv("PRATC_SETTINGS_DB")
+	if settingsDB == "" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			settingsDB = filepath.Join(home, ".pratc", "pratc-settings.db")
+		} else {
+			settingsDB = "./pratc-settings.db"
+		}
+	}
+	settingsStore, err := settings.Open(settingsDB)
+	if err == nil {
+		defer settingsStore.Close()
+		repoSettings, err := settingsStore.Get(ctx, repoName)
+		if err == nil {
+			if weights, ok := planning.PriorityWeightsFromSettings(repoSettings); ok {
+				if ps, err := planning.NewPoolSelector(weights); err == nil {
+					plannerOpts = append(plannerOpts, planner.WithPoolSelector(ps))
+				}
+			}
 		}
 	}
 
-	pool := make([]types.PR, 0, len(prs))
-	rejections := make([]types.PlanRejection, 0)
-	for _, pr := range prs {
-		if pr.IsDraft {
-			rejections = append(rejections, types.PlanRejection{PRNumber: pr.Number, Reason: "draft"})
-			planTelemetry.StageDropCounts["draft"]++
-			continue
-		}
-		if pr.Mergeable == "conflicting" {
-			rejections = append(rejections, types.PlanRejection{PRNumber: pr.Number, Reason: "merge conflict"})
-			planTelemetry.StageDropCounts["merge_conflict"]++
-			continue
-		}
-		if pr.CIStatus == "failure" {
-			rejections = append(rejections, types.PlanRejection{PRNumber: pr.Number, Reason: "ci failure"})
-			planTelemetry.StageDropCounts["ci_failure"]++
-			continue
-		}
-		pr.ClusterID = clusterByPR[pr.Number]
-		pool = append(pool, pr)
-	}
-
-	planTelemetry.PoolSizeAfter = len(pool)
-	if len(pool) == 0 {
-		return types.PlanResponse{
-			Repo:                    repoName,
-			GeneratedAt:             nowFn().Format(time.RFC3339),
-			AnalysisTruncated:       meta.AnalysisTruncated,
-			TruncationReason:        meta.TruncationReason,
-			MaxPRsApplied:           meta.MaxPRsApplied,
-			PRWindow:                meta.PRWindow,
-			PrecisionMode:           s.precisionMode,
-			DeepCandidateSubsetSize: 0,
-			Target:                  target,
-			CandidatePoolSize:       0,
-			Strategy:                "formula+graph",
-			Selected:                nil,
-			Ordering:                nil,
-			Rejections:              rejections,
-			Telemetry:               &planTelemetry,
-		}, nil
-	}
-
-	sort.Slice(pool, func(i, j int) bool {
-		left := plannerPriority(pool[i], nowFn())
-		right := plannerPriority(pool[j], nowFn())
-		if left == right {
-			return pool[i].Number < pool[j].Number
-		}
-		return left > right
-	})
-
-	if len(pool) > types.DefaultPoolCap {
-		for _, pr := range pool[types.DefaultPoolCap:] {
-			rejections = append(rejections, types.PlanRejection{PRNumber: pr.Number, Reason: "candidate pool cap"})
-			planTelemetry.StageDropCounts["candidate_pool_cap"]++
-		}
-		pool = pool[:types.DefaultPoolCap]
-		planTelemetry.PoolSizeAfter = len(pool)
-	}
-
-	pickCount := target
-	if pickCount > len(pool) && mode != formula.ModeWithReplacement {
-		pickCount = len(pool)
-	}
-
-	engineConfig := formula.DefaultConfig()
-	engineConfig.Mode = mode
-	engine := formula.NewEngine(engineConfig)
-	searchStart := time.Now()
-	searchResult, err := engine.Search(formula.SearchInput{
-		Pool:        pool,
-		Target:      pickCount,
-		PreFiltered: true,
-		Now:         nowFn(),
-	})
+	// Delegate all scoring, filtering, and planning to the planner
+	planResp, err := planner.New(plannerOpts...).Plan(ctx, repoName, prs, target, mode)
 	if err != nil {
-		return types.PlanResponse{}, fmt.Errorf("plan search: %w", err)
-	}
-	planTelemetry.StageLatenciesMS["formula_search_ms"] = int(time.Since(searchStart).Milliseconds())
-	if searchResult.Telemetry.PairwiseShards > planTelemetry.PairwiseShards {
-		planTelemetry.PairwiseShards = searchResult.Telemetry.PairwiseShards
+		return types.PlanResponse{}, fmt.Errorf("planner: %w", err)
 	}
 
-	// Deduplicate: formula engine may return duplicates in with_replacement mode.
-	// Merge plans require unique PRs.
-	rawSelected := searchResult.Best.Selected
-	seen := make(map[int]struct{}, len(rawSelected))
-	selectedPRs := make([]types.PR, 0, len(rawSelected))
-	for _, pr := range rawSelected {
-		if _, ok := seen[pr.Number]; ok {
-			continue
-		}
-		seen[pr.Number] = struct{}{}
-		selectedPRs = append(selectedPRs, pr)
-	}
-	selectedByNumber := seen
-	for _, pr := range pool {
-		if _, ok := selectedByNumber[pr.Number]; !ok {
-			rejections = append(rejections, types.PlanRejection{PRNumber: pr.Number, Reason: "not selected by strategy"})
-			planTelemetry.StageDropCounts["not_selected_by_strategy"]++
-		}
-	}
+	// Preserve service-level metadata from loadPRs meta
+	planResp.AnalysisTruncated = meta.AnalysisTruncated
+	planResp.TruncationReason = meta.TruncationReason
+	planResp.MaxPRsApplied = meta.MaxPRsApplied
+	planResp.PRWindow = meta.PRWindow
+	planResp.PrecisionMode = s.precisionMode
+	planResp.DeepCandidateSubsetSize = 0
 
-	orderStart := time.Now()
-	orderedPRs := orderSelection(repoName, selectedPRs)
-	planTelemetry.StageLatenciesMS["ordering_ms"] = int(time.Since(orderStart).Milliseconds())
-	selected := make([]types.MergePlanCandidate, 0, len(selectedPRs))
-	for _, pr := range selectedPRs {
-		selected = append(selected, candidateFromPR(pr, plannerPriority(pr, nowFn()), nil))
-	}
-
-	warningGraph := graph.Build(repoName, orderedPRs)
-	warningsByPR := buildConflictWarnings(repoName, orderedPRs)
-	planTelemetry.GraphDeltaEdges = warningGraph.Telemetry.GraphDeltaEdges
-	if warningGraph.Telemetry.PairwiseShards > planTelemetry.PairwiseShards {
-		planTelemetry.PairwiseShards = warningGraph.Telemetry.PairwiseShards
-	}
-	ordering := make([]types.MergePlanCandidate, 0, len(orderedPRs))
-	for _, pr := range orderedPRs {
-		ordering = append(ordering, candidateFromPR(pr, plannerPriority(pr, nowFn()), warningsByPR[pr.Number]))
-	}
-
-	sort.Slice(rejections, func(i, j int) bool {
-		return rejections[i].PRNumber < rejections[j].PRNumber
-	})
-
-	return types.PlanResponse{
-		Repo:                    repoName,
-		GeneratedAt:             nowFn().Format(time.RFC3339),
-		AnalysisTruncated:       meta.AnalysisTruncated,
-		TruncationReason:        meta.TruncationReason,
-		MaxPRsApplied:           meta.MaxPRsApplied,
-		PRWindow:                meta.PRWindow,
-		PrecisionMode:           s.precisionMode,
-		DeepCandidateSubsetSize: 0,
-		Target:                  target,
-		CandidatePoolSize:       len(pool),
-		Strategy:                "formula+graph",
-		Selected:                selected,
-		Ordering:                ordering,
-		Rejections:              rejections,
-		Telemetry:               &planTelemetry,
-	}, nil
+	return planResp, nil
 }
 
 // PlanOmni executes an omni-batch plan using selector expressions to define stages.

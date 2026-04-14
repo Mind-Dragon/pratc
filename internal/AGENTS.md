@@ -8,7 +8,7 @@ Go backend packages. Parent AGENTS.md covers top-level contracts; this covers pa
 |---------|-----|---------|--------|
 | `app/` | 836 | Service facade: Analyze, Cluster, Graph, Plan | Production |
 | `planner/` | 892 | Core planner with functional options | Production |
-| `planning/` | 4984 | Pool selector, hierarchy, pairwise, time decay | **UNWIRED** |
+| `planning/` | 4984 | Pool selector, hierarchy, pairwise, time decay | **Production** |
 | `formula/` | 1004 | Combinatorial engine: P/C/n^k via math/big | Production |
 | `filter/` | 980 | Pre-filter pipeline + scoring | Production |
 | `cmd/` | 1608 | HTTP server, API routes, CORS | Production |
@@ -50,21 +50,23 @@ internal/cache/   internal/formula/  internal/ml/
 internal/sync/ → internal/repo/
 ```
 
-## Known Code Smells
+## Planning Integration (v1.4)
 
-### planning/ is intentional future architecture
-`internal/planning/` (6651 LOC) contains sophisticated planning algorithms with full test coverage:
-- `PoolSelector`: Weighted multi-component priority scoring
-- `HierarchicalPlanner`: 3-level planning reducing O(C(n,k)) to O(C(clusters,c) × C(avg,s))
-- `PairwiseExecutor`: Sharded parallel conflict detection
-- `TimeDecayWindow`: Exponential decay with protected lanes
+`internal/planning/` (6651 LOC) is fully wired to production via `internal/planner/planner.go Planner.Plan()`. All four components use functional options:
 
-**Status**: NOT wired to production. Production uses `internal/filter/` + `internal/planner/` instead.
-**Decision point**: Wire up in v1.4+ OR delete before release. Do NOT import planning types into app/ until decided.
+- **PoolSelector** (`WithPoolSelector`) — Weighted multi-component priority scoring (Staleness 0.30, CI Status 0.25, Security Labels 0.20, Cluster Coherence 0.15, Time Decay 0.10). Settings integration via `PriorityWeights.ToSettings()`/`FromSettings()`. Reason codes for explainability.
+- **HierarchicalPlanner** (`WithHierarchicalPlanner`) — 3-level planning reducing O(C(n,k)) to O(C(clusters,c) × C(avg,s)). Level 1: cluster selection, Level 2: within-cluster ranking, Level 3: topological sort with optional dependency ordering. Falls back to standard ordering if fewer than 2 candidates.
+- **PairwiseExecutor** (`WithPairwiseExecutor`) — Sharded parallel conflict detection with worker pool and early exit. Runs post-ordering as conflict enrichment (does not replace O(n) graph-based detection). Returns shard metrics.
+- **TimeDecayWindow** (`WithTimeDecayWindow`) — Exponential decay with protected lane and MinScore floor. `GetWindowStats()` telemetry captured in Plan() response.
+
+**Call graph update (v1.4):** `app/Plan()` delegates to `planner/planner.go Planner.Plan()` (previously used inline scoring). `app/service.go` still handles service-level metadata (AnalysisTruncated, TruncationReason, MaxPRsApplied, PRWindow, PrecisionMode).
+
 See `internal/planning/AGENTS.md` for full details.
 
+## Code Smells (Historical)
+
 ### filter/scorer.go bubble sort — FIXED
-`rankByConflictScore()` was O(n²) — FIXED in Phase 2, now uses `sort.Slice`
+`rankByConflictScore()` was O(n²) — FIXED in Phase 2, now uses `sort.Slice`.
 
 ## Deviation from Standard Go
 
