@@ -98,7 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Combinatorial formula engine for merge planning
 - Docker Compose profiles for local-ml and minimax-light deployments
 
-[Unreleased]: https://github.com/jeffersonnunn/pratc/compare/v1.3.0...HEAD
-[1.3.0]: https://github.com/jeffersonnunn/pratc/compare/v0.2.0...v1.3.0
-[0.2.0]: https://github.com/jeffersonnunn/pratc/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/jeffersonnunn/pratc/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Mind-Dragon/pratc/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/Mind-Dragon/pratc/compare/v0.2.0...v1.3.0
+[0.2.0]: https://github.com/Mind-Dragon/pratc/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/Mind-Dragon/pratc/releases/tag/v0.1.0

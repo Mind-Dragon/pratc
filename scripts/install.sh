@@ -3,7 +3,7 @@
 # prATC Installer
 # Installs PR Air Traffic Control (prATC) on Linux/macOS systems
 #
-# Usage: curl -fsSL https://raw.githubusercontent.com/jeffersonnunn/pratc/main/scripts/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/Mind-Dragon/pratc/main/scripts/install.sh | bash
 #
 set -euo pipefail
 
@@ -15,7 +15,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-REPO="jeffersonnunn/pratc"
+REPO="Mind-Dragon/pratc"
 INSTALL_DIR="${PRATC_INSTALL_DIR:-$HOME/.local/bin}"
 CACHE_DIR="${PRATC_CACHE_DIR:-$HOME/.cache/pratc}"
 CONFIG_DIR="${PRATC_CONFIG_DIR:-$HOME/.pratc}"

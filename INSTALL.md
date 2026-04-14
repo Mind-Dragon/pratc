@@ -7,7 +7,7 @@ This guide covers installing prATC (PR Air Traffic Control) on Linux and macOS s
 One-line installation for most users:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jeffersonnunn/pratc/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Mind-Dragon/pratc/main/scripts/install.sh | bash
 ```
 
 This will:
@@ -54,7 +54,7 @@ sudo pacman -S go git python uv
 
 ```bash
 # Clone repository
-git clone https://github.com/jeffersonnunn/pratc.git
+git clone https://github.com/Mind-Dragon/pratc.git
 cd pratc
 
 # Verify environment
@@ -262,6 +262,6 @@ For usage examples, see [README.md](README.md).
 
 ## Support
 
-- **Documentation**: https://github.com/jeffersonnunn/pratc/tree/main/docs
-- **Issues**: https://github.com/jeffersonnunn/pratc/issues
+- **Documentation**: https://github.com/Mind-Dragon/pratc/tree/main/docs
+- **Issues**: https://github.com/Mind-Dragon/pratc/issues
 - **Commercial licensing**: jefferson@heimdallstrategy.com
