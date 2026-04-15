@@ -50,7 +50,7 @@ The doc suite now tells one coherent story.
 This is the main unfinished v1.4 gap.
 
 - [x] Remove the hidden maxPRs=1000 default in internal/cmd/analyze.go, internal/cmd/workflow.go, and related help text; no-cap behavior is explicit.
-- [ ] Expose caller-visible cursor/paged access for `ListPRs()` in internal/cache/sqlite.go. The store already pages internally in 1000-row chunks, but callers still receive a full slice; the remaining gap is a streaming or paged API that does not require materializing the entire corpus at once.
+- [x] Expose caller-visible cursor/paged access for `ListPRs()` in internal/cache/sqlite.go. The store now pages internally and exposes caller-visible page/stream access, so callers no longer need to materialize the entire corpus at once.
 - [ ] Confirm the ingest path can represent every PR in the repository end-to-end; verify with a corpus-size fixture or synthetic load.
 - [ ] Preserve the full corpus in storage even when later layers narrow the active queue; verify active filtering never destroys the underlying data.
 - [ ] Keep a reason trail for every item that leaves the active path; verify in report output and rejection metadata.
@@ -142,7 +142,7 @@ This is the proof pass for v1.4.
 These items were useful while the docs and code were out of sync, but they are not current v1.4 blockers anymore:
 
 - `DefaultPoolCap` / `DefaultCandidatePoolCap` hard-cap work: the active filter pipeline does not enforce those caps in the runtime path, so the open work is not "wire the cap". If the project wants a real cap again, that should be reintroduced explicitly and configured deliberately.
-- `ListPRs()` "add pagination" wording: the store already pages internally; the remaining problem is caller-visible streaming/paged access, not the absence of any paging logic at all.
+- `ListPRs()` "add pagination" wording: resolved in mainline by exposing caller-visible paging/streaming access; keep this only as historical context if needed.
 
 ## Notes
 

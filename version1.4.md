@@ -44,6 +44,7 @@ The bucket system is intentionally larger than the old v1.3 review categories. H
 
 - Planning integration is wired through the main app path.
 - The review output sorts queue work by the current priority model.
+- Cache listing now supports caller-visible paged/streaming access.
 - Bootstrap sync can stream directly into the cache store.
 - The docs now have a dedicated milestone summary and a single architecture document.
 
@@ -53,7 +54,6 @@ These are foundation pieces. They are not the remaining v1.4 finish line.
 
 - Remove or make explicit the remaining corpus caps.
 - Make candidate pool limits configurable or eliminate the hard gate.
-- Add pagination to cache listing so large corpora do not require loading everything at once.
 - Prove ingest and sync behavior at 6,000+ PR scale.
 - Formalize the outer-peel layers so garbage, duplicates, and obvious badness are visibly reasoned outcomes.
 - Complete the deeper judgment layers and their reasons.
@@ -62,7 +62,7 @@ These are foundation pieces. They are not the remaining v1.4 finish line.
 ## Next development pass order
 
 1. Corpus coverage and cap removal
-2. Large-corpus proof and pagination
+2. Large-corpus proof and scale validation
 3. Outer peel formalization
 4. Substance scoring and routing
 5. Deep judgment layers

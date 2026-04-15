@@ -152,7 +152,7 @@ What it may not do is silently narrow the corpus.
 ### Known scaling constraints to address
 - `maxPRs` default of 1000 in `internal/cmd/analyze.go` — removed; no-cap behavior is now explicit
 - Legacy pool-cap constants still exist in `internal/types/`, but `BuildCandidatePool()` does not enforce them in the active runtime path
-- `ListPRs()` in `internal/cache/sqlite.go` paginates internally, but callers still receive a full slice — a caller-visible streaming or paged API remains open
+- `ListPRs()` in `internal/cache/sqlite.go` now exposes caller-visible paging/streaming via `PRPage` and `ListPRsIter()`; callers no longer need to materialize the full slice
 - Bootstrap sync in `internal/sync/worker.go` now streams into the cache store
 
 ## Technical reference
