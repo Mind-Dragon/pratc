@@ -1,54 +1,132 @@
 # Roadmap
 
-prATC development roadmap for versions 1.4 through 1.6.
+prATC development roadmap for versions 1.4 through 1.7.
 
-## Version 1.4 — Planning Integration (Q2 2026) — COMPLETED
+## Version 1.4 — Full-Corpus Triage Engine (Q2 2026)
 
 ### Goal
-Wire up the sophisticated planning algorithms in `internal/planning/` to production, replacing the current simple scoring approach.
+Turn prATC into a full-corpus decision engine that can account for every open PR in a large repository, peel away noise in layers, and produce an explainable now/future map for human attention.
 
-### Decision Point
-**Resolved: Planning package was kept.** All four components were successfully wired into `planner/planner.go Planner.Plan()` via functional options. No deletion required.
+### Phase 0 — Foundation (COMPLETED)
 
-### Deliverables
+Work already shipped that v1.4 builds on top of.
 
-#### PoolSelector Integration
-- Weighted multi-component priority scoring (5 components, weights sum to 1.0)
-  - Staleness (0.30): Anti-starvation for old PRs
-  - CI Status (0.25): Prefer green CI
-  - Security Labels (0.20): Elevate security PRs
-  - Cluster Coherence (0.15): Batch similar PRs
-  - Time Decay (0.10): Recency weighting
-- Settings integration: `PriorityWeights.ToSettings()` / `FromSettings()`
-- Explainable scoring: reason codes for each component
-- **Wired:** `planner/planner.go Planner.Plan()` calls `poolSelector.SelectCandidatesWithClusterCoherence()` after filter pipeline
+#### Planning Integration (shipped)
+- PoolSelector: weighted multi-component priority scoring (staleness, CI, security, cluster coherence, time decay)
+- HierarchicalPlanner: 3-level cluster-based planning reducing O(C(n,k)) to O(C(clusters,c) × C(avg,s))
+- PairwiseExecutor: sharded parallel conflict detection with early-exit
+- TimeDecayWindow: exponential decay with protected lanes for security/urgent PRs
+- PriorityWeights configuration with settings round-trip
+- `--planning-strategy` CLI flag (formula or hierarchical)
 
-#### HierarchicalPlanner
-- 3-level planning reducing complexity from O(C(n,k)) to O(C(clusters,c) × C(avg,s))
-  - Level 1: Select clusters by score
-  - Level 2: Rank PRs within clusters
-  - Level 3: Topological sort with dependency ordering
-- Configurable via `HierarchicalConfig`
-- `depOrderingEnabled` field controls dependency ordering (was previously hardcoded via `useDependencyOrdering()` method collision — fixed in v1.4)
-- **Wired:** `planner.Plan()` uses `hierarchicalPlanner.Plan()` as primary path with fallback to standard ordering
+#### Analyst PDF Report (partially shipped)
+- Full PR analysis table with reason codes
+- Spam/junk classification (trivial_change, bot_generated, spam_pattern, malformed, promotional, abandoned_no_activity)
+- Duplicate detail list with similarity scores
+- Category summary section with rollup counts
+- Recommendations section (top-N inspect, close duplicates, close spam, re-engage)
 
-#### PairwiseExecutor
-- Sharded parallel conflict detection with worker pool
-- Early exit on first conflict found
-- Shard metrics for performance monitoring
-- **Wired:** `planner.Plan()` calls `pairwiseExecutor.ExecuteSharded()` post-ordering as conflict enrichment
+#### Review Pipeline (shipped in v1.3)
+- Advisory analyzers for security, reliability, performance, quality
+- Evidence-backed review output with confidence scores
+- PR buckets: merge_now, focused_review, duplicate/superseded, problematic, escalate
 
-#### TimeDecayWindow
-- Exponential decay: `score = e^(-ln(2) × ageHours / halfLifeHours)`
-- Protected lane for security/urgent PRs (bypass decay after `ProtectedHours`)
-- Old critical PRs get `MinScore` floor to prevent starvation
-- **Wired:** `planner.Plan()` calls `timeDecayWindow.GetWindowStats()` for telemetry enrichment
+#### Known debt carried forward
+- 5 pre-existing test failures on main: TestHandleAnalyze (x3), TestCorsMiddleware (x2) in internal/cmd/
+- `maxPRs` default of 1000 in analyze command caps visible corpus
+- `DefaultPoolCap = 100` hard-caps the candidate pool
+- `docs/architecture.md` renamed to `docs/techref.md` (technical reference)
+- `pratc14a.md` remediation plan archived to `docs/archive/pratc14a-remediation.md`; relevant items absorbed into v1.4 workstreams
+
+### Phase A — Corpus Coverage + Baseline Repair
+
+Make the system account for every PR before any judgment is applied. Fix the known debt from Phase 0.
+
+#### Deliverables
+- fix the 5 pre-existing test failures (TestHandleAnalyze x3, TestCorsMiddleware x2)
+- remove the hidden maxPRs=1000 default that silently truncates the corpus
+- make DefaultPoolCap configurable or remove it as a hard gate on analysis coverage
+- ingest the full PR set with no hidden truncation
+- keep every PR represented in storage, analysis, and reporting
+- preserve a reason trail for every decision made about a PR
+- support repositories at 6,000+ PR scale without silently dropping work
+- add a large-corpus fixture or benchmark case for 6,000+ PRs
+
+### Phase B — Outer Peel
+
+Remove the obvious noise before deeper reasoning consumes time.
+
+#### Deliverables
+- layer 1 (garbage): identify abandoned, malformed, empty, and low-signal PRs
+- layer 2 (duplicates): detect repeated ideas, choose canonical, fold the rest
+- layer 3 (obvious badness): classify spam, malware, junkware, structurally broken PRs
+- make every discard reason visible and auditable
+- never silently drop a PR — everything lands in a bucket with a reason
+
+### Phase C — Substance Scoring
+
+Score the remaining work against the things that actually matter.
+
+#### Deliverables
+- layer 4 (substance): score PRs for security, reliability, performance, and roadmap alignment
+- extend existing review analyzers (internal/review/) to emit layer-4 scores
+- assign a composite score and per-dimension reasons
+- let low-scoring PRs fall out of the active queue into low_value bucket
+
+### Phase D — Now vs Future Routing
+
+Separate work that should happen now from work that belongs later.
+
+#### Deliverables
+- layer 5 (temporal routing): split work into current priorities and future priorities
+- keep future items visible but out of the now queue
+- treat "good, but later" as a distinct outcome, not a failure
+
+### Phase E — Deep Judgment Layers
+
+Apply deeper layers to decide what deserves human time.
+
+#### Deliverables
+- layer 6: confidence — do we know enough to trust the judgment?
+- layer 7: dependency — is it blocked on something else?
+- layer 8: blast radius — how much damage if this goes wrong?
+- layer 9: leverage — does it unlock other work?
+- layer 10: ownership — is there a real path to completion?
+- layer 11: stability — is it settled enough to act on?
+- layer 12: mergeability — can it land cleanly?
+- layer 13: strategic weight — does it move the project in the right direction?
+- layer 14: attention cost — how expensive is it for a human to understand?
+- layer 15: reversibility — if we act and regret it, can we undo it?
+- layer 16: signal quality — is this real signal, or noise with good packaging?
+
+### Phase F — Report and Output
+
+Compose the full-corpus report.
+
+#### Deliverables
+- executive summary
+- ranked "do this now" section
+- "defer to future" section
+- duplicates section with canonicals and chains
+- junk/noise section
+- risk and quality scoring section
+- full appendix covering every PR
+- every PR has at least one reason code
+
+### Guardrails
+- no auto-merge
+- no silent exclusion
+- no hidden caps on analysis coverage
+- no PR may vanish without an explanation
+- every bucket must be defensible with reason codes
 
 ### Success Metrics
-- Planning time for 5500 PRs: **<90s target** (benchmark pending — see v1.4-6)
-- Merge plan quality: 20% reduction in conflict detection post-merge (operator feedback pending)
-- User satisfaction: operators report better prioritization (operator feedback pending)
-- **StageDropCounts always populated** — filter rejections (draft, merge_conflict, ci_failure, candidate_pool_cap, not_selected_by_strategy) aggregated unconditionally in `planner.Plan()`
+- every PR in the repo is accounted for
+- every PR lands in a meaningful bucket
+- the report answers "what matters now?" and "what can wait?"
+- the system stays honest about uncertainty
+- 6,000+ PRs are handled as a normal operating case, not an exception
+- all tests on main are green before Phase B begins
 
 ---
 
@@ -145,24 +223,27 @@ Enhance analyzer evidence beyond metadata to include diff analysis, subsystem de
 
 ---
 
-## Beyond 1.6 (Future Considerations)
+## Version 1.7 — Multi-Repo + ML Feedback (Q1 2027)
 
-### Multi-Repo Support
+### Goal
+Extend prATC beyond single-repo operations to multi-repo aggregate analysis and learned improvements from operator decisions.
+
+### Deliverables
+
+#### Multi-Repo Support
 - Aggregate analysis across multiple repositories
 - Cross-repo dependency detection
 - Unified merge planning for monorepo-style workflows
 
-### ML Feedback Loop
+#### ML Feedback Loop
 - Operator decisions as training signals
 - Improve duplicate detection accuracy over time
 - Personalized scoring based on team preferences
 
-### GitHub App Integration
+#### GitHub App Integration
 - OAuth-based authentication (no PAT management)
 - Webhook-triggered analysis (real-time PR updates)
 - Status check integration (block merge on high-risk findings)
-
-**Note:** These are exploratory ideas. None are committed to a release timeline. Focus remains on v1.4-v1.6 deliverables.
 
 ---
 
@@ -171,7 +252,7 @@ Enhance analyzer evidence beyond metadata to include diff analysis, subsystem de
 The following principles apply to all future development:
 
 1. **No auto-merge or auto-approve behavior** — prATC is advisory only
-2. **No GitHub App, OAuth, or webhook expansion** — manual trigger only (unless explicitly approved for v1.6+)
+2. **No GitHub App, OAuth, or webhook expansion** — manual trigger only (unless explicitly approved for v1.7+)
 3. **No claims of high-confidence merge safety from weak metadata-only signals** — evidence must be strong
 4. **Non-commercial use only** — FSL-1.1-Apache-2.0 license (converts to Apache 2.0 after 2 years)
 5. **Read-only by default** — all destructive operations require explicit opt-in

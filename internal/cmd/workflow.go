@@ -166,7 +166,7 @@ Examples:
 	command.Flags().BoolVar(&progress, "progress", true, "Show sync progress while the workflow runs")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch during analyze")
 	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch during analyze")
-	command.Flags().IntVar(&maxPRs, "max-prs", -1, "Max PRs to analyze (-1=default 1000, 0=no cap)")
+	command.Flags().IntVar(&maxPRs, "max-prs", 0, "Max PRs to analyze (0=no cap)")
 	command.Flags().IntVar(&rateLimit, "rate-limit", 5000, "GitHub API rate limit per hour")
 	command.Flags().IntVar(&reserveBuffer, "reserve-buffer", 200, "Minimum requests to keep in reserve")
 	command.Flags().IntVar(&resetBuffer, "reset-buffer", 15, "Seconds to wait after rate limit reset")

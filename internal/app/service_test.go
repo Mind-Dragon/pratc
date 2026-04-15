@@ -215,6 +215,27 @@ func TestAnalyzeAddsMaxPRsMetadata(t *testing.T) {
 	}
 }
 
+func TestAnalyzeDoesNotTruncateByDefaultWhenMaxPRsUnset(t *testing.T) {
+	t.Parallel()
+
+	manifest, err := testutil.LoadManifest()
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	service := NewService(Config{Now: fixedNow})
+	response, err := service.Analyze(context.Background(), manifest.Repo)
+	if err != nil {
+		t.Fatalf("analyze without max prs: %v", err)
+	}
+	if response.AnalysisTruncated {
+		t.Fatalf("expected no truncation when MaxPRs is unset, got reason %q", response.TruncationReason)
+	}
+	if response.TruncationReason != "" {
+		t.Fatalf("expected empty truncation reason when MaxPRs is unset, got %q", response.TruncationReason)
+	}
+}
+
 func TestAnalyzeProvidesAuthFallbackGuidanceForLiveRepoWithoutToken(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
@@ -375,6 +396,44 @@ func TestAnalyzeAndPlanIncludeTelemetryContracts(t *testing.T) {
 	}
 	if len(plan.Telemetry.StageDropCounts) == 0 {
 		t.Fatal("expected plan stage drop counts telemetry")
+	}
+}
+
+func TestPlanDoesNotCapCandidatePoolByDefault(t *testing.T) {
+	t.Parallel()
+
+	store := openTestCache(t)
+	repo := "owner/repo"
+	now := fixedNow()
+	for i := 1; i <= 100; i++ {
+		if err := store.UpsertPR(types.PR{
+			Repo:         repo,
+			Number:       i,
+			Title:        fmt.Sprintf("PR %d", i),
+			URL:          types.GitHubURLPrefix + repo + "/pull/" + fmt.Sprint(i),
+			Author:       "octocat",
+			BaseBranch:   "main",
+			HeadBranch:   "feature",
+			CIStatus:     "success",
+			ReviewStatus: "approved",
+			Mergeable:    "mergeable",
+			UpdatedAt:    now.Format(time.RFC3339),
+			CreatedAt:    now.Add(-time.Hour).Format(time.RFC3339),
+		}); err != nil {
+			t.Fatalf("upsert pr %d: %v", i, err)
+		}
+	}
+	if err := store.SetLastSync(repo, now); err != nil {
+		t.Fatalf("set last sync: %v", err)
+	}
+
+	service := NewService(Config{Now: fixedNow, CacheStore: store, UseCacheFirst: true})
+	response, err := service.Plan(context.Background(), repo, 100, formula.ModeCombination)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if response.CandidatePoolSize != 100 {
+		t.Fatalf("candidate_pool_size = %d, want 100", response.CandidatePoolSize)
 	}
 }
 

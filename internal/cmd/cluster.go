@@ -14,6 +14,7 @@ func RegisterClusterCommand() {
 	var repo string
 	var format string
 	var useCacheFirst bool
+	var forceCache bool
 
 	command := &cobra.Command{
 		Use:   "cluster",
@@ -23,7 +24,7 @@ func RegisterClusterCommand() {
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
 
-			service := app.NewService(buildCacheFirstConfig(useCacheFirst, nil))
+			service := app.NewService(buildCacheFirstConfig(useCacheFirst, forceCache, nil))
 			log.Info("starting cluster", "repo", repo)
 			response, err := service.Cluster(ctx, repo)
 			if err != nil {
@@ -41,6 +42,7 @@ func RegisterClusterCommand() {
 	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
 	command.Flags().StringVar(&format, "format", "json", "Output format: json")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
+	command.Flags().BoolVar(&forceCache, "force-cache", false, "Use stale cached data without triggering a live sync (for offline analysis)")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }

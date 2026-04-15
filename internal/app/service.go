@@ -55,6 +55,7 @@ import (
 type Config struct {
 	Now                     func() time.Time
 	AllowLive               bool
+	AllowForceCache        bool
 	UseCacheFirst           bool
 	IncludeReview           bool
 	Token                   string
@@ -64,11 +65,18 @@ type Config struct {
 	PrecisionMode           string
 	DeepCandidateSubsetSize int
 	CacheStore              *cache.Store
+	PriorityWeights         planning.PriorityWeights
+	TimeDecayConfig        planning.TimeDecayConfig
+	// PlanningStrategy selects the planning algorithm:
+	// "formula" (default) uses combinatorial formula engine after PoolSelector scoring.
+	// "hierarchical" uses HierarchicalPlanner for 3-level cluster-based planning.
+	PlanningStrategy string
 }
 
 type Service struct {
 	now                     func() time.Time
 	allowLive               bool
+	allowForceCache        bool
 	useCacheFirst           bool
 	includeReview           bool
 	token                   string
@@ -82,6 +90,11 @@ type Service struct {
 	cacheTTL                time.Duration
 	mirrorBaseDir           string
 	mirrorAvailable         bool
+	poolSelector            *planning.PoolSelector
+	timeDecayConfig        planning.TimeDecayConfig
+	hierarchicalPlanner    *planning.HierarchicalPlanner
+	pairwiseExecutor       *planning.PairwiseExecutor
+	planningStrategy       string // "formula" (default) or "hierarchical"
 }
 
 const (
@@ -144,6 +157,7 @@ func NewService(cfg Config) Service {
 	return Service{
 		now:                     now,
 		allowLive:               allowLive,
+		allowForceCache:        cfg.AllowForceCache,
 		useCacheFirst:           useCacheFirst,
 		includeReview:           includeReview,
 		token:                   token,
@@ -157,6 +171,11 @@ func NewService(cfg Config) Service {
 		cacheTTL:                cacheTTL,
 		mirrorBaseDir:           mirrorBaseDir,
 		mirrorAvailable:         mirrorAvailable,
+		poolSelector:            mustNewPoolSelector(cfg.PriorityWeights),
+		timeDecayConfig:         resolveTimeDecayConfig(cfg.TimeDecayConfig),
+		hierarchicalPlanner:    mustNewHierarchicalPlanner(mustNewPoolSelector(cfg.PriorityWeights)),
+		pairwiseExecutor:       mustNewPairwiseExecutor(),
+		planningStrategy:       resolvePlanningStrategy(cfg.PlanningStrategy),
 	}
 }
 
@@ -167,6 +186,65 @@ func normalizePrecisionMode(raw string) string {
 	default:
 		return precisionModeFast
 	}
+}
+
+// newPoolSelectorFromConfig creates a PoolSelector from PriorityWeights.
+func newPoolSelectorFromConfig(weights planning.PriorityWeights) *planning.PoolSelector {
+	ps, err := planning.NewPoolSelector(weights)
+	if err != nil {
+		return planning.NewPoolSelectorWithDefaults()
+	}
+	return ps
+}
+
+// mustNewPoolSelector creates a PoolSelector, panics on error.
+func mustNewPoolSelector(weights planning.PriorityWeights) *planning.PoolSelector {
+	// Zero-valued weights are invalid; fall back to defaults.
+	if weights.StalenessWeight == 0 && weights.CIStatusWeight == 0 &&
+		weights.SecurityLabelWeight == 0 && weights.ClusterCoherenceWeight == 0 &&
+		weights.TimeDecayWeight == 0 {
+		return planning.NewPoolSelectorWithDefaults()
+	}
+	ps, err := planning.NewPoolSelector(weights)
+	if err != nil {
+		return planning.NewPoolSelectorWithDefaults()
+	}
+	return ps
+}
+
+// resolveTimeDecayConfig returns the TimeDecayConfig as-is.
+func resolveTimeDecayConfig(cfg planning.TimeDecayConfig) planning.TimeDecayConfig {
+	return cfg
+}
+
+// resolvePlanningStrategy normalises the planning strategy config value.
+func resolvePlanningStrategy(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "hierarchical":
+		return "hierarchical"
+	default:
+		return "formula"
+	}
+}
+
+// mustNewHierarchicalPlanner creates a HierarchicalPlanner with default config.
+func mustNewHierarchicalPlanner(ps *planning.PoolSelector) *planning.HierarchicalPlanner {
+	cfg := planning.DefaultHierarchicalConfig()
+	hp, err := planning.NewHierarchicalPlanner(ps, cfg)
+	if err != nil {
+		// Should not happen with defaults; panic as a safety net.
+		panic("invalid HierarchicalPlanner config: " + err.Error())
+	}
+	return hp
+}
+
+// mustNewPairwiseExecutor creates a PairwiseExecutor with default sharded config.
+func mustNewPairwiseExecutor() *planning.PairwiseExecutor {
+	pe, err := planning.NewPairwiseExecutorWithDefaults()
+	if err != nil {
+		panic("invalid PairwiseExecutor config: " + err.Error())
+	}
+	return pe
 }
 
 // ProcessOmniBatch is deprecated - use PlanOmni instead
@@ -449,10 +527,6 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 	}
 
 	var allResults []types.ReviewResult
-	log := logger.New("app")
-	if ctx != nil {
-		log = logger.FromContext(ctx)
-	}
 	for _, pr := range response.PRs {
 		clusterLabel := ""
 		if cluster, ok := clusterMap[pr.ClusterID]; ok {
@@ -487,8 +561,6 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 
 		result, err := orchestrator.Review(ctx, prData)
 		if err != nil {
-			// Log but continue — individual PR review failure should not block others
-			log.Warn("review failed for PR", "pr", pr.Number, "repo", repo, "err", err)
 			continue
 		}
 		allResults = append(allResults, result.Result)
@@ -672,49 +744,206 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 		mode = formula.ModeCombination
 	}
 
-	// Create planner with all configured components
-	plannerOpts := []planner.Option{
-		planner.WithNow(nowFn()),
+	planTelemetry := types.OperationTelemetry{
+		PoolStrategy:     "heuristic_prefilter+formula_tiers",
+		PoolSizeBefore:   len(prs),
+		PoolSizeAfter:    0,
+		GraphDeltaEdges:  0,
+		DecayPolicy:      "none",
+		PairwiseShards:   estimatePairwiseShards(len(prs)),
+		StageLatenciesMS: map[string]int{},
+		StageDropCounts:  map[string]int{},
 	}
 
-	// Load priority weights from settings store and create pool selector if available
-	settingsDB := os.Getenv("PRATC_SETTINGS_DB")
-	if settingsDB == "" {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			settingsDB = filepath.Join(home, ".pratc", "pratc-settings.db")
-		} else {
-			settingsDB = "./pratc-settings.db"
+	clusterStart := time.Now()
+	clusters := planner.New().BuildClusters(prs)
+	planTelemetry.StageLatenciesMS["clusters_ms"] = int(time.Since(clusterStart).Milliseconds())
+	clusterByPR := make(map[int]string)
+	for _, cluster := range clusters {
+		for _, prID := range cluster.PRIDs {
+			clusterByPR[prID] = cluster.ClusterID
 		}
 	}
-	settingsStore, err := settings.Open(settingsDB)
-	if err == nil {
-		defer settingsStore.Close()
-		repoSettings, err := settingsStore.Get(ctx, repoName)
-		if err == nil {
-			if weights, ok := planning.PriorityWeightsFromSettings(repoSettings); ok {
-				if ps, err := planning.NewPoolSelector(weights); err == nil {
-					plannerOpts = append(plannerOpts, planner.WithPoolSelector(ps))
-				}
+
+	pool := make([]types.PR, 0, len(prs))
+	rejections := make([]types.PlanRejection, 0)
+	for _, pr := range prs {
+		if pr.IsDraft {
+			rejections = append(rejections, types.PlanRejection{PRNumber: pr.Number, Reason: "draft"})
+			planTelemetry.StageDropCounts["draft"]++
+			continue
+		}
+		if pr.Mergeable == "conflicting" {
+			rejections = append(rejections, types.PlanRejection{PRNumber: pr.Number, Reason: "merge conflict"})
+			planTelemetry.StageDropCounts["merge_conflict"]++
+			continue
+		}
+		if pr.CIStatus == "failure" {
+			rejections = append(rejections, types.PlanRejection{PRNumber: pr.Number, Reason: "ci failure"})
+			planTelemetry.StageDropCounts["ci_failure"]++
+			continue
+		}
+		pr.ClusterID = clusterByPR[pr.Number]
+		pool = append(pool, pr)
+	}
+
+	planTelemetry.PoolSizeAfter = len(pool)
+	if len(pool) == 0 {
+		return types.PlanResponse{
+			Repo:                    repoName,
+			GeneratedAt:             nowFn().Format(time.RFC3339),
+			AnalysisTruncated:       meta.AnalysisTruncated,
+			TruncationReason:        meta.TruncationReason,
+			MaxPRsApplied:           meta.MaxPRsApplied,
+			PRWindow:                meta.PRWindow,
+			PrecisionMode:           s.precisionMode,
+			DeepCandidateSubsetSize: 0,
+			Target:                  target,
+			CandidatePoolSize:       0,
+			Strategy:                "formula+graph",
+			Selected:                nil,
+			Ordering:                nil,
+			Rejections:              rejections,
+			Telemetry:               &planTelemetry,
+		}, nil
+	}
+
+	// Use PoolSelector for weighted scoring and time-decay windowing.
+	poolResult := s.poolSelector.SelectCandidates(ctx, repoName, pool, target, s.timeDecayConfig)
+	planTelemetry.PoolStrategy = poolResult.Telemetry.PoolStrategy
+	planTelemetry.DecayPolicy = poolResult.Telemetry.DecayPolicy
+	planTelemetry.PoolSizeAfter = poolResult.SelectedCount
+
+	// Build lookup from PR number to PoolSelector candidate for rationale injection.
+	poolCandidateByNum := make(map[int]planning.PoolCandidate, len(poolResult.Selected))
+	for _, pc := range poolResult.Selected {
+		poolCandidateByNum[pc.PR.Number] = pc
+	}
+
+	// Convert PoolResult.Selected back to []types.PR for the formula engine.
+	poolPRs := make([]types.PR, 0, len(poolResult.Selected))
+	for _, pc := range poolResult.Selected {
+		poolPRs = append(poolPRs, pc.PR)
+	}
+
+	// Route to hierarchical or formula planner based on planningStrategy.
+	var selectedPRs []types.PR
+	var orderedPRs []types.PR
+	if s.planningStrategy == "hierarchical" {
+		planTelemetry.PlanningStrategy = "hierarchical"
+		planTelemetry = s.runHierarchicalPlan(ctx, repoName, poolPRs, poolCandidateByNum, planTelemetry, &rejections)
+		// Build selectedPRs from the updated rejections by finding non-rejected PRs.
+		selectedByNum := make(map[int]bool)
+		for _, pr := range poolPRs {
+			selectedByNum[pr.Number] = true
+		}
+		for _, r := range rejections {
+			delete(selectedByNum, r.PRNumber)
+		}
+		for _, pr := range poolPRs {
+			if selectedByNum[pr.Number] {
+				selectedPRs = append(selectedPRs, pr)
 			}
 		}
+		// orderedPRs will be rebuilt below using orderSelection.
+		orderedPRs = orderSelection(repoName, selectedPRs)
+	} else {
+		planTelemetry.PlanningStrategy = "formula"
+		// Formula engine path (existing code).
+		pickCount := target
+		if pickCount > len(poolPRs) && mode != formula.ModeWithReplacement {
+			pickCount = len(poolPRs)
+		}
+
+		engineConfig := formula.DefaultConfig()
+		engineConfig.Mode = mode
+		engine := formula.NewEngine(engineConfig)
+		searchStart := time.Now()
+		searchResult, err := engine.Search(formula.SearchInput{
+			Pool:        poolPRs,
+			Target:      pickCount,
+			PreFiltered: true,
+			Now:         nowFn(),
+		})
+		if err != nil {
+			return types.PlanResponse{}, fmt.Errorf("plan search: %w", err)
+		}
+		planTelemetry.StageLatenciesMS["formula_search_ms"] = int(time.Since(searchStart).Milliseconds())
+		if searchResult.Telemetry.PairwiseShards > planTelemetry.PairwiseShards {
+			planTelemetry.PairwiseShards = searchResult.Telemetry.PairwiseShards
+		}
+
+		// Deduplicate: formula engine may return duplicates in with_replacement mode.
+		rawSelected := searchResult.Best.Selected
+		seen := make(map[int]struct{}, len(rawSelected))
+		selectedPRs = make([]types.PR, 0, len(rawSelected))
+		for _, pr := range rawSelected {
+			if _, ok := seen[pr.Number]; ok {
+				continue
+			}
+			seen[pr.Number] = struct{}{}
+			selectedPRs = append(selectedPRs, pr)
+		}
+		selectedByNumber := seen
+		for _, pr := range poolPRs {
+			if _, ok := selectedByNumber[pr.Number]; !ok {
+				rejections = append(rejections, types.PlanRejection{PRNumber: pr.Number, Reason: "not selected by strategy"})
+				planTelemetry.StageDropCounts["not_selected_by_strategy"]++
+			}
+		}
+
+		orderStart := time.Now()
+		orderedPRs = orderSelection(repoName, selectedPRs)
+		planTelemetry.StageLatenciesMS["ordering_ms"] = int(time.Since(orderStart).Milliseconds())
 	}
 
-	// Delegate all scoring, filtering, and planning to the planner
-	planResp, err := planner.New(plannerOpts...).Plan(ctx, repoName, prs, target, mode)
-	if err != nil {
-		return types.PlanResponse{}, fmt.Errorf("planner: %w", err)
+	// Build conflict warnings before creating candidates that need them.
+	warningGraph := graph.Build(repoName, orderedPRs)
+	warningsByPR := buildConflictWarnings(repoName, orderedPRs)
+	planTelemetry.GraphDeltaEdges = warningGraph.Telemetry.GraphDeltaEdges
+	if warningGraph.Telemetry.PairwiseShards > planTelemetry.PairwiseShards {
+		planTelemetry.PairwiseShards = warningGraph.Telemetry.PairwiseShards
 	}
 
-	// Preserve service-level metadata from loadPRs meta
-	planResp.AnalysisTruncated = meta.AnalysisTruncated
-	planResp.TruncationReason = meta.TruncationReason
-	planResp.MaxPRsApplied = meta.MaxPRsApplied
-	planResp.PRWindow = meta.PRWindow
-	planResp.PrecisionMode = s.precisionMode
-	planResp.DeepCandidateSubsetSize = 0
+	selected := make([]types.MergePlanCandidate, 0, len(selectedPRs))
+	for _, pr := range selectedPRs {
+		if pc, ok := poolCandidateByNum[pr.Number]; ok {
+			selected = append(selected, poolPlanCandidateFrom(pc, warningsByPR[pr.Number]))
+		} else {
+			selected = append(selected, candidateFromPR(pr, plannerPriority(pr, nowFn()), warningsByPR[pr.Number]))
+		}
+	}
 
-	return planResp, nil
+	ordering := make([]types.MergePlanCandidate, 0, len(orderedPRs))
+	for _, pr := range orderedPRs {
+		if pc, ok := poolCandidateByNum[pr.Number]; ok {
+			ordering = append(ordering, poolPlanCandidateFrom(pc, warningsByPR[pr.Number]))
+		} else {
+			ordering = append(ordering, candidateFromPR(pr, plannerPriority(pr, nowFn()), warningsByPR[pr.Number]))
+		}
+	}
+
+	sort.Slice(rejections, func(i, j int) bool {
+		return rejections[i].PRNumber < rejections[j].PRNumber
+	})
+
+	return types.PlanResponse{
+		Repo:                    repoName,
+		GeneratedAt:             nowFn().Format(time.RFC3339),
+		AnalysisTruncated:       meta.AnalysisTruncated,
+		TruncationReason:        meta.TruncationReason,
+		MaxPRsApplied:           meta.MaxPRsApplied,
+		PRWindow:                meta.PRWindow,
+		PrecisionMode:           s.precisionMode,
+		DeepCandidateSubsetSize: 0,
+		Target:                  target,
+		CandidatePoolSize:       len(poolPRs),
+		Strategy:                "formula+graph",
+		Selected:                selected,
+		Ordering:                ordering,
+		Rejections:              rejections,
+		Telemetry:               &planTelemetry,
+	}, nil
 }
 
 // PlanOmni executes an omni-batch plan using selector expressions to define stages.
@@ -920,6 +1149,19 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 	}
 
 	if s.useCacheFirst && !s.allowLive {
+		// Fallback: if allowForceCache is set, try loading from cache even if stale
+		// This bypasses the cache TTL check to allow analysis of old-but-valid cached data
+		if s.allowForceCache && s.cacheStore != nil {
+			if cachedPRs, err := s.cacheStore.ListPRs(cache.PRFilter{Repo: targetRepo}); err == nil && len(cachedPRs) > 0 {
+				filtered, meta := s.applyIntakeControls(cachedPRs)
+				meta.LiveSource = false
+				writeLivePhaseStatus(log, "stale cache loaded, starting analysis", len(filtered))
+				if s.mirrorAvailable || s.token != "" {
+					s.enrichPRsWithFilesFromMirrorOrGraphQL(ctx, targetRepo, filtered)
+				}
+				return filtered, targetRepo, meta, nil
+			}
+		}
 		return nil, "", truncationMeta{}, fmt.Errorf("sync first: run `pratc sync --repo=%s` before analyze, or rerun with explicit live override", targetRepo)
 	}
 
@@ -1136,8 +1378,8 @@ func (s Service) applyIntakeControls(input []types.PR) ([]types.PR, truncationMe
 	}
 
 	effectiveMaxPRs := s.maxPRs
-	if effectiveMaxPRs == -1 {
-		effectiveMaxPRs = types.MaxTarget
+	if effectiveMaxPRs < 0 {
+		effectiveMaxPRs = 0
 	}
 	if effectiveMaxPRs > 0 && len(output) > effectiveMaxPRs {
 		output = output[:effectiveMaxPRs]
@@ -1422,6 +1664,107 @@ func candidateFromPR(pr types.PR, score float64, warnings []string) types.MergeP
 		FilesTouched:     files,
 		ConflictWarnings: warnings,
 	}
+}
+
+// poolPlanCandidateFrom converts a PoolSelector PoolCandidate to a MergePlanCandidate.
+func poolPlanCandidateFrom(pc planning.PoolCandidate, warnings []string) types.MergePlanCandidate {
+	files := pc.PR.FilesChanged
+	if files == nil {
+		files = []string{}
+	}
+	if warnings == nil {
+		warnings = []string{}
+	}
+	return types.MergePlanCandidate{
+		PRNumber:         pc.PR.Number,
+		Title:            pc.PR.Title,
+		Score:            round(pc.PriorityScore, 4),
+		Rationale:        formatPoolCandidateRationale(pc),
+		Reasons:          pc.ReasonCodes,
+		FilesTouched:     files,
+		ConflictWarnings: warnings,
+	}
+}
+
+// formatPoolCandidateRationale formats PoolSelector reason codes into a human-readable rationale.
+func formatPoolCandidateRationale(pc planning.PoolCandidate) string {
+	if len(pc.ReasonCodes) == 0 {
+		return "weighted priority scoring"
+	}
+	// Map reason codes to human-readable keywords.
+	var components []string
+	for _, code := range pc.ReasonCodes {
+		switch code {
+		case "staleness":
+			components = append(components, "staleness")
+		case "ci_status":
+			components = append(components, "ci")
+		case "security_label":
+			components = append(components, "security")
+		case "cluster":
+			components = append(components, "cluster")
+		case "recency", "time_decay":
+			components = append(components, "recency")
+		default:
+			components = append(components, code)
+		}
+	}
+	if len(components) == 0 {
+		return "weighted priority scoring"
+	}
+	return components[0] + " weighted"
+}
+
+// formatPriorityTier converts a priority score to a tier label.
+func formatPriorityTier(score float64) string {
+	if score >= 0.8 {
+		return "critical"
+	}
+	if score >= 0.6 {
+		return "high"
+	}
+	if score >= 0.4 {
+		return "medium"
+	}
+	return "low"
+}
+
+// runHierarchicalPlan executes the HierarchicalPlanner 3-level planning pipeline.
+func (s Service) runHierarchicalPlan(
+	ctx context.Context,
+	repo string,
+	prs []types.PR,
+	poolCandidateByNum map[int]planning.PoolCandidate,
+	telemetry types.OperationTelemetry,
+	outRejections *[]types.PlanRejection,
+) types.OperationTelemetry {
+	if len(prs) == 0 {
+		return telemetry
+	}
+
+	hierarchyStart := time.Now()
+	result := s.hierarchicalPlanner.Plan(ctx, repo, prs, s.timeDecayConfig)
+	telemetry.PlanningStrategy = "hierarchical"
+	telemetry.HierarchicalComplexityReduction = result.ComplexityReduction
+
+	// Merge hierarchy rejections into the output rejections list.
+	for _, hr := range result.Rejections {
+		*outRejections = append(*outRejections, types.PlanRejection{
+			PRNumber: hr.PRNumber,
+			Reason:   hr.Reason,
+		})
+	}
+
+	// Copy hierarchical stage latencies into telemetry.
+	for k, v := range result.Telemetry.StageLatenciesMS {
+		if telemetry.StageLatenciesMS == nil {
+			telemetry.StageLatenciesMS = make(map[string]int)
+		}
+		telemetry.StageLatenciesMS[k] = v
+	}
+
+	telemetry.StageLatenciesMS["hierarchical_plan_ms"] = int(time.Since(hierarchyStart).Milliseconds())
+	return telemetry
 }
 
 func plannerPriority(pr types.PR, now time.Time) float64 {

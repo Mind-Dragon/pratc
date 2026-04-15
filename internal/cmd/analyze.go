@@ -177,6 +177,7 @@ func RegisterAnalyzeCommand() {
 	var format string
 	var useCacheFirst bool
 	var forceLive bool
+	var forceCache bool
 	var force bool
 	var maxPRs int
 	var rateLimit int
@@ -199,10 +200,10 @@ func RegisterAnalyzeCommand() {
 			)
 			log.Info("analyze budget initialized", "budget", budget.String())
 
-			cfg := buildAnalyzeConfig(useCacheFirst, forceLive, maxPRs)
+			cfg := buildAnalyzeConfig(useCacheFirst, forceLive, forceCache, maxPRs)
 			service := app.NewService(cfg)
 
-			if shouldWarnAnalyzeSync(useCacheFirst, force, forceLive) {
+			if shouldWarnAnalyzeSync(useCacheFirst, force, forceLive, forceCache) {
 				if openPRCount, hasOpenPRCount, shouldWarn := checkAnalyzeSyncWarningData(repo); shouldWarn {
 					fmt.Fprint(os.Stderr, formatAnalyzeSyncWarning(repo, openPRCount, hasOpenPRCount))
 					jobID, err := startAnalyzeBackgroundSync(repo)
@@ -232,9 +233,10 @@ func RegisterAnalyzeCommand() {
 	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
 	command.Flags().StringVar(&format, "format", "json", "Output format: json|text")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
+	command.Flags().BoolVar(&forceCache, "force-cache", false, "Use stale cached data without triggering a live sync (for offline analysis)")
 	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch")
 	command.Flags().BoolVar(&force, "force", false, "Compatibility flag to skip sync warning")
-	command.Flags().IntVar(&maxPRs, "max-prs", -1, "Max PRs to analyze (-1=default 1000, 0=no cap)")
+	command.Flags().IntVar(&maxPRs, "max-prs", 0, "Max PRs to analyze (0=no cap)")
 	command.Flags().IntVar(&rateLimit, "rate-limit", 5000, "GitHub API rate limit per hour")
 	command.Flags().IntVar(&reserveBuffer, "reserve-buffer", 200, "Minimum requests to keep in reserve")
 	command.Flags().IntVar(&resetBuffer, "reset-buffer", 15, "Seconds to wait after rate limit reset")
@@ -244,16 +246,16 @@ func RegisterAnalyzeCommand() {
 	rootCmd.AddCommand(command)
 }
 
-func buildAnalyzeConfig(useCacheFirst, forceLive bool, maxPRs int) app.Config {
-	return app.Config{AllowLive: forceLive, UseCacheFirst: useCacheFirst, MaxPRs: maxPRs, IncludeReview: true}
+func buildAnalyzeConfig(useCacheFirst, forceLive, forceCache bool, maxPRs int) app.Config {
+	return app.Config{AllowLive: forceLive, AllowForceCache: forceCache, UseCacheFirst: useCacheFirst, MaxPRs: maxPRs, IncludeReview: true}
 }
 
-func buildCacheFirstConfig(useCacheFirst bool, cacheStore *cache.Store) app.Config {
-	return app.Config{UseCacheFirst: useCacheFirst, CacheStore: cacheStore}
+func buildCacheFirstConfig(useCacheFirst, forceCache bool, cacheStore *cache.Store) app.Config {
+	return app.Config{AllowForceCache: forceCache, UseCacheFirst: useCacheFirst, CacheStore: cacheStore}
 }
 
-func shouldWarnAnalyzeSync(useCacheFirst, force, forceLive bool) bool {
-	return !force && !forceLive && useCacheFirst
+func shouldWarnAnalyzeSync(useCacheFirst, force, forceLive, forceCache bool) bool {
+	return !force && !forceLive && !forceCache && useCacheFirst
 }
 
 func estimateAnalyzeSyncAPICalls(openPRCount int) int {

@@ -83,6 +83,7 @@ type MergePlanCandidate struct {
 	Title            string   `json:"title"`
 	Score            float64  `json:"score"`
 	Rationale        string   `json:"rationale"`
+	Reasons          []string `json:"reasons"`
 	FilesTouched     []string `json:"files_touched"`
 	ConflictWarnings []string `json:"conflict_warnings"`
 }
@@ -190,14 +191,18 @@ type PRWindow struct {
 }
 
 type OperationTelemetry struct {
-	PoolStrategy     string         `json:"pool_strategy,omitempty"`
-	PoolSizeBefore   int            `json:"pool_size_before,omitempty"`
-	PoolSizeAfter    int            `json:"pool_size_after,omitempty"`
-	GraphDeltaEdges  int            `json:"graph_delta_edges,omitempty"`
-	DecayPolicy      string         `json:"decay_policy,omitempty"`
-	PairwiseShards   int            `json:"pairwise_shards,omitempty"`
-	StageLatenciesMS map[string]int `json:"stage_latencies_ms,omitempty"`
-	StageDropCounts  map[string]int `json:"stage_drop_counts,omitempty"`
+	PoolStrategy                    string         `json:"pool_strategy,omitempty"`
+	PlanningStrategy                string         `json:"planning_strategy,omitempty"`
+	PoolSizeBefore                  int            `json:"pool_size_before,omitempty"`
+	PoolSizeAfter                   int            `json:"pool_size_after,omitempty"`
+	GraphDeltaEdges                 int            `json:"graph_delta_edges,omitempty"`
+	DecayPolicy                     string         `json:"decay_policy,omitempty"`
+	PairwiseShards                  int            `json:"pairwise_shards,omitempty"`
+	PairwiseEarlyExits              int            `json:"pairwise_early_exits,omitempty"`
+	PairwiseWorkersActive           int            `json:"pairwise_workers_active,omitempty"`
+	HierarchicalComplexityReduction float64        `json:"hierarchical_complexity_reduction,omitempty"`
+	StageLatenciesMS               map[string]int `json:"stage_latencies_ms,omitempty"`
+	StageDropCounts                 map[string]int `json:"stage_drop_counts,omitempty"`
 }
 
 type AnalysisResponse struct {
@@ -421,6 +426,16 @@ type AnalyzerFinding struct {
 // It aggregates findings from multiple analyzers to produce a final classification
 // and priority recommendation for the PR.
 type ReviewResult struct {
+	// PRNumber identifies the PR this review result applies to.
+	PRNumber int `json:"pr_number"`
+	// Title carries the PR title for report surfaces and offline review packets.
+	Title string `json:"title,omitempty"`
+	// Author carries the PR author for analyst tables.
+	Author string `json:"author,omitempty"`
+	// ClusterID links the PR back to its cluster, when present.
+	ClusterID string `json:"cluster_id,omitempty"`
+	// ProblemType refines problematic classifications into concrete buckets like spam/broken/low_quality.
+	ProblemType string `json:"problem_type,omitempty"`
 	// Category classifies the PR based on its readiness for merge and potential issues.
 	Category ReviewCategory `json:"category"`
 	// PriorityTier indicates the urgency level for reviewing and merging this PR.

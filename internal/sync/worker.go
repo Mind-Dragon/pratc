@@ -25,6 +25,10 @@ type BootstrapSource interface {
 	Bootstrap(ctx context.Context, repo string) ([]types.PR, error)
 }
 
+type BootstrapStreamer interface {
+	StreamBootstrap(ctx context.Context, repo string, emit func(types.PR) error) error
+}
+
 type MirrorFactory func(ctx context.Context, repo string) (Mirror, error)
 
 type MetadataSnapshot struct {
@@ -70,13 +74,21 @@ func (w Worker) SyncJob(ctx context.Context, repo string, progress func(stage st
 			return nil, fmt.Errorf("load sync progress: %w", err)
 		}
 		if !ok || (progress.Cursor == "" && progress.ProcessedPRs == 0) {
-			bootstrapPRS, err := w.Bootstrap.Bootstrap(ctx, repo)
-			if err != nil {
-				return nil, fmt.Errorf("bootstrap sync data: %w", err)
-			}
-			for _, pr := range bootstrapPRS {
-				if err := w.CacheStore.UpsertPR(pr); err != nil {
-					return nil, fmt.Errorf("persist bootstrap pr %d: %w", pr.Number, err)
+			if streamer, ok := w.Bootstrap.(BootstrapStreamer); ok {
+				if err := streamer.StreamBootstrap(ctx, repo, func(pr types.PR) error {
+					return w.CacheStore.UpsertPR(pr)
+				}); err != nil {
+					return nil, fmt.Errorf("stream bootstrap data: %w", err)
+				}
+			} else {
+				bootstrapPRS, err := w.Bootstrap.Bootstrap(ctx, repo)
+				if err != nil {
+					return nil, fmt.Errorf("bootstrap sync data: %w", err)
+				}
+				for _, pr := range bootstrapPRS {
+					if err := w.CacheStore.UpsertPR(pr); err != nil {
+						return nil, fmt.Errorf("persist bootstrap pr %d: %w", pr.Number, err)
+					}
 				}
 			}
 		}

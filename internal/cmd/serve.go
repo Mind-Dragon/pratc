@@ -457,67 +457,56 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 		return
 	}
 	log := logger.FromContext(r.Context())
-
-	// Validate target parameter
 	target := types.DefaultTarget
 	if t := r.URL.Query().Get("target"); t != "" {
-		parsed, err := strconv.Atoi(t)
-		if err != nil || parsed <= 0 {
-			writeHTTPError(w, http.StatusBadRequest, "invalid target: must be a positive integer")
-			return
-		}
-		target = parsed
-	}
-
-	// Validate exclude_conflicts parameter (must be true/false if provided)
-	if ec := r.URL.Query().Get("exclude_conflicts"); ec != "" && ec != "true" && ec != "false" {
-		writeHTTPError(w, http.StatusBadRequest, "invalid exclude_conflicts: must be true or false")
-		return
-	}
-
-	// Validate candidate_pool_cap parameter
-	if cpc := r.URL.Query().Get("candidate_pool_cap"); cpc != "" {
-		parsed, err := strconv.Atoi(cpc)
-		if err != nil || parsed <= 0 || parsed > 500 {
-			writeHTTPError(w, http.StatusBadRequest, "invalid candidate_pool_cap: must be an integer between 1 and 500")
+		if parsed, err := strconv.Atoi(t); err == nil && parsed > 0 {
+			target = parsed
+		} else {
+			writeHTTPError(w, http.StatusBadRequest, "target must be a positive integer")
 			return
 		}
 	}
-
-	// Validate stale_score_threshold parameter
-	if sst := r.URL.Query().Get("stale_score_threshold"); sst != "" {
-		parsed, err := strconv.ParseFloat(sst, 64)
-		if err != nil || parsed < 0 || parsed > 1 {
-			writeHTTPError(w, http.StatusBadRequest, "invalid stale_score_threshold: must be a float between 0 and 1")
-			return
-		}
-	}
-
-	// Validate score_min parameter
-	if sm := r.URL.Query().Get("score_min"); sm != "" {
-		parsed, err := strconv.ParseFloat(sm, 64)
-		if err != nil || parsed < 0 || parsed > 100 {
-			writeHTTPError(w, http.StatusBadRequest, "invalid score_min: must be a float between 0 and 100")
-			return
-		}
-	}
-
-	// Validate mode parameter
 	mode := formula.ModeCombination
 	if m := r.URL.Query().Get("mode"); m != "" {
 		switch m {
 		case "combination":
-			// already ModeCombination
+			mode = formula.ModeCombination
 		case "permutation":
 			mode = formula.ModePermutation
 		case "with_replacement":
 			mode = formula.ModeWithReplacement
 		default:
-			writeHTTPError(w, http.StatusBadRequest, "invalid mode: must be one of: combination, permutation, with_replacement")
+			writeHTTPError(w, http.StatusBadRequest, "invalid mode")
 			return
 		}
 	}
-
+	if v := r.URL.Query().Get("exclude_conflicts"); v != "" {
+		if _, err := strconv.ParseBool(v); err != nil {
+			writeHTTPError(w, http.StatusBadRequest, "invalid exclude_conflicts")
+			return
+		}
+	}
+	if v := r.URL.Query().Get("stale_score_threshold"); v != "" {
+		parsed, err := strconv.ParseFloat(v, 64)
+		if err != nil || parsed < 0 || parsed > 1 {
+			writeHTTPError(w, http.StatusBadRequest, "invalid stale_score_threshold")
+			return
+		}
+	}
+	if v := r.URL.Query().Get("candidate_pool_cap"); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil || parsed < 1 || parsed > 500 {
+			writeHTTPError(w, http.StatusBadRequest, "invalid candidate_pool_cap")
+			return
+		}
+	}
+	if v := r.URL.Query().Get("score_min"); v != "" {
+		parsed, err := strconv.ParseFloat(v, 64)
+		if err != nil || parsed < 0 || parsed > 100 {
+			writeHTTPError(w, http.StatusBadRequest, "invalid score_min")
+			return
+		}
+	}
 	result, err := service.Plan(r.Context(), repo, target, mode)
 	if err != nil {
 		log.Error("handlePlan: service.Plan failed", "error", err.Error(), "repo", repo, "target", target, "mode", mode)
@@ -712,14 +701,19 @@ func corsMiddleware(next http.Handler) http.Handler {
 	allowedOrigins := corsAllowedOrigins()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
+		if r.Method == http.MethodOptions {
+			if isOriginAllowed(origin, allowedOrigins) {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		if isOriginAllowed(origin, allowedOrigins) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-			if r.Method == http.MethodOptions {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -981,7 +975,7 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst 
 	}
 	defer cacheStore.Close()
 
-	service := app.NewService(buildCacheFirstConfig(useCacheFirst, cacheStore))
+	service := app.NewService(buildCacheFirstConfig(useCacheFirst, false, cacheStore))
 	settingsStore, err := openSettingsStore()
 	if err != nil {
 		return err

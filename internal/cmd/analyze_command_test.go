@@ -38,7 +38,7 @@ func TestBuildAnalyzeConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := buildAnalyzeConfig(tt.useCacheFirst, tt.forceLive, -1)
+			cfg := buildAnalyzeConfig(tt.useCacheFirst, tt.forceLive, false, 0)
 			if cfg.UseCacheFirst != tt.useCacheFirst {
 				t.Fatalf("expected UseCacheFirst=%t, got %t", tt.useCacheFirst, cfg.UseCacheFirst)
 			}
@@ -69,24 +69,19 @@ func TestShouldWarnAnalyzeSync(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := shouldWarnAnalyzeSync(tt.useCacheFirst, tt.force, tt.forceLive); got != tt.want {
+			if got := shouldWarnAnalyzeSync(tt.useCacheFirst, tt.force, tt.forceLive, false); got != tt.want {
 				t.Fatalf("expected %t, got %t", tt.want, got)
 			}
 		})
 	}
 }
 
-func TestBuildCacheFirstConfig(t *testing.T) {
+func TestBuildAnalyzeConfigDoesNotInjectHiddenMaxPRsCap(t *testing.T) {
 	t.Parallel()
 
-	cfg := buildCacheFirstConfig(true, nil)
-	if !cfg.UseCacheFirst {
-		t.Fatal("expected UseCacheFirst=true")
-	}
-
-	cfg = buildCacheFirstConfig(false, nil)
-	if cfg.UseCacheFirst {
-		t.Fatal("expected UseCacheFirst=false")
+	cfg := buildAnalyzeConfig(true, false, false, 0)
+	if cfg.MaxPRs != 0 {
+		t.Fatalf("expected MaxPRs=0 for no cap, got %d", cfg.MaxPRs)
 	}
 }
 

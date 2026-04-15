@@ -5,55 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.0] - 2026-04-14
+> **Version shift note (2026-04-14):** Dashboard enhancements moved from v1.4 to v1.5.
+> Evidence enrichment moved from v1.6 to v1.6 (no change).
+> Analyst PDF report added to v1.4 Phase B.
 
-### Added
-
-- **PoolSelector weighted scoring** — Five-component weighted priority scoring (Staleness 0.30, CI Status 0.25, Security Labels 0.20, Cluster Coherence 0.15, Time Decay 0.10). Configurable via settings store with `PriorityWeights.ToSettings()` / `FromSettings()` round-trip. Reason codes explain each component's contribution.
-- **HierarchicalPlanner 3-level planning** — Reduces complexity from O(C(n,k)) to O(C(clusters,c) × C(avg,s)). Level 1 selects clusters by score; Level 2 ranks PRs within clusters; Level 3 applies topological sort with optional dependency ordering. Controlled by `HierarchicalConfig`.
-- **PairwiseExecutor sharded conflict detection** — Parallel conflict detection using worker pool (sem channel) with early exit. Returns shard metrics (`pairwise_shards`, `pairwise_conflicts`) for performance monitoring. Runs as post-ordering enrichment layer.
-- **TimeDecayWindow telemetry** — Exponential decay scoring with protected lane and `MinScore` floor. `GetWindowStats()` telemetry added to plan response (`decay_eligible`, `decay_protected`, `decay_min`, `decay_max`, `decay_avg`).
-- **StageDropCounts unconditional** — Filter-stage rejections (draft, merge_conflict, ci_failure, candidate_pool_cap, not_selected_by_strategy) always aggregated into `plan.Telemetry.StageDropCounts`, even when advanced components are not configured.
-
-### Changed
-
-- **app/service.go Plan() delegates to planner.Plan()** — Inline scoring path (`plannerPriority()`, manual filter rejections, manual pool cap) replaced with call to `planner.New(...).Plan(...)`. All four v1.4 components wired via functional options.
-- **HierarchicalPlanner field/method collision fixed** — `useDependencyOrdering bool` field and `useDependencyOrdering() bool` method conflicted. Field renamed to `depOrderingEnabled`. All internal/planning/ packages now build cleanly with `go build ./...`.
-- **License changed to FSL-1.1-Apache-2.0** — Non-commercial use only. Automatically converts to Apache 2.0 after 2 years. Commercial licenses available.
-- **Updated .gitignore** — Excludes `.pratc/`, `.pratc-tree/`, workflow outputs, and analysis results.
-
-### Performance
-
-- **Graph build O(n^2) → O(n)** — Replaced pairwise PR comparison with hash map indexing. For 5500 PRs: ~15M → ~5500 comparisons. Uses `BaseBranch → []PR` index for dependency detection and file inverted index for conflict detection.
-- **Topological sort O(V×E log V) → O(V log V)** — Replaced repeated `sort.Ints()` with `container/heap` for ready queue. Single heap operation per PR instead of re-sorting on every iteration.
-- **String concatenation optimized** — Replaced `result += sep + s` loops with `strings.Builder` across planner, planning, and report packages. Eliminates O(n^2) string copying.
-- **HTTP connection pooling** — Configured `http.Transport` with `MaxIdleConns: 100`, `MaxIdleConnsPerHost: 10`, `IdleConnTimeout: 90s`. Request timeout: 30s. Configurable via `PRATC_HTTP_*` environment variables.
-- **ML service vectorization** — Python ML service now uses:
-  - MinHash/LSH (datasketch) for O(n) duplicate detection instead of O(n^2) brute force
-  - Inverted file index for sparse overlap detection
-  - NumPy matrix multiplication for batch cosine similarity
-  - LRU cache for tokenization (1024 entries)
-
-### Code Quality
-
-- **Extracted shared utilities** — Created `internal/util/strings.go` with `Tokenize()` and `Jaccard()` functions. Removed duplicate implementations from `app/service.go` and `planner/planner.go`.
-- **Constants package** — Created `internal/types/constants.go` with named constants for thresholds, weights, and defaults.
-- **Silent error logging** — Added logging to previously silent error paths in WebSocket upgrade, JSON marshal, and time parsing.
-- **GitHub URL prefix constant** — Defined `GitHubURLPrefix` constant and replaced 10 scattered occurrences across test and source files.
-- **Internal/planning/AGENTS.md updated** — Removed incorrect "NOT wired in production" status notes. All four components marked as wired via `planner/planner.go Planner.Plan()`.
-
-### Documentation
-
-- **Added RATELIMITS.md** — Comprehensive guide to GitHub API rate limits, prATC budget management, retry logic, and best practices.
-- **ROADMAP.md updated** — v1.4 marked as COMPLETED with decision point resolved (planning package kept).
-- **Added installer script** — `scripts/install.sh` for one-line installation on Linux/macOS with prerequisite checks, binary download, and PATH setup.
-
-### Fixed
-
-- **AGENTS.md accuracy** — Removed references to non-existent empty packages (models/, mq/, search/, config/). Updated filter/AGENTS.md to reflect bubble sort fix and correct pool cap (100, not 64).
-- **HierarchicalPlanner useDependencyOrdering collision** — Field and method shared a name, preventing compilation of the planning package. Field renamed to `depOrderingEnabled`.
+> **Phase renaming (2026-04-15):** v1.4 restructured as full-corpus triage engine.
+> Previous Phase A (Planning Integration) and Phase B (Analyst PDF) are now Phase 0 (Foundation).
+> New Phases A–F cover corpus coverage, outer peel, substance scoring, routing, deep judgment, and report.
+> See ROADMAP.md for the current phase definitions.
 
 ## [Unreleased]
+
+### v1.4 Phase 0 — Foundation (COMPLETED)
+
+_Previously labeled Phase A (Planning Integration) and Phase B (Analyst PDF Report)._
+
+#### Added
+
+- **Planning strategy selection** — `planning_strategy` field added to `OperationTelemetry`. Configurable via `Config.PlanningStrategy` ("formula" or "hierarchical").
+- **PoolSelector integration** — Weighted priority scoring replaces the legacy heuristic pre-filter. Produces `PoolStrategy = "weighted_priority"` and `PoolStrategy = "exponential_decay"` telemetry. Reason codes attached to each candidate (staleness, ci, security, cluster, recency).
+- **HierarchicalPlanner integration** — 3-level cluster-based planning: cluster identification, tier assignment (critical/high/medium/low), and topological cluster ordering. Records `HierarchicalComplexityReduction` in telemetry.
+- **PairwiseExecutor sharded conflict detection** — Sharded pairwise PR conflict detection with early-exit on first conflict found. Reports `PairwiseShards`, `PairwiseEarlyExits`, and `PairwiseWorkersActive` in telemetry.
+- **TimeDecayWindow with protected lane** — Exponential time-decay scoring with configurable `HalfLifeHours`, `WindowHours`, `ProtectedHours`, and `MinScore` floor. Protected PRs (recent critical PRs) are preserved in the candidate pool.
+- **PriorityWeights configuration** — `PriorityWeights` struct (`StalenessWeight`, `CIStatusWeight`, `SecurityLabelWeight`, `ClusterCoherenceWeight`, `TimeDecayWeight`) exposed in `Config`. Round-trip serialisation via settings.
+- **`--planning-strategy` CLI flag** — `pratc plan --planning-strategy hierarchical` to use the new hierarchical planner.
+
+#### Changed
+
+- **Planning telemetry fields added** — `OperationTelemetry` gains `PlanningStrategy`, `HierarchicalComplexityReduction`, `PairwiseEarlyExits`, `PairwiseWorkersActive`.
+- **`MergePlanCandidate` gains `Reasons` field** — `[]string` holding PoolSelector reason codes alongside `Rationale`.
+
+#### Performance
+
+- **PoolSelector benchmarks** — `BenchmarkPoolSelector_SelectCandidates`: ~16ms / 1.8MB / 4,080 allocs for fixture corpus. `BenchmarkPoolSelector_SelectCandidatesWithClusterCoherence`: ~22ms / 776KB / 3,437 allocs.
+- **End-to-end Plan() benchmarks (fixture corpus)** — formula strategy: ~319ms/op; hierarchical strategy: ~325ms/op. Both well under 90s SLO.
+
+### v1.4 Phase 0 — Analyst PDF Report (IN PROGRESS → absorbed into Phase 0)
+
+#### Added
+
+- **Full PR analysis table** — Paginated table covering all PRs with columns: PR number, title, author, age, cluster, score, reason codes, classification, recommended action. Each PR has at least one reason code.
+- **Per-PR reason codes in analyze output** — PoolSelector reason codes (`staleness_high`, `ci_pass`, `security_label`, `has_cluster`, `in_recency_window`, `trivial_change`, `bot_generated`, `spam_pattern`, etc.) wired into the `analyze` endpoint response.
+- **Spam/junk classification** — Review classifier extended with spam/bot/noise detection. Classification labels: `trivial_change`, `bot_generated`, `spam_pattern`, `malformed`, `promotional`, `abandoned_no_activity`.
+- **Duplicate detail list in report** — Report section listing canonical PRs and their duplicates with similarity scores and grouping reasons.
+- **Spam/junk list in report** — Dedicated report section listing low-value PRs with classification and supporting evidence.
+- **Category summary section** — Rollup counts by classification bucket (high_value, merge_candidate, duplicate, spam, stale, blocked, needs_review, re_engage) with representative examples.
+- **Recommendations section in report** — Practical triage plan: top-N to inspect, to-close duplicates, to-close spam, to-re-engage, clusters to merge together.
 
 ### Security
 
@@ -146,8 +143,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Combinatorial formula engine for merge planning
 - Docker Compose profiles for local-ml and minimax-light deployments
 
-[Unreleased]: https://github.com/Mind-Dragon/pratc/compare/v1.4.0...HEAD
-[1.4.0]: https://github.com/Mind-Dragon/pratc/compare/v1.3.0...v1.4.0
+[Unreleased]: https://github.com/Mind-Dragon/pratc/compare/v1.3.0...HEAD
 [1.3.0]: https://github.com/Mind-Dragon/pratc/compare/v0.2.0...v1.3.0
 [0.2.0]: https://github.com/Mind-Dragon/pratc/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Mind-Dragon/pratc/releases/tag/v0.1.0

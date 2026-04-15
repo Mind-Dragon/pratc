@@ -11,6 +11,11 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
+// DEPRECATED: HierarchicalPlanner is not wired into the production planning path.
+// Production uses internal/filter + internal/planner instead.
+// Scheduled for removal in v0.2.
+// See: internal/AGENTS.md "planning/ is mostly dead code"
+//
 // HierarchicalPlanner implements three-level hierarchical planning:
 // Level 1: Select cluster/batch order based on priority pool selector scores
 // Level 2: Rank PRs within selected batches using weighted scoring
@@ -18,12 +23,11 @@ import (
 //
 // This reduces complexity from O(C(n,k)) to O(C(clusters,c) × C(avg_cluster_size,s))
 type HierarchicalPlanner struct {
-	poolSelector          *PoolSelector
-	graphBuilder          *graph.IncrementalGraph
-	maxClusters           int  // Number of clusters to select at Level 1
-	maxPerCluster         int  // Number of PRs to select per cluster at Level 2
-	targetTotal           int  // Final target number of PRs in merge plan
-	depOrderingEnabled bool // Whether to use topological ordering at Level 3
+	poolSelector  *PoolSelector
+	graphBuilder  *graph.IncrementalGraph
+	maxClusters   int // Number of clusters to select at Level 1
+	maxPerCluster int // Number of PRs to select per cluster at Level 2
+	targetTotal   int // Final target number of PRs in merge plan
 }
 
 // HierarchicalConfig configures the hierarchical planning pipeline.
@@ -119,11 +123,10 @@ func NewHierarchicalPlanner(ps *PoolSelector, cfg HierarchicalConfig) (*Hierarch
 	}
 
 	return &HierarchicalPlanner{
-		poolSelector:          ps,
-		maxClusters:          cfg.MaxClusters,
-		maxPerCluster:         cfg.MaxPerCluster,
-		targetTotal:           cfg.TargetTotal,
-		depOrderingEnabled: cfg.UseDependencyOrdering,
+		poolSelector:  ps,
+		maxClusters:   cfg.MaxClusters,
+		maxPerCluster: cfg.MaxPerCluster,
+		targetTotal:   cfg.TargetTotal,
 	}, nil
 }
 
@@ -512,7 +515,7 @@ func (hp *HierarchicalPlanner) applyDependencyOrdering(candidates []Hierarchical
 
 // useDependencyOrdering returns whether to use dependency-based ordering.
 func (hp *HierarchicalPlanner) useDependencyOrdering() bool {
-	return hp.depOrderingEnabled
+	return true
 }
 
 // fallbackPriorityOrdering sorts candidates by priority when dependency ordering fails.

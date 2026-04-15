@@ -122,6 +122,32 @@ func TestPipeline_BuildCandidatePool_EmptyPool(t *testing.T) {
 	}
 }
 
+func TestPipeline_BuildCandidatePool_DoesNotCapByDefault(t *testing.T) {
+	now := time.Date(2026, 3, 21, 12, 0, 0, 0, time.UTC)
+	prs := make([]types.PR, 100)
+	clusterByPR := make(map[int]string, 100)
+	for i := range prs {
+		prs[i] = types.PR{
+			Number:       i + 1,
+			Title:        "PR",
+			CIStatus:     "success",
+			ReviewStatus: "approved",
+			Mergeable:    "mergeable",
+		}
+		clusterByPR[i+1] = "cluster-1"
+	}
+
+	pipeline := NewPipeline(now)
+	pool, rejections := pipeline.BuildCandidatePool(prs, clusterByPR)
+
+	if len(pool) != 100 {
+		t.Fatalf("BuildCandidatePool() pool size = %d, want 100", len(pool))
+	}
+	if len(rejections) != 0 {
+		t.Fatalf("BuildCandidatePool() rejections = %d, want 0", len(rejections))
+	}
+}
+
 func TestPipeline_BuildCandidatePool_ClusterAssignment(t *testing.T) {
 	now := time.Date(2026, 3, 21, 12, 0, 0, 0, time.UTC)
 

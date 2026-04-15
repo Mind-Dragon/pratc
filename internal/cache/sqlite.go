@@ -112,7 +112,9 @@ func (s *Store) UpsertPR(pr types.PR) error {
 }
 
 func (s *Store) ListPRs(filter PRFilter) ([]types.PR, error) {
-	query := `
+	const pageSize = 1000
+
+	baseQuery := `
 		SELECT
 			id, repo, number, title, body, url, author, labels_json, files_changed_json,
 			review_status, ci_status, mergeable, base_branch, head_branch, cluster_id,
@@ -120,61 +122,81 @@ func (s *Store) ListPRs(filter PRFilter) ([]types.PR, error) {
 		FROM pull_requests
 		WHERE repo = ?
 	`
-	args := []any{filter.Repo}
+	baseArgs := []any{filter.Repo}
 
 	if filter.BaseBranch != "" {
-		query += ` AND base_branch = ?`
-		args = append(args, filter.BaseBranch)
+		baseQuery += ` AND base_branch = ?`
+		baseArgs = append(baseArgs, filter.BaseBranch)
 	}
 	if filter.CIStatus != "" {
-		query += ` AND ci_status = ?`
-		args = append(args, filter.CIStatus)
+		baseQuery += ` AND ci_status = ?`
+		baseArgs = append(baseArgs, filter.CIStatus)
 	}
 	if !filter.UpdatedSince.IsZero() {
-		query += ` AND updated_at >= ?`
-		args = append(args, filter.UpdatedSince.UTC().Format(time.RFC3339))
+		baseQuery += ` AND updated_at >= ?`
+		baseArgs = append(baseArgs, filter.UpdatedSince.UTC().Format(time.RFC3339))
 	}
-
-	query += ` ORDER BY number ASC`
-
-	rows, err := s.db.Query(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query pull requests: %w", err)
-	}
-	defer rows.Close()
 
 	var prs []types.PR
-	for rows.Next() {
-		var pr types.PR
-		var labelsJSON string
-		var filesJSON string
-		var provenanceJSON string
+	lastNumber := 0
+	for {
+		query := baseQuery + ` AND number > ? ORDER BY number ASC LIMIT ?`
+		args := append(append([]any{}, baseArgs...), lastNumber, pageSize)
 
-		if err := rows.Scan(
-			&pr.ID, &pr.Repo, &pr.Number, &pr.Title, &pr.Body, &pr.URL, &pr.Author, &labelsJSON, &filesJSON,
-			&pr.ReviewStatus, &pr.CIStatus, &pr.Mergeable, &pr.BaseBranch, &pr.HeadBranch, &pr.ClusterID,
-			&pr.CreatedAt, &pr.UpdatedAt, &pr.IsDraft, &pr.IsBot, &pr.Additions, &pr.Deletions, &pr.ChangedFilesCount, &provenanceJSON,
-		); err != nil {
-			return nil, fmt.Errorf("scan pull request: %w", err)
+		rows, err := s.db.Query(query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("query pull requests: %w", err)
 		}
 
-		if err := json.Unmarshal([]byte(labelsJSON), &pr.Labels); err != nil {
-			return nil, fmt.Errorf("unmarshal labels: %w", err)
-		}
-		if err := json.Unmarshal([]byte(filesJSON), &pr.FilesChanged); err != nil {
-			return nil, fmt.Errorf("unmarshal files changed: %w", err)
-		}
-		if provenanceJSON != "" {
-			if err := json.Unmarshal([]byte(provenanceJSON), &pr.Provenance); err != nil {
-				return nil, fmt.Errorf("unmarshal provenance: %w", err)
+		page := make([]types.PR, 0, pageSize)
+		for rows.Next() {
+			var pr types.PR
+			var labelsJSON string
+			var filesJSON string
+			var provenanceJSON string
+
+			if err := rows.Scan(
+				&pr.ID, &pr.Repo, &pr.Number, &pr.Title, &pr.Body, &pr.URL, &pr.Author, &labelsJSON, &filesJSON,
+				&pr.ReviewStatus, &pr.CIStatus, &pr.Mergeable, &pr.BaseBranch, &pr.HeadBranch, &pr.ClusterID,
+				&pr.CreatedAt, &pr.UpdatedAt, &pr.IsDraft, &pr.IsBot, &pr.Additions, &pr.Deletions, &pr.ChangedFilesCount, &provenanceJSON,
+			); err != nil {
+				_ = rows.Close()
+				return nil, fmt.Errorf("scan pull request: %w", err)
 			}
+
+			if err := json.Unmarshal([]byte(labelsJSON), &pr.Labels); err != nil {
+				_ = rows.Close()
+				return nil, fmt.Errorf("unmarshal labels: %w", err)
+			}
+			if err := json.Unmarshal([]byte(filesJSON), &pr.FilesChanged); err != nil {
+				_ = rows.Close()
+				return nil, fmt.Errorf("unmarshal files changed: %w", err)
+			}
+			if provenanceJSON != "" {
+				if err := json.Unmarshal([]byte(provenanceJSON), &pr.Provenance); err != nil {
+					_ = rows.Close()
+					return nil, fmt.Errorf("unmarshal provenance: %w", err)
+				}
+			}
+
+			page = append(page, pr)
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("iterate pull requests: %w", err)
+		}
+		if err := rows.Close(); err != nil {
+			return nil, fmt.Errorf("close pull request rows: %w", err)
 		}
 
-		prs = append(prs, pr)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate pull requests: %w", err)
+		if len(page) == 0 {
+			break
+		}
+		prs = append(prs, page...)
+		lastNumber = page[len(page)-1].Number
+		if len(page) < pageSize {
+			break
+		}
 	}
 
 	return prs, nil

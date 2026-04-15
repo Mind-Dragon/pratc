@@ -53,6 +53,28 @@ func TestCacheUpsertAndQuery(t *testing.T) {
 	}
 }
 
+func TestCacheListPRsUsesCursorPaginationAcrossLargeResultSets(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	for i := 1; i <= 1500; i++ {
+		if err := store.UpsertPR(samplePR(i)); err != nil {
+			t.Fatalf("upsert pr %d: %v", i, err)
+		}
+	}
+
+	prs, err := store.ListPRs(PRFilter{Repo: "owner/repo"})
+	if err != nil {
+		t.Fatalf("list prs: %v", err)
+	}
+	if len(prs) != 1500 {
+		t.Fatalf("expected 1500 prs, got %d", len(prs))
+	}
+	if prs[0].Number != 1 || prs[len(prs)-1].Number != 1500 {
+		t.Fatalf("expected sorted results from 1 to 1500, got %d..%d", prs[0].Number, prs[len(prs)-1].Number)
+	}
+}
+
 func TestCacheUpdatedSinceFilter(t *testing.T) {
 	t.Parallel()
 

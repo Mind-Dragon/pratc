@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/settings"
@@ -366,13 +367,22 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 		}
 	}
 
+	// Deterministic heuristic enrichments used for analyst-facing reports.
+	safetyResult := ClassifyMergeSafety(prData.PR, prData.ConflictPairs)
+	problemResult := ClassifyProblematicPR(prData.PR)
+
 	reviewResult := types.ReviewResult{
-		Category:           finalCategory,
-		PriorityTier:       types.PriorityTierReviewRequired,
-		Confidence:         finalConfidence,
-		Reasons:            finalReasons,
-		AnalyzerFindings:   allFindings,
-		Blockers:           []string{},
+		PRNumber:         prData.PR.Number,
+		Title:            prData.PR.Title,
+		Author:           prData.PR.Author,
+		ClusterID:        prData.PR.ClusterID,
+		ProblemType:      problemResult.ProblemType,
+		Category:         finalCategory,
+		PriorityTier:     types.PriorityTierReviewRequired,
+		Confidence:       finalConfidence,
+		Reasons:          mergeUniqueStrings(finalReasons, analystReasons(prData, safetyResult, problemResult)),
+		AnalyzerFindings: allFindings,
+		Blockers:         mergeUniqueStrings(safetyResult.Blockers),
 		EvidenceReferences: []string{},
 		NextAction:         "review",
 	}
@@ -387,6 +397,7 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 	if len(prData.DuplicateGroups) > 0 {
 		reviewResult.Blockers = append(reviewResult.Blockers, "duplicate: PR may duplicate existing changes")
 	}
+	reviewResult.Blockers = mergeUniqueStrings(reviewResult.Blockers)
 
 	// Populate evidence references
 	if prData.Staleness != nil {
@@ -400,23 +411,27 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 		reviewResult.EvidenceReferences = append(reviewResult.EvidenceReferences, fmt.Sprintf("duplicates:%d", len(prData.DuplicateGroups)))
 	}
 
-	// Determine next action based on category
+	// Determine next action based on category and problem type.
 	switch finalCategory {
 	case types.ReviewCategoryMergeNow:
 		reviewResult.NextAction = "merge"
-		reviewResult.PriorityTier = types.PriorityTierFastMerge
+		reviewResult.PriorityTier = DeterminePriorityTier(safetyResult, problemResult)
 	case types.ReviewCategoryDuplicateSuperseded:
-		reviewResult.NextAction = "resolve_duplicate"
+		reviewResult.NextAction = "duplicate"
 		reviewResult.PriorityTier = types.PriorityTierBlocked
 	case types.ReviewCategoryProblematicQuarantine:
-		reviewResult.NextAction = "address_issues"
+		if problemResult.ProblemType == "spam" {
+			reviewResult.NextAction = "close"
+		} else {
+			reviewResult.NextAction = "quarantine"
+		}
 		reviewResult.PriorityTier = types.PriorityTierBlocked
 	case types.ReviewCategoryUnknownEscalate:
-		reviewResult.NextAction = "human_review"
+		reviewResult.NextAction = "escalate"
 		reviewResult.PriorityTier = types.PriorityTierReviewRequired
 	default:
 		reviewResult.NextAction = "review"
-		reviewResult.PriorityTier = types.PriorityTierReviewRequired
+		reviewResult.PriorityTier = DeterminePriorityTier(safetyResult, problemResult)
 	}
 
 	isPartial := len(skippedReasons) > 0
@@ -432,4 +447,43 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 		StartedAt:        startedAt,
 		CompletedAt:      time.Now(),
 	}, nil
+}
+
+func analystReasons(prData PRData, safetyResult MergeSafetyResult, problemResult ProblematicPRResult) []string {
+	reasons := make([]string, 0, 8)
+	reasons = append(reasons, safetyResult.Reasons...)
+	reasons = append(reasons, problemResult.Reasons...)
+	if prData.ClusterLabel != "" {
+		reasons = append(reasons, fmt.Sprintf("cluster: %s", prData.ClusterLabel))
+	} else if prData.ClusterID != "" {
+		reasons = append(reasons, fmt.Sprintf("cluster: %s", prData.ClusterID))
+	}
+	if prData.Staleness != nil {
+		reasons = append(reasons, prData.Staleness.Reasons...)
+	}
+	for _, dup := range prData.DuplicateGroups {
+		if dup.Reason != "" {
+			reasons = append(reasons, dup.Reason)
+		}
+	}
+	return mergeUniqueStrings(reasons)
+}
+
+func mergeUniqueStrings(parts ...[]string) []string {
+	seen := make(map[string]struct{})
+	merged := make([]string, 0)
+	for _, group := range parts {
+		for _, item := range group {
+			item = strings.TrimSpace(item)
+			if item == "" {
+				continue
+			}
+			if _, ok := seen[item]; ok {
+				continue
+			}
+			seen[item] = struct{}{}
+			merged = append(merged, item)
+		}
+	}
+	return merged
 }

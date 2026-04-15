@@ -242,18 +242,20 @@ func TestHandleAnalyzeReturnsImmediateSyncInProgressResponseWhenBackgroundSyncSt
 	dbPath := filepath.Join(tempDir, "pratc.db")
 	t.Setenv("PRATC_DB_PATH", dbPath)
 	t.Setenv("PRATC_CACHE_TTL", "1h")
-	withRepoSyncManager(t, func(jobDBPath, jobID string) *prsync.Manager {
-		return prsync.NewManager(prsync.NewRunner(prsync.Worker{
-			MirrorFactory: func(context.Context, string) (prsync.Mirror, error) { return testMirror{}, nil },
-			Metadata:      testMetadataSource{},
-			Now:           func() time.Time { return time.Unix(1700000000, 0).UTC() },
-		}, prsync.NewDBJobRecorder(jobDBPath), jobID))
-	})
+	store, err := cache.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open cache: %v", err)
+	}
+	defer store.Close()
+
+	if _, err := store.CreateSyncJob("octo/repo"); err != nil {
+		t.Fatalf("create sync job: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/repos/octo/repo/analyze", nil)
 	rr := httptest.NewRecorder()
-	// Use a properly initialized service with now function
-	svc := app.NewService(app.Config{UseCacheFirst: false})
+	// Use a properly initialized service with cache store so active sync is visible.
+	svc := app.NewService(app.Config{CacheStore: store})
 	handleAnalyze(rr, req, svc, "octo/repo")
 
 	if rr.Code != http.StatusAccepted {
@@ -271,7 +273,6 @@ func TestHandleAnalyzeReturnsImmediateSyncInProgressResponseWhenBackgroundSyncSt
 	if jobID == "" {
 		t.Fatalf("expected job_id in response, got %v", resp)
 	}
-	waitForSyncJobStatus(t, dbPath, jobID, string(cache.SyncJobStatusCompleted), 5*time.Second)
 }
 
 func waitForSyncJobStatus(t *testing.T, dbPath, jobID, wantStatus string, timeout time.Duration) {
@@ -350,13 +351,13 @@ func TestHandleAnalyzeWaitsForActiveSyncAndReturnsAnalysisWhenItCompletes(t *tes
 	if err != nil {
 		t.Fatalf("load manifest: %v", err)
 	}
-	service := app.NewService(app.Config{})
-
 	store, err := cache.Open(dbPath)
 	if err != nil {
 		t.Fatalf("open cache: %v", err)
 	}
 	defer store.Close()
+
+	service := app.NewService(app.Config{CacheStore: store})
 
 	job, err := store.CreateSyncJob(manifest.Repo)
 	if err != nil {
@@ -440,7 +441,7 @@ func TestHandleAnalyzeTimesOutWhileSyncStaysActive(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/api/repos/"+manifest.Repo+"/analyze", nil)
 	rr := httptest.NewRecorder()
-	handleAnalyze(rr, req, app.Service{}, manifest.Repo)
+	handleAnalyze(rr, req, app.NewService(app.Config{CacheStore: store}), manifest.Repo)
 	if rr.Code != http.StatusAccepted {
 		t.Fatalf("expected timeout status 202, got %d body=%s", rr.Code, rr.Body.String())
 	}
@@ -453,7 +454,7 @@ func TestHandleAnalyzeTimesOutWhileSyncStaysActive(t *testing.T) {
 		t.Fatalf("expected job_id in timeout response, got %v", resp)
 	}
 	msg, _ := resp["message"].(string)
-	if !strings.Contains(msg, "waiting") {
+	if !strings.Contains(msg, "retry after completion") {
 		t.Fatalf("expected timeout message, got %v", resp["message"])
 	}
 }

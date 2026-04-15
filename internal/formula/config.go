@@ -37,7 +37,7 @@ func DefaultConfig() Config {
 	return Config{
 		Name:               "pratc-formula-default",
 		Mode:               ModeCombination,
-		MaxPoolSize:        64,
+		MaxPoolSize:        0,
 		RequirePreFiltered: true,
 		ScoreWeights: ScoreWeights{
 			Age:              0.20,

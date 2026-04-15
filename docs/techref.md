@@ -1,4 +1,6 @@
-# prATC Architecture Overview
+# prATC Technical Reference
+
+> **Note:** This file was previously `docs/architecture.md`. It serves as the detailed technical reference for component breakdowns, API routes, data model, and SLOs. For the system design philosophy and layered decision architecture, see [ARCHITECTURE.md](../ARCHITECTURE.md). For operating rules and bucket definitions, see [GUIDELINE.md](../GUIDELINE.md).
 
 **Last Updated:** 2026-03-23  
 **System Version:** v0.1  
@@ -563,17 +565,18 @@ psst GITHUB_TOKEN -- pratc analyze --repo=owner/repo
 
 ---
 
-## Code Smells (Historical — v1.4 resolution)
+## Code Smells (Known)
 
-1. ~~`app/` duplicates `planner/` (~70% overlap)`~~ — **Fixed in v1.4**: Extracted `Tokenize()` and `Jaccard()` to `internal/util/strings.go`. Both packages now import from shared utility.
+1. **`app/` duplicates `planner/` (~70% overlap)**
+   - Both implement: `jaccard()`, `tokenize()`, `buildClusters()`
+   - Rule: New clustering logic goes in `planner/`
 
-2. ~~`planning/` is mostly dead code`~~ — **Fixed in v1.4**: All four `internal/planning/` components are now wired into `planner/planner.go Planner.Plan()`:
-   - `PoolSelector` via `WithPoolSelector` option
-   - `HierarchicalPlanner` via `WithHierarchicalPlanner` option
-   - `PairwiseExecutor` via `WithPairwiseExecutor` option
-   - `TimeDecayWindow` via `WithTimeDecayWindow` option
+2. **`planning/` is wired as of v1.4 Phase 0**
+   - `HierarchicalPlanner`, `PoolSelector`, `PairwiseExecutor`, `TimeDecayWindow` are integrated into `app/service.go`
+   - See ROADMAP.md Phase 0 for details
 
-3. ~~`filter/scorer.go` uses bubble sort`~~ — **Fixed pre-v1.4**: `rankByConflictScore()` replaced with `sort.Slice`.
+3. **`filter/scorer.go` bubble sort — FIXED**
+   - `rankByConflictScore()` was O(n²) — FIXED, now uses `sort.Slice`
 
 ---
 

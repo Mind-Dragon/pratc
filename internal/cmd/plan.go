@@ -20,10 +20,12 @@ func RegisterPlanCommand() {
 	var dryRun bool
 	var includeBots bool
 	var useCacheFirst bool
+	var forceCache bool
 	var maxPRs int
 	var rateLimit int
 	var reserveBuffer int
 	var resetBuffer int
+	var planningStrategy string
 
 	command := &cobra.Command{
 		Use:   "plan",
@@ -49,12 +51,11 @@ func RegisterPlanCommand() {
 				dryRun = true
 			}
 
-			cfg := buildCacheFirstConfig(useCacheFirst, nil)
+			cfg := buildCacheFirstConfig(useCacheFirst, forceCache, nil)
 			if maxPRs > 0 {
 				cfg.MaxPRs = maxPRs
-			} else if maxPRs == -1 {
-				cfg.MaxPRs = 1000
 			}
+			cfg.PlanningStrategy = planningStrategy
 			service := app.NewService(cfg)
 			log.Info("starting plan", "repo", repo, "target", target, "mode", selectedMode, "budget", budget.String())
 			response, err := service.Plan(ctx, repo, target, selectedMode)
@@ -80,10 +81,12 @@ func RegisterPlanCommand() {
 	command.Flags().BoolVar(&dryRun, "dry-run", true, "Plan only; do not execute (always true by default)")
 	command.Flags().BoolVar(&includeBots, "include-bots", false, "Include bot PRs in merge plan (default excludes bots)")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
-	command.Flags().IntVar(&maxPRs, "max-prs", -1, "Max PRs to consider (-1=default 1000, 0=no cap)")
+	command.Flags().BoolVar(&forceCache, "force-cache", false, "Use stale cached data without triggering a live sync (for offline analysis)")
+	command.Flags().IntVar(&maxPRs, "max-prs", 0, "Max PRs to consider (0=no cap)")
 	command.Flags().IntVar(&rateLimit, "rate-limit", 5000, "GitHub API rate limit per hour")
 	command.Flags().IntVar(&reserveBuffer, "reserve-buffer", 200, "Minimum requests to keep in reserve")
 	command.Flags().IntVar(&resetBuffer, "reset-buffer", 15, "Seconds to wait after rate limit reset")
+	command.Flags().StringVar(&planningStrategy, "planning-strategy", "", "Planning strategy: formula (default) or hierarchical")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }

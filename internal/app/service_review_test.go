@@ -42,6 +42,15 @@ func TestAnalyzeIncludesReviewPayload(t *testing.T) {
 		if result.Category == "" {
 			t.Fatalf("result[%d]: Category should not be empty", i)
 		}
+		if result.PRNumber == 0 {
+			t.Fatalf("result[%d]: PRNumber should be populated", i)
+		}
+		if result.Title == "" {
+			t.Fatalf("result[%d]: Title should be populated", i)
+		}
+		if result.Author == "" {
+			t.Fatalf("result[%d]: Author should be populated", i)
+		}
 		if result.Confidence < 0 || result.Confidence > 1 {
 			t.Fatalf("result[%d]: Confidence should be between 0.0 and 1.0, got %f", i, result.Confidence)
 		}

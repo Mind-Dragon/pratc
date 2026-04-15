@@ -10,22 +10,17 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/filter"
 	"github.com/jeffersonnunn/pratc/internal/formula"
 	"github.com/jeffersonnunn/pratc/internal/graph"
-	"github.com/jeffersonnunn/pratc/internal/planning"
 	"github.com/jeffersonnunn/pratc/internal/types"
 	"github.com/jeffersonnunn/pratc/internal/util"
 )
 
 // Planner orchestrates the planning pipeline by coordinating filter, formula, and graph engines.
 type Planner struct {
-	filterPipeline      *filter.Pipeline
-	formulaConfig       formula.Config
-	now                 func() time.Time
-	validator           *PlanInputValidator
-	includeBots         bool
-	poolSelector        *planning.PoolSelector
-	hierarchicalPlanner *planning.HierarchicalPlanner
-	pairwiseExecutor    *planning.PairwiseExecutor
-	timeDecayWindow     *planning.TimeDecayWindow
+	filterPipeline *filter.Pipeline
+	formulaConfig  formula.Config
+	now            func() time.Time
+	validator      *PlanInputValidator
+	includeBots    bool
 }
 
 // Option configures a Planner.
@@ -49,34 +44,6 @@ func WithValidator(v *PlanInputValidator) Option {
 func WithIncludeBots(includeBots bool) Option {
 	return func(p *Planner) {
 		p.includeBots = includeBots
-	}
-}
-
-// WithPoolSelector sets the pool selector for cluster coherence-aware candidate selection.
-func WithPoolSelector(poolSelector *planning.PoolSelector) Option {
-	return func(p *Planner) {
-		p.poolSelector = poolSelector
-	}
-}
-
-// WithHierarchicalPlanner sets the hierarchical planner for three-level planning.
-func WithHierarchicalPlanner(hp *planning.HierarchicalPlanner) Option {
-	return func(p *Planner) {
-		p.hierarchicalPlanner = hp
-	}
-}
-
-// WithPairwiseExecutor sets the pairwise executor for sharded conflict detection.
-func WithPairwiseExecutor(pe *planning.PairwiseExecutor) Option {
-	return func(p *Planner) {
-		p.pairwiseExecutor = pe
-	}
-}
-
-// WithTimeDecayWindow sets the time-decay window for enhanced decay telemetry.
-func WithTimeDecayWindow(tdw *planning.TimeDecayWindow) Option {
-	return func(p *Planner) {
-		p.timeDecayWindow = tdw
 	}
 }
 
@@ -117,74 +84,6 @@ func (p *Planner) Plan(ctx context.Context, repo string, prs []types.PR, target 
 		}
 	}
 
-	// Use hierarchical planning if configured
-	if p.hierarchicalPlanner != nil {
-		// Assign cluster IDs to each PR for hierarchical planning
-		prsWithClusters := make([]types.PR, len(prs))
-		copy(prsWithClusters, prs)
-		for i := range prsWithClusters {
-			if cid, ok := clusterByPR[prsWithClusters[i].Number]; ok {
-				prsWithClusters[i].ClusterID = cid
-			}
-		}
-
-		// Execute hierarchical planning
-		hierarchyResult := p.hierarchicalPlanner.Plan(ctx, repo, prsWithClusters, planning.DefaultTimeDecayConfig())
-
-		// Convert hierarchical result to PlanResponse
-		selected := make([]types.MergePlanCandidate, 0, len(hierarchyResult.FinalCandidates))
-		for _, c := range hierarchyResult.FinalCandidates {
-			files := c.PR.FilesChanged
-			if files == nil {
-				files = []string{}
-			}
-			selected = append(selected, types.MergePlanCandidate{
-				PRNumber:         c.PR.Number,
-				Title:            c.PR.Title,
-				Score:            p.round(c.PriorityScore, 4),
-				Rationale:        fmt.Sprintf("L1:%d L2:%d L3:%d cluster:%s", c.Level1Rank, c.Level2Rank, c.Level3Rank, c.ClusterID),
-				FilesTouched:     files,
-				ConflictWarnings: []string{},
-			})
-		}
-
-		ordering := make([]types.MergePlanCandidate, 0, len(hierarchyResult.Ordering))
-		for _, c := range hierarchyResult.Ordering {
-			files := c.PR.FilesChanged
-			if files == nil {
-				files = []string{}
-			}
-			ordering = append(ordering, types.MergePlanCandidate{
-				PRNumber:         c.PR.Number,
-				Title:            c.PR.Title,
-				Score:            p.round(c.PriorityScore, 4),
-				Rationale:        fmt.Sprintf("hierarchical_order_depth_%d", c.DependencyDepth),
-				FilesTouched:     files,
-				ConflictWarnings: []string{},
-			})
-		}
-
-		rejections := make([]types.PlanRejection, 0, len(hierarchyResult.Rejections))
-		for _, r := range hierarchyResult.Rejections {
-			rejections = append(rejections, types.PlanRejection{
-				PRNumber: r.PRNumber,
-				Reason:   r.Reason,
-			})
-		}
-
-		return types.PlanResponse{
-			Repo:              repo,
-			GeneratedAt:       p.now().Format(time.RFC3339),
-			Target:            target,
-			CandidatePoolSize: hierarchyResult.Telemetry.PoolSizeAfter,
-			Strategy:          "hierarchical_three_level",
-			Selected:          selected,
-			Ordering:          ordering,
-			Rejections:        rejections,
-			Telemetry:         &hierarchyResult.Telemetry,
-		}, nil
-	}
-
 	// Initialize filter pipeline if not set
 	if p.filterPipeline == nil {
 		p.filterPipeline = filter.NewPipeline(p.now()).WithIncludeBots(p.includeBots)
@@ -192,32 +91,6 @@ func (p *Planner) Plan(ctx context.Context, repo string, prs []types.PR, target 
 
 	// Apply filter pipeline
 	pool, rejections := p.filterPipeline.BuildCandidatePool(prs, clusterByPR)
-
-	// Apply time-decay window for enhanced decay telemetry if configured
-	var decayStats planning.TimeDecayStats
-	if p.timeDecayWindow != nil && len(pool) > 0 {
-		tdw := planning.NewTimeDecayWindow(pool, p.timeDecayWindow.Config(), p.now())
-		decayStats = tdw.GetWindowStats()
-	}
-
-	// Apply pool selector for cluster coherence-aware selection if configured
-	if p.poolSelector != nil {
-		poolResult := p.poolSelector.SelectCandidatesWithClusterCoherence(ctx, repo, pool, target, planning.DefaultTimeDecayConfig())
-		// Extract PRs from selected candidates
-		selectedPRs := make([]types.PR, 0, len(poolResult.Selected))
-		for _, candidate := range poolResult.Selected {
-			selectedPRs = append(selectedPRs, candidate.PR)
-		}
-		// Update pool with selected PRs
-		pool = selectedPRs
-		// Track rejections from pool selector
-		for _, excluded := range poolResult.Excluded {
-			rejections = append(rejections, types.PlanRejection{
-				PRNumber: excluded.PR.Number,
-				Reason:   excluded.Reason,
-			})
-		}
-	}
 
 	// Handle empty pool case
 	if len(pool) == 0 {
@@ -284,28 +157,8 @@ func (p *Planner) Plan(ctx context.Context, repo string, prs []types.PR, target 
 		}
 	}
 
-	// Capture pairwise shards from formula engine for telemetry
-	pairwiseShards := searchResult.Telemetry.PairwiseShards
-
 	// Build dependency-ordered list
 	orderedPRs := p.orderSelection(repo, selectedPRs)
-
-	// Run sharded pairwise conflict detection if executor is configured
-	var pairwiseResult *planning.PairwiseResult
-	warningsByPR := make(map[int][]string)
-	if p.pairwiseExecutor != nil && len(orderedPRs) > 0 {
-		pairwiseResult, _ = p.pairwiseExecutor.ExecuteSharded(ctx, repo, orderedPRs)
-		if pairwiseResult != nil {
-			for _, conflict := range pairwiseResult.Conflicts {
-				msg := fmt.Sprintf("pairwise_conflict: %s with PR #%d", conflict.ConflictType, conflict.TargetPR)
-				warningsByPR[conflict.SourcePR] = p.appendUniqueString(warningsByPR[conflict.SourcePR], msg)
-			}
-			// Use pairwise executor's shard count if available
-			if pairwiseResult.Telemetry.PairwiseShards > pairwiseShards {
-				pairwiseShards = pairwiseResult.Telemetry.PairwiseShards
-			}
-		}
-	}
 
 	// Build selected candidates
 	selected := make([]types.MergePlanCandidate, 0, len(selectedPRs))
@@ -313,13 +166,8 @@ func (p *Planner) Plan(ctx context.Context, repo string, prs []types.PR, target 
 		selected = append(selected, p.candidateFromPR(pr, filter.PlannerPriority(pr, p.now()), nil))
 	}
 
-	// Build conflict warnings (merge graph-based and pairwise)
-	graphWarnings := p.buildConflictWarnings(repo, orderedPRs)
-	for prNum, warns := range graphWarnings {
-		for _, w := range warns {
-			warningsByPR[prNum] = p.appendUniqueString(warningsByPR[prNum], w)
-		}
-	}
+	// Build conflict warnings
+	warningsByPR := p.buildConflictWarnings(repo, orderedPRs)
 
 	// Build ordering with warnings
 	ordering := make([]types.MergePlanCandidate, 0, len(orderedPRs))
@@ -331,33 +179,6 @@ func (p *Planner) Plan(ctx context.Context, repo string, prs []types.PR, target 
 	sort.Slice(rejections, func(i, j int) bool {
 		return rejections[i].PRNumber < rejections[j].PRNumber
 	})
-
-	// Build telemetry, including pairwise shard metrics and time-decay stats if available
-	stageLatencies := make(map[string]int)
-	stageDropCounts := make(map[string]int)
-
-	// Always aggregate filter-stage rejections into stage drop counts
-	for _, r := range rejections {
-		stageDropCounts[r.Reason]++
-	}
-
-	if pairwiseResult != nil {
-		if lat, ok := pairwiseResult.Telemetry.StageLatenciesMS["pairwise_total_ms"]; ok {
-			stageLatencies["pairwise_sharded"] = lat
-		}
-		if cnt, ok := pairwiseResult.Telemetry.StageDropCounts["conflicts_found"]; ok {
-			stageDropCounts["pairwise_conflicts"] = cnt
-		}
-		stageDropCounts["pairwise_shards"] = pairwiseResult.Telemetry.PairwiseShards
-	}
-	// Add time-decay window telemetry if configured
-	if p.timeDecayWindow != nil {
-		stageDropCounts["decay_eligible"] = decayStats.EligibleCount
-		stageDropCounts["decay_protected"] = decayStats.ProtectedCount
-		stageDropCounts["decay_min"] = int(decayStats.DecayMin * 1000)
-		stageDropCounts["decay_max"] = int(decayStats.DecayMax * 1000)
-		stageDropCounts["decay_avg"] = int(decayStats.DecayAvg * 1000)
-	}
 
 	return types.PlanResponse{
 		Repo:              repo,
@@ -372,9 +193,8 @@ func (p *Planner) Plan(ctx context.Context, repo string, prs []types.PR, target 
 			PoolSizeBefore:   len(prs),
 			PoolSizeAfter:    len(pool),
 			PoolStrategy:     "formula+graph",
-			PairwiseShards:  pairwiseShards,
-			StageLatenciesMS: stageLatencies,
-			StageDropCounts:  stageDropCounts,
+			StageLatenciesMS: make(map[string]int),
+			StageDropCounts:  make(map[string]int),
 		},
 	}, nil
 }

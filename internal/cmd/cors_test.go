@@ -247,8 +247,8 @@ func TestCorsMiddlewarePreflightRequestAllowedOrigin(t *testing.T) {
 
 	corsHandler.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected status 200 for preflight, got %d", rr.Code)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("expected status 204 for preflight, got %d", rr.Code)
 	}
 
 	// Verify CORS headers are present on preflight for allowed origin
@@ -288,8 +288,8 @@ func TestCorsMiddlewarePreflightRequestDisallowedOrigin(t *testing.T) {
 
 	corsHandler.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected status 200 for preflight, got %d", rr.Code)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("expected status 204 for preflight, got %d", rr.Code)
 	}
 
 	// Verify CORS headers are NOT present for disallowed origin on preflight

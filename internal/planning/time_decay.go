@@ -193,11 +193,6 @@ func (tdw *TimeDecayWindow) IsProtected(prNumber int) bool {
 	return tdw.protected[prNumber]
 }
 
-// Config returns the time-decay configuration used by this window.
-func (tdw *TimeDecayWindow) Config() TimeDecayConfig {
-	return tdw.config
-}
-
 // GetReasonCodes returns reason codes explaining the time-decay score for a PR.
 func (tdw *TimeDecayWindow) GetReasonCodes(pr types.PR) []string {
 	var reasons []string
