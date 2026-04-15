@@ -424,6 +424,22 @@ type AnalyzerFinding struct {
 // ReviewResult represents the outcome of an agentic PR review.
 // It aggregates findings from multiple analyzers to produce a final classification
 // and priority recommendation for the PR.
+type DecisionLayer struct {
+	// Layer is the decision ladder number, from 1 to 16.
+	Layer int `json:"layer"`
+	// Name is the human-readable layer name from GUIDELINE.md.
+	Name string `json:"name"`
+	// Bucket names the visible bucket or outcome associated with the layer, when relevant.
+	Bucket string `json:"bucket,omitempty"`
+	// Status describes whether the layer peeled, routed, or judged the PR.
+	Status string `json:"status"`
+	// Reasons records the reason trail for this layer.
+	Reasons []string `json:"reasons"`
+}
+
+// ReviewResult represents the outcome of an agentic PR review.
+// It aggregates findings from multiple analyzers to produce a final classification
+// and priority recommendation for the PR.
 type ReviewResult struct {
 	// PRNumber identifies the PR this review result applies to.
 	PRNumber int `json:"pr_number"`
@@ -443,6 +459,8 @@ type ReviewResult struct {
 	Confidence float64 `json:"confidence"`
 	// Reasons is a list of reason codes explaining why this classification was assigned.
 	Reasons []string `json:"reasons"`
+	// DecisionLayers records the 16-layer decision ladder for this PR.
+	DecisionLayers []DecisionLayer `json:"decision_layers,omitempty"`
 	// Blockers lists the blocking issues that prevent merge or require follow-up.
 	Blockers []string `json:"blockers"`
 	// EvidenceReferences points to the evidence used to produce this review result.

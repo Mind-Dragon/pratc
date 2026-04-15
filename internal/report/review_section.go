@@ -100,7 +100,7 @@ func (s *ReviewSection) renderPriorityRow(pdf *fpdf.Fpdf) {
 
 	pdf.SetFont("Arial", "B", 14)
 	pdf.SetXY(15, y-12)
-	pdf.Cell(180, 8, "Priority tiers")
+	pdf.Cell(180, 8, "Operational priority tiers")
 
 	priorityCards := []struct {
 		label   string
@@ -119,7 +119,7 @@ func (s *ReviewSection) renderPriorityRow(pdf *fpdf.Fpdf) {
 
 	pdf.SetFont("Arial", "", 10)
 	pdf.SetXY(15, y+35)
-	pdf.MultiCell(180, 6, "The review engine remains advisory-only: it ranks work, highlights buckets, and escalates uncertain cases without mutating GitHub state.", "", "L", false)
+	pdf.MultiCell(180, 6, "The review engine remains advisory-only: it ranks work, keeps operational tiers internal, and exposes the v1.4 decision map through the analyst/report layers without mutating GitHub state.", "", "L", false)
 }
 
 func renderReviewMetricBox(pdf *fpdf.Fpdf, x, y, w, h float64, label string, value int, r, g, b int) {

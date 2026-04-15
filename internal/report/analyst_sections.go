@@ -37,7 +37,7 @@ type analystDataset struct {
 	Repo         string
 	GeneratedAt  time.Time
 	Rows         []AnalystRow
-	SpamRows     []AnalystRow
+	JunkRows      []AnalystRow
 	TopUsefulRows []AnalystRow
 	Duplicates   []AnalystDuplicateEntry
 	CategoryCounts map[string]int
@@ -112,8 +112,8 @@ func loadAnalystDataset(inputDir, repo string) (*analystDataset, error) {
 		if len(dataset.CategoryExamples[classification]) < 3 {
 			dataset.CategoryExamples[classification] = append(dataset.CategoryExamples[classification], row)
 		}
-		if classification == "spam" || result.ProblemType == "spam" {
-			dataset.SpamRows = append(dataset.SpamRows, row)
+		if classification == "junk" || result.ProblemType == "spam" || result.ProblemType == "junk" {
+			dataset.JunkRows = append(dataset.JunkRows, row)
 		}
 	}
 
@@ -126,12 +126,12 @@ func loadAnalystDataset(inputDir, repo string) (*analystDataset, error) {
 		}
 		return dataset.Rows[i].PRNumber < dataset.Rows[j].PRNumber
 	})
-	if len(dataset.SpamRows) > 0 {
-		sort.Slice(dataset.SpamRows, func(i, j int) bool {
-			if dataset.SpamRows[i].Score != dataset.SpamRows[j].Score {
-				return dataset.SpamRows[i].Score > dataset.SpamRows[j].Score
+	if len(dataset.JunkRows) > 0 {
+		sort.Slice(dataset.JunkRows, func(i, j int) bool {
+			if dataset.JunkRows[i].Score != dataset.JunkRows[j].Score {
+				return dataset.JunkRows[i].Score > dataset.JunkRows[j].Score
 			}
-			return dataset.SpamRows[i].PRNumber < dataset.SpamRows[j].PRNumber
+			return dataset.JunkRows[i].PRNumber < dataset.JunkRows[j].PRNumber
 		})
 	}
 
@@ -237,8 +237,8 @@ func classifyAnalystRow(result types.ReviewResult, stale types.StalenessReport) 
 	case types.ReviewCategoryDuplicateSuperseded:
 		return "duplicate"
 	case types.ReviewCategoryProblematicQuarantine:
-		if result.ProblemType == "spam" {
-			return "spam"
+		if result.ProblemType == "spam" || result.ProblemType == "junk" {
+			return "junk"
 		}
 		if stale.Score >= 75 {
 			return "stale"
@@ -248,12 +248,12 @@ func classifyAnalystRow(result types.ReviewResult, stale types.StalenessReport) 
 		if stale.Score >= 75 {
 			return "re_engage"
 		}
-		return "escalate"
+		return "low_value"
 	default:
 		if stale.Score >= 75 {
 			return "stale"
 		}
-		return "needs_review"
+		return "low_value"
 	}
 }
 
@@ -264,13 +264,15 @@ func analystAction(result types.ReviewResult, classification string) string {
 	case result.NextAction == "duplicate":
 		return "close_duplicate"
 	case result.NextAction == "close":
-		return "close_spam"
+		return "close_junk"
 	case result.NextAction == "quarantine":
 		return "inspect_now"
 	case result.NextAction == "escalate":
-		return "escalate"
+		return "review_later"
 	case classification == "re_engage":
 		return "re_engage"
+	case classification == "low_value":
+		return "defer"
 	default:
 		return "inspect_now"
 	}
@@ -321,9 +323,9 @@ func analystRank(classification string) int {
 		return 5
 	case "stale":
 		return 6
-	case "spam":
+	case "low_value":
 		return 7
-	case "escalate":
+	case "junk":
 		return 8
 	default:
 		return 9
@@ -469,11 +471,11 @@ func LoadSpamJunkSection(inputDir, repo string) (*SpamJunkSection, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &SpamJunkSection{Repo: repo, GeneratedAt: data.GeneratedAt, Rows: data.SpamRows}, nil
+	return &SpamJunkSection{Repo: repo, GeneratedAt: data.GeneratedAt, Rows: data.JunkRows}, nil
 }
 
 func (s *SpamJunkSection) Render(pdf *fpdf.Fpdf) {
-	renderAnalystRows(pdf, "Spam / Junk PRs", s.Repo, s.GeneratedAt, s.Rows)
+	renderAnalystRows(pdf, "Junk PRs", s.Repo, s.GeneratedAt, s.Rows)
 }
 
 type DuplicateDetailSection struct {
@@ -530,7 +532,7 @@ type AnalystRecommendationsSection struct {
 	GeneratedAt time.Time
 	Useful      []AnalystRow
 	Rejected    []AnalystRow
-	Spam        []AnalystRow
+	Junk        []AnalystRow
 }
 
 func LoadAnalystRecommendationsSection(inputDir, repo string) (*AnalystRecommendationsSection, error) {
@@ -538,7 +540,7 @@ func LoadAnalystRecommendationsSection(inputDir, repo string) (*AnalystRecommend
 	if err != nil {
 		return nil, err
 	}
-	return &AnalystRecommendationsSection{Repo: repo, GeneratedAt: data.GeneratedAt, Useful: data.TopUsefulRows, Rejected: data.PlanRejected, Spam: data.SpamRows}, nil
+	return &AnalystRecommendationsSection{Repo: repo, GeneratedAt: data.GeneratedAt, Useful: data.TopUsefulRows, Rejected: data.PlanRejected, Junk: data.JunkRows}, nil
 }
 
 func (s *AnalystRecommendationsSection) Render(pdf *fpdf.Fpdf) {
@@ -548,7 +550,7 @@ func (s *AnalystRecommendationsSection) Render(pdf *fpdf.Fpdf) {
 	pdf.Cell(180, 10, "Recommendations")
 	y := 35.0
 	y = renderRecommendationList(pdf, y, "Top PRs to inspect now", s.Useful, 10)
-	y = renderRecommendationList(pdf, y+4, "PRs to close as spam", s.Spam, 10)
+	y = renderRecommendationList(pdf, y+4, "PRs to close as junk", s.Junk, 10)
 	_ = renderRecommendationList(pdf, y+4, "PRs rejected from current plan", s.Rejected, 10)
 }
 

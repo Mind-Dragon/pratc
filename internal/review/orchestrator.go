@@ -371,18 +371,20 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 	safetyResult := ClassifyMergeSafety(prData.PR, prData.ConflictPairs)
 	problemResult := ClassifyProblematicPR(prData.PR)
 
+	decisionLayers := buildDecisionLayers(prData, safetyResult, problemResult, finalCategory, finalConfidence)
 	reviewResult := types.ReviewResult{
-		PRNumber:         prData.PR.Number,
-		Title:            prData.PR.Title,
-		Author:           prData.PR.Author,
-		ClusterID:        prData.PR.ClusterID,
-		ProblemType:      problemResult.ProblemType,
-		Category:         finalCategory,
-		PriorityTier:     types.PriorityTierReviewRequired,
-		Confidence:       finalConfidence,
-		Reasons:          mergeUniqueStrings(finalReasons, analystReasons(prData, safetyResult, problemResult)),
-		AnalyzerFindings: allFindings,
-		Blockers:         mergeUniqueStrings(safetyResult.Blockers),
+		PRNumber:           prData.PR.Number,
+		Title:              prData.PR.Title,
+		Author:             prData.PR.Author,
+		ClusterID:          prData.PR.ClusterID,
+		ProblemType:        problemResult.ProblemType,
+		Category:           finalCategory,
+		PriorityTier:       types.PriorityTierReviewRequired,
+		Confidence:         finalConfidence,
+		Reasons:            mergeUniqueStrings(finalReasons, analystReasons(prData, safetyResult, problemResult), decisionLayerSummaries(decisionLayers)),
+		DecisionLayers:     decisionLayers,
+		AnalyzerFindings:   allFindings,
+		Blockers:           mergeUniqueStrings(safetyResult.Blockers),
 		EvidenceReferences: []string{},
 		NextAction:         "review",
 	}
@@ -448,6 +450,333 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 		CompletedAt:      time.Now(),
 	}, nil
 }
+
+func buildDecisionLayers(prData PRData, safetyResult MergeSafetyResult, problemResult ProblematicPRResult, category types.ReviewCategory, confidence float64) []types.DecisionLayer {
+	pr := prData.PR
+	duplicateReasons := duplicateLayerReasons(prData.DuplicateGroups)
+	garbageReasons := garbageLayerReasons(pr)
+	staleReasons := staleLayerReasons(prData.Staleness)
+	mergeableReasons := mergeableLayerReasons(pr, safetyResult)
+	dependencyReasons := dependencyLayerReasons(prData)
+	relatedCount := len(prData.RelatedPRs)
+	filesTouched := len(pr.FilesChanged)
+	changeFootprint := pr.Additions + pr.Deletions
+	layer := func(num int, name, bucket, status string, reasons ...string) types.DecisionLayer {
+		return types.DecisionLayer{
+			Layer:   num,
+			Name:    name,
+			Bucket:  bucket,
+			Status:  status,
+			Reasons: mergeUniqueStrings(reasons),
+		}
+	}
+
+	layers := []types.DecisionLayer{
+		layer(1, "Garbage", bucketForLayer1(pr, garbageReasons), layerStatus(garbageReasons), garbageReasons...),
+		layer(2, "Duplicates", "duplicate", layerStatus(duplicateReasons), duplicateReasons...),
+		layer(3, "Obvious badness", bucketForBadness(problemResult), layerStatus(problemResult.Reasons), append(problemResult.Reasons, problemResult.ProblemType)...),
+		layer(4, "Substance score", bucketForSubstance(safetyResult, confidence), layerStatus(safetyResult.Reasons), append([]string{fmt.Sprintf("confidence %.2f", confidence)}, safetyResult.Reasons...)...),
+		layer(5, "Now vs future", bucketForCategory(category), layerStatus([]string{string(category)}), fmt.Sprintf("category %s", category)),
+		layer(6, "Confidence", bucketForConfidence(confidence), layerStatus([]string{fmt.Sprintf("confidence %.2f", confidence)}), fmt.Sprintf("confidence %.2f", confidence)),
+		layer(7, "Dependency", bucketForDependencies(dependencyReasons), layerStatus(dependencyReasons), dependencyReasons...),
+		layer(8, "Blast radius", bucketForBlastRadius(changeFootprint), layerStatus([]string{fmt.Sprintf("files_changed %d", filesTouched)}), fmt.Sprintf("files_changed %d", filesTouched), fmt.Sprintf("diff footprint %d", changeFootprint)),
+		layer(9, "Leverage", bucketForLeverage(relatedCount), layerStatus([]string{fmt.Sprintf("related PRs %d", relatedCount)}), fmt.Sprintf("related PRs %d", relatedCount), prData.ClusterLabel),
+		layer(10, "Ownership", bucketForOwnership(pr), layerStatus([]string{pr.Author}), pr.Author, ownershipReason(pr)),
+		layer(11, "Stability", bucketForStability(prData.Staleness, pr.Mergeable), layerStatus(staleReasons), staleReasons...),
+		layer(12, "Mergeability", bucketForMergeability(pr.Mergeable), layerStatus(mergeableReasons), mergeableReasons...),
+		layer(13, "Strategic weight", bucketForStrategicWeight(category, prData.ClusterLabel), layerStatus([]string{fmt.Sprintf("category %s", category)}), fmt.Sprintf("category %s", category), prData.ClusterLabel),
+		layer(14, "Attention cost", bucketForAttentionCost(len(pr.Title), len(pr.Body), len(problemResult.Reasons)), layerStatus([]string{fmt.Sprintf("title %d chars", len(pr.Title))}), fmt.Sprintf("title %d chars", len(pr.Title)), fmt.Sprintf("body %d chars", len(pr.Body)), fmt.Sprintf("reason count %d", len(problemResult.Reasons))),
+		layer(15, "Reversibility", bucketForReversibility(changeFootprint), layerStatus([]string{fmt.Sprintf("change footprint %d", changeFootprint)}), fmt.Sprintf("change footprint %d", changeFootprint), fmt.Sprintf("additions %d", pr.Additions), fmt.Sprintf("deletions %d", pr.Deletions)),
+		layer(16, "Signal quality", bucketForSignalQuality(problemResult, confidence), layerStatus(problemResult.Reasons), append([]string{fmt.Sprintf("confidence %.2f", confidence)}, problemResult.Reasons...)...),
+	}
+
+	return layers
+}
+
+
+func decisionLayerSummaries(layers []types.DecisionLayer) []string {
+	summaries := make([]string, 0, len(layers))
+	for _, layer := range layers {
+		if len(layer.Reasons) == 0 {
+			summaries = append(summaries, fmt.Sprintf("L%d %s", layer.Layer, layer.Name))
+			continue
+		}
+		summaries = append(summaries, fmt.Sprintf("L%d %s: %s", layer.Layer, layer.Name, strings.Join(layer.Reasons, "; ")))
+	}
+	return summaries
+}
+
+func garbageLayerReasons(pr types.PR) []string {
+	reasons := []string{}
+	if pr.IsDraft {
+		reasons = append(reasons, "draft PR")
+	}
+	if pr.IsBot {
+		reasons = append(reasons, "bot-authored PR")
+	}
+	if strings.TrimSpace(pr.Title) == "" {
+		reasons = append(reasons, "empty title")
+	}
+	if strings.TrimSpace(pr.Body) == "" {
+		reasons = append(reasons, "empty body")
+	}
+	return reasons
+}
+
+func duplicateLayerReasons(groups []types.DuplicateGroup) []string {
+	reasons := make([]string, 0, len(groups)+1)
+	for _, group := range groups {
+		if group.Reason != "" {
+			reasons = append(reasons, group.Reason)
+		}
+		if group.CanonicalPRNumber > 0 {
+			reasons = append(reasons, fmt.Sprintf("canonical PR #%d", group.CanonicalPRNumber))
+		}
+	}
+	if len(reasons) == 0 {
+		reasons = append(reasons, "no duplicate evidence")
+	}
+	return reasons
+}
+
+func staleLayerReasons(stale *types.StalenessReport) []string {
+	if stale == nil {
+		return []string{"no staleness signal"}
+	}
+	reasons := append([]string{}, stale.Reasons...)
+	if stale.Score > 0 {
+		reasons = append(reasons, fmt.Sprintf("staleness score %.1f", stale.Score))
+	}
+	return reasons
+}
+
+func mergeableLayerReasons(pr types.PR, safetyResult MergeSafetyResult) []string {
+	reasons := append([]string{}, safetyResult.Reasons...)
+	switch strings.ToLower(strings.TrimSpace(pr.Mergeable)) {
+	case "mergeable", "true", "clean":
+		reasons = append(reasons, "mergeable state clean")
+	case "conflicting", "false", "unclean", "dirty":
+		reasons = append(reasons, "merge conflicts present")
+	default:
+		reasons = append(reasons, "mergeability unknown")
+	}
+	return mergeUniqueStrings(reasons)
+}
+
+func dependencyLayerReasons(prData PRData) []string {
+	reasons := make([]string, 0, len(prData.ConflictPairs)+1)
+	for _, conflict := range prData.ConflictPairs {
+		if conflict.Reason != "" {
+			reasons = append(reasons, conflict.Reason)
+		}
+		if conflict.ConflictType != "" {
+			reasons = append(reasons, conflict.ConflictType)
+		}
+	}
+	if len(reasons) == 0 {
+		reasons = append(reasons, "no dependency blockers")
+	}
+	return reasons
+}
+
+func ownershipReason(pr types.PR) string {
+	switch {
+	case strings.TrimSpace(pr.Author) == "":
+		return "unknown owner"
+	case pr.IsBot:
+		return "automated ownership"
+	default:
+		return fmt.Sprintf("owner %s", pr.Author)
+	}
+}
+
+func layerStatus(reasons []string) string {
+	if len(reasons) == 0 {
+		return "clear"
+	}
+	return "observed"
+}
+
+func bucketForCategory(category types.ReviewCategory) string {
+	switch category {
+	case types.ReviewCategoryMergeNow:
+		return "now"
+	case types.ReviewCategoryMergeAfterFocusedReview:
+		return "future"
+	case types.ReviewCategoryDuplicateSuperseded:
+		return "duplicate"
+	case types.ReviewCategoryProblematicQuarantine:
+		return "junk"
+	case types.ReviewCategoryUnknownEscalate:
+		return "blocked"
+	default:
+		return "low_value"
+	}
+}
+
+func bucketForLayer1(pr types.PR, reasons []string) string {
+	if pr.IsDraft || pr.IsBot || strings.TrimSpace(pr.Title) == "" || strings.TrimSpace(pr.Body) == "" {
+		return "junk"
+	}
+	if len(reasons) > 0 {
+		return "junk"
+	}
+	return "low_value"
+}
+
+func bucketForBadness(problemResult ProblematicPRResult) string {
+	if !problemResult.IsProblematic {
+		return "low_value"
+	}
+	switch problemResult.ProblemType {
+	case "spam":
+		return "junk"
+	case "broken", "suspicious":
+		return "blocked"
+	default:
+		return "low_value"
+	}
+}
+
+func bucketForSubstance(safetyResult MergeSafetyResult, confidence float64) string {
+	if !safetyResult.IsSafe {
+		return "blocked"
+	}
+	switch {
+	case confidence >= 0.85:
+		return "high_value"
+	case confidence >= 0.65:
+		return "merge_candidate"
+	case confidence >= 0.5:
+		return "needs_review"
+	default:
+		return "low_value"
+	}
+}
+
+func bucketForConfidence(confidence float64) string {
+	switch {
+	case confidence >= 0.85:
+		return "high_value"
+	case confidence >= 0.65:
+		return "needs_review"
+	case confidence >= 0.5:
+		return "low_value"
+	default:
+		return "blocked"
+	}
+}
+
+func bucketForDependencies(reasons []string) string {
+	if len(reasons) == 0 || (len(reasons) == 1 && reasons[0] == "no dependency blockers") {
+		return "now"
+	}
+	return "blocked"
+}
+
+func bucketForBlastRadius(changeFootprint int) string {
+	switch {
+	case changeFootprint >= 1000:
+		return "blocked"
+	case changeFootprint >= 250:
+		return "needs_review"
+	default:
+		return "low_value"
+	}
+}
+
+func bucketForLeverage(relatedCount int) string {
+	switch {
+	case relatedCount >= 5:
+		return "high_value"
+	case relatedCount >= 1:
+		return "merge_candidate"
+	default:
+		return "low_value"
+	}
+}
+
+func bucketForOwnership(pr types.PR) string {
+	if pr.IsBot || strings.TrimSpace(pr.Author) == "" {
+		return "needs_review"
+	}
+	return "high_value"
+}
+
+func bucketForStability(stale *types.StalenessReport, mergeable string) string {
+	if stale != nil && stale.Score >= 75 {
+		return "re_engage"
+	}
+	if strings.EqualFold(strings.TrimSpace(mergeable), "conflicting") {
+		return "blocked"
+	}
+	return "now"
+}
+
+func bucketForMergeability(mergeable string) string {
+	switch strings.ToLower(strings.TrimSpace(mergeable)) {
+	case "mergeable", "true", "clean":
+		return "now"
+	case "conflicting", "false", "unclean", "dirty":
+		return "blocked"
+	default:
+		return "needs_review"
+	}
+}
+
+func bucketForStrategicWeight(category types.ReviewCategory, clusterLabel string) string {
+	switch category {
+	case types.ReviewCategoryMergeNow:
+		return "high_value"
+	case types.ReviewCategoryMergeAfterFocusedReview:
+		return "merge_candidate"
+	case types.ReviewCategoryUnknownEscalate:
+		return "needs_review"
+	default:
+		if strings.TrimSpace(clusterLabel) != "" {
+			return "re_engage"
+		}
+		return "low_value"
+	}
+}
+
+func bucketForAttentionCost(titleLen, bodyLen, reasonCount int) string {
+	cost := titleLen + bodyLen + reasonCount*20
+	switch {
+	case cost >= 500:
+		return "low_value"
+	case cost >= 200:
+		return "needs_review"
+	default:
+		return "high_value"
+	}
+}
+
+func bucketForReversibility(changeFootprint int) string {
+	switch {
+	case changeFootprint <= 20:
+		return "high_value"
+	case changeFootprint <= 200:
+		return "merge_candidate"
+	default:
+		return "low_value"
+	}
+}
+
+func bucketForSignalQuality(problemResult ProblematicPRResult, confidence float64) string {
+	if problemResult.IsProblematic {
+		return "junk"
+	}
+	switch {
+	case confidence >= 0.85:
+		return "high_value"
+	case confidence >= 0.65:
+		return "merge_candidate"
+	default:
+		return "low_value"
+	}
+}
+
 
 func analystReasons(prData PRData, safetyResult MergeSafetyResult, problemResult ProblematicPRResult) []string {
 	reasons := make([]string, 0, 8)

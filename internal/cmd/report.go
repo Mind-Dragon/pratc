@@ -120,10 +120,10 @@ Example:
 			} else {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load duplicate detail section: %v\n", err)
 			}
-			if spam, err := report.LoadSpamJunkSection(resolvedInputDir, repo); err == nil {
-				exporter.AddSection(spam)
+			if junk, err := report.LoadSpamJunkSection(resolvedInputDir, repo); err == nil {
+				exporter.AddSection(junk)
 			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load spam/junk section: %v\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load junk section: %v\n", err)
 			}
 			if recs, err := report.LoadAnalystRecommendationsSection(resolvedInputDir, repo); err == nil {
 				exporter.AddSection(recs)

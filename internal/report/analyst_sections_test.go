@@ -36,7 +36,7 @@ func TestLoadAnalystDataset_BuildsRowsAndRecommendations(t *testing.T) {
 			Results: []types.ReviewResult{
 				{PRNumber: 11, Title: "Useful feature", Author: "alice", Category: types.ReviewCategoryMergeNow, PriorityTier: types.PriorityTierFastMerge, Confidence: 0.93, Reasons: []string{"approved", "CI passing"}, NextAction: "merge"},
 				{PRNumber: 12, Title: "Duplicate feature", Author: "bob", Category: types.ReviewCategoryDuplicateSuperseded, PriorityTier: types.PriorityTierBlocked, Confidence: 0.87, Reasons: []string{"duplicate"}, NextAction: "duplicate"},
-				{PRNumber: 13, Title: "Bump deps", Author: "dependabot[bot]", Category: types.ReviewCategoryProblematicQuarantine, PriorityTier: types.PriorityTierBlocked, Confidence: 0.91, Reasons: []string{"bot author", "empty body"}, ProblemType: "spam", NextAction: "close"},
+				{PRNumber: 13, Title: "Bump deps", Author: "dependabot[bot]", Category: types.ReviewCategoryProblematicQuarantine, PriorityTier: types.PriorityTierBlocked, Confidence: 0.91, Reasons: []string{"bot author", "empty body"}, ProblemType: "junk", NextAction: "close"},
 			},
 		},
 	}
@@ -45,7 +45,7 @@ func TestLoadAnalystDataset_BuildsRowsAndRecommendations(t *testing.T) {
 		Target:            10,
 		CandidatePoolSize: 3,
 		Selected: []types.MergePlanCandidate{{PRNumber: 11, Title: "Useful feature", Score: 0.93, Reasons: []string{"approved"}}},
-		Rejections: []types.PlanRejection{{PRNumber: 12, Reason: "duplicate"}, {PRNumber: 13, Reason: "spam"}},
+		Rejections: []types.PlanRejection{{PRNumber: 12, Reason: "duplicate"}, {PRNumber: 13, Reason: "junk"}},
 	}
 
 	writeJSON(t, filepath.Join(tmp, "analyze.json"), analyze)
@@ -61,14 +61,14 @@ func TestLoadAnalystDataset_BuildsRowsAndRecommendations(t *testing.T) {
 	if len(data.Duplicates) != 1 {
 		t.Fatalf("duplicates = %d, want 1", len(data.Duplicates))
 	}
-	if len(data.SpamRows) != 1 {
-		t.Fatalf("spam rows = %d, want 1", len(data.SpamRows))
+	if len(data.JunkRows) != 1 {
+		t.Fatalf("junk rows = %d, want 1", len(data.JunkRows))
 	}
 	if len(data.TopUsefulRows) == 0 || data.TopUsefulRows[0].PRNumber != 11 {
 		t.Fatalf("expected PR #11 as top useful row, got %#v", data.TopUsefulRows)
 	}
-	if data.CategoryCounts["spam"] != 1 {
-		t.Fatalf("spam category count = %d, want 1", data.CategoryCounts["spam"])
+	if data.CategoryCounts["junk"] != 1 {
+		t.Fatalf("junk category count = %d, want 1", data.CategoryCounts["junk"])
 	}
 }
 
