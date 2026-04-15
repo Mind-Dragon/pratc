@@ -40,10 +40,18 @@ type SyncProgress struct {
 type SyncJobStatus string
 
 const (
-	SyncJobStatusInProgress SyncJobStatus = "in_progress"
-	SyncJobStatusCompleted  SyncJobStatus = "completed"
-	SyncJobStatusFailed     SyncJobStatus = "failed"
-	SyncJobStatusPaused     SyncJobStatus = "paused"
+	// Explicit job states for v1.4.1+ state machine
+	SyncJobStatusQueued          SyncJobStatus = "queued"           // Job created, not yet started
+	SyncJobStatusRunning         SyncJobStatus = "running"           // Job actively processing
+	SyncJobStatusPausedRateLimit SyncJobStatus = "paused_rate_limit" // Paused due to rate limit
+	SyncJobStatusResuming        SyncJobStatus = "resuming"         // Transitioning from paused to running
+	SyncJobStatusCompleted       SyncJobStatus = "completed"         // Terminal state
+	SyncJobStatusFailed          SyncJobStatus = "failed"           // Terminal state
+	SyncJobStatusCanceled        SyncJobStatus = "canceled"         // Terminal state
+
+	// Legacy states (deprecated, kept for backward compatibility with existing code)
+	SyncJobStatusInProgress SyncJobStatus = "in_progress" // Deprecated: use Running or Resuming
+	SyncJobStatusPaused     SyncJobStatus = "paused"      // Deprecated: use PausedRateLimit
 )
 
 type SyncJob struct {
@@ -57,9 +65,19 @@ type SyncJob struct {
 	UpdatedAt  time.Time
 }
 
-// IsPaused returns true if the job status is paused.
+// IsPaused returns true if the job status indicates a paused state.
 func (j SyncJob) IsPaused() bool {
-	return j.Status == SyncJobStatusPaused
+	return j.Status == SyncJobStatusPaused || j.Status == SyncJobStatusPausedRateLimit
+}
+
+// IsTerminal returns true if the job is in a terminal state.
+func (j SyncJob) IsTerminal() bool {
+	return j.Status == SyncJobStatusCompleted || j.Status == SyncJobStatusFailed || j.Status == SyncJobStatusCanceled
+}
+
+// IsActive returns true if the job is in an active (non-terminal) state.
+func (j SyncJob) IsActive() bool {
+	return j.Status == SyncJobStatusQueued || j.Status == SyncJobStatusRunning || j.Status == SyncJobStatusResuming
 }
 
 type PRRecord = types.PR

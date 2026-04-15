@@ -85,8 +85,8 @@ func TestStoreGetActiveJobs(t *testing.T) {
 	found := make(map[string]bool)
 	for _, job := range jobs {
 		found[job.ID] = true
-		if job.Status != StatusActive && job.Status != StatusPaused {
-			t.Errorf("expected active or paused status, got %s for job %s", job.Status, job.ID)
+		if job.Status != StatusActive && job.Status != StatusPaused && job.Status != StatusQueued {
+			t.Errorf("expected active, paused, or queued status, got %s for job %s", job.Status, job.ID)
 		}
 	}
 	if !found[active.ID] {
@@ -295,10 +295,16 @@ func TestStoreMapCacheStatus(t *testing.T) {
 		input    cache.SyncJobStatus
 		expected string
 	}{
-		{cache.SyncJobStatusInProgress, StatusActive},
-		{cache.SyncJobStatusPaused, StatusPaused},
+		{cache.SyncJobStatusQueued, StatusQueued},
+		{cache.SyncJobStatusRunning, StatusActive},
+		{cache.SyncJobStatusResuming, StatusActive},
+		{cache.SyncJobStatusPausedRateLimit, StatusPaused},
 		{cache.SyncJobStatusCompleted, StatusCompleted},
 		{cache.SyncJobStatusFailed, StatusFailed},
+		{cache.SyncJobStatusCanceled, StatusFailed},
+		// Legacy states (deprecated)
+		{cache.SyncJobStatusInProgress, StatusActive},
+		{cache.SyncJobStatusPaused, StatusPaused},
 		{cache.SyncJobStatus("unknown"), StatusQueued},
 		{"", StatusQueued},
 	}

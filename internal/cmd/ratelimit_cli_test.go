@@ -210,7 +210,7 @@ func TestPauseBehaviorWhenBudgetExhausted(t *testing.T) {
 			_, err = store.DB().Exec(`
 				INSERT INTO sync_jobs (id, repo, status, error_message, last_sync_at, created_at, updated_at)
 				VALUES (?, ?, ?, '', '', ?, ?)
-			`, jobID, "test/repo", "in_progress", now.Format(time.RFC3339), now.Format(time.RFC3339))
+			`, jobID, "test/repo", "resuming", now.Format(time.RFC3339), now.Format(time.RFC3339))
 			if err != nil {
 				t.Fatalf("failed to create sync job: %v", err)
 			}
@@ -333,8 +333,8 @@ func TestResumeFromPausedState(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to get resumed job: %v", err)
 		}
-		if resumedJob.Status != cache.SyncJobStatusInProgress {
-			t.Errorf("expected status %s, got %s", cache.SyncJobStatusInProgress, resumedJob.Status)
+		if resumedJob.Status != cache.SyncJobStatusResuming {
+			t.Errorf("expected status %s, got %s", cache.SyncJobStatusResuming, resumedJob.Status)
 		}
 	})
 

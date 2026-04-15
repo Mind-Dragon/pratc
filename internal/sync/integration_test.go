@@ -103,7 +103,7 @@ func TestIntegration_PauseResumeRestartLifecycle(t *testing.T) {
 	}
 
 	paused := loadSyncJobSnapshot(t, store, job.ID)
-	assertSnapshot(t, paused, string(cache.SyncJobStatusPaused), job.ID)
+	assertSnapshot(t, paused, string(cache.SyncJobStatusPausedRateLimit), job.ID)
 	wantResumeAt := resetAt.Add(15 * time.Second).Format(time.RFC3339)
 	if paused.NextScheduledAt != wantResumeAt {
 		t.Fatalf("expected next scheduled time %s, got %s", wantResumeAt, paused.NextScheduledAt)
@@ -128,7 +128,7 @@ func TestIntegration_PauseResumeRestartLifecycle(t *testing.T) {
 	defer store.Close()
 
 	restarted := loadSyncJobSnapshot(t, store, job.ID)
-	assertSnapshot(t, restarted, string(cache.SyncJobStatusPaused), job.ID)
+	assertSnapshot(t, restarted, string(cache.SyncJobStatusPausedRateLimit), job.ID)
 	if restarted.NextScheduledAt != wantResumeAt || restarted.ScheduledResumeAt != wantResumeAt {
 		t.Fatalf("expected restart to preserve pause schedule, got %+v", restarted)
 	}
@@ -137,12 +137,12 @@ func TestIntegration_PauseResumeRestartLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected resume after restart to succeed, got %v", err)
 	}
-	if resumed.Status != cache.SyncJobStatusInProgress {
-		t.Fatalf("expected resumed job to be in_progress, got %s", resumed.Status)
+	if resumed.Status != cache.SyncJobStatusResuming {
+		t.Fatalf("expected resumed job to be resuming, got %s", resumed.Status)
 	}
 
 	after := loadSyncJobSnapshot(t, store, job.ID)
-	assertSnapshot(t, after, string(cache.SyncJobStatusInProgress), job.ID)
+	assertSnapshot(t, after, string(cache.SyncJobStatusResuming), job.ID)
 	if after.NextScheduledAt != "" || after.ScheduledResumeAt != "" || after.PauseReason != "" || after.LastBudgetCheck != "" {
 		t.Fatalf("expected pause fields to clear after resume, got %+v", after)
 	}
@@ -173,8 +173,8 @@ func TestIntegration_ResumeFailsWithMissingJobLinkage(t *testing.T) {
 	}
 
 	missing := loadSyncJobSnapshot(t, store, job.ID)
-	if missing.Status != string(cache.SyncJobStatusPaused) {
-		t.Fatalf("expected job to remain paused, got %s", missing.Status)
+	if missing.Status != string(cache.SyncJobStatusPausedRateLimit) {
+		t.Fatalf("expected job to remain paused_rate_limit, got %s", missing.Status)
 	}
 	if missing.JobID != "stale-job-linkage" {
 		t.Fatalf("expected corrupted linkage to persist, got %s", missing.JobID)
@@ -192,7 +192,7 @@ func TestIntegration_ResumeFailsWithMissingJobLinkage(t *testing.T) {
 	}
 
 	after := loadSyncJobSnapshot(t, store, job.ID)
-	assertSnapshot(t, after, string(cache.SyncJobStatusPaused), "stale-job-linkage")
+	assertSnapshot(t, after, string(cache.SyncJobStatusPausedRateLimit), "stale-job-linkage")
 	if after.PauseReason != "rate limit budget exhausted" {
 		t.Fatalf("expected paused state to remain unchanged, got %+v", after)
 	}
@@ -248,13 +248,13 @@ func TestIntegration_FullPauseResumeCycle(t *testing.T) {
 			t.Errorf("expected 0 paused jobs after resume, got %d", len(pausedJobs))
 		}
 
-		// Verify the job status is now in_progress
+		// Verify the job status is now resuming
 		resumedJob, err := store.GetSyncJob(job.ID)
 		if err != nil {
 			t.Fatalf("failed to get resumed job: %v", err)
 		}
-		if resumedJob.Status != cache.SyncJobStatusInProgress {
-			t.Errorf("expected status %s, got %s", cache.SyncJobStatusInProgress, resumedJob.Status)
+		if resumedJob.Status != cache.SyncJobStatusResuming {
+			t.Errorf("expected status %s, got %s", cache.SyncJobStatusResuming, resumedJob.Status)
 		}
 	})
 
@@ -530,8 +530,8 @@ func TestIntegration_ResumeJobNotDue(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error for overdue job, got: %v", err)
 		}
-		if resumedJob.Status != cache.SyncJobStatusInProgress {
-			t.Errorf("expected status %s, got %s", cache.SyncJobStatusInProgress, resumedJob.Status)
+		if resumedJob.Status != cache.SyncJobStatusResuming {
+			t.Errorf("expected status %s, got %s", cache.SyncJobStatusResuming, resumedJob.Status)
 		}
 	})
 }

@@ -29,7 +29,7 @@ func (s *Store) GetActiveJobs() []SyncJobView {
 	var views []SyncJobView
 	for _, job := range jobs {
 		switch job.Status {
-		case cache.SyncJobStatusInProgress, cache.SyncJobStatusPaused:
+		case cache.SyncJobStatusQueued, cache.SyncJobStatusRunning, cache.SyncJobStatusResuming, cache.SyncJobStatusPausedRateLimit:
 			views = append(views, jobToView(job))
 		}
 	}
@@ -100,14 +100,25 @@ func jobToView(job cache.SyncJob) SyncJobView {
 // mapCacheStatus maps cache job statuses to dashboard view statuses.
 func mapCacheStatus(status cache.SyncJobStatus) string {
 	switch status {
-	case cache.SyncJobStatusInProgress:
+	case cache.SyncJobStatusQueued:
+		return StatusQueued
+	case cache.SyncJobStatusRunning:
 		return StatusActive
-	case cache.SyncJobStatusPaused:
+	case cache.SyncJobStatusResuming:
+		return StatusActive
+	case cache.SyncJobStatusPausedRateLimit:
 		return StatusPaused
 	case cache.SyncJobStatusCompleted:
 		return StatusCompleted
 	case cache.SyncJobStatusFailed:
 		return StatusFailed
+	case cache.SyncJobStatusCanceled:
+		return StatusFailed
+	// Legacy states (for backward compatibility during transition)
+	case cache.SyncJobStatusInProgress:
+		return StatusActive
+	case cache.SyncJobStatusPaused:
+		return StatusPaused
 	default:
 		return StatusQueued
 	}

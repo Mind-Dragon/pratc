@@ -27,7 +27,7 @@ Takes a workflow output directory (containing analyze.json, step-3-cluster.json,
 step-4-graph.json, step-5-plan.json) and produces a formatted PDF.
 
 Example:
-  pratc report --repo owner/repo --input-dir ~/.pratc/workflows/owner_repo/20260101-120000 --output report.pdf`,
+	  pratc report --repo owner/repo --input-dir ./projects/owner_repo/runs/20260101-120000 --output report.pdf`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repo, _ := cmd.Flags().GetString("repo")
 			if repo == "" {
@@ -173,7 +173,7 @@ Example:
 	}
 
 	cmd.Flags().String("repo", "", "Repository (owner/name) [required]")
-	cmd.Flags().StringVar(&inputDir, "input-dir", "", "Directory containing workflow artifacts")
+	cmd.Flags().StringVar(&inputDir, "input-dir", "", "Directory containing workflow artifacts (defaults to projects/<repo>/runs/<timestamp>)")
 	cmd.Flags().StringVar(&outputPath, "output", "report.pdf", "Output PDF file path")
 	cmd.Flags().BoolVar(&skipReview, "skip-review", false, "Skip review section")
 	cmd.Flags().BoolVar(&skipCharts, "skip-charts", false, "Skip charts and recommendations sections")
@@ -184,15 +184,7 @@ Example:
 
 // defaultReportInputDir returns the most recent workflow output directory for a repo.
 func defaultReportInputDir(repo string) string {
-	home, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
-		home = "."
-	}
-	slug := strings.NewReplacer("/", "_", string(os.PathSeparator), "_", " ", "_").Replace(strings.TrimSpace(repo))
-	if slug == "" {
-		slug = "repo"
-	}
-	workflowsBase := filepath.Join(home, ".pratc", "workflows", slug)
+	workflowsBase := projectRunsDir(repo)
 
 	entries, err := os.ReadDir(workflowsBase)
 	if err != nil {

@@ -408,7 +408,7 @@ func handleAnalyze(w http.ResponseWriter, r *http.Request, service app.Service, 
 	hasActive, jobID, err := service.GetActiveSyncJob(repo)
 	if err == nil && hasActive {
 		writeHTTPJSON(w, http.StatusAccepted, map[string]any{
-			"sync_status": "in_progress",
+			"sync_status": "running",
 			"job_id":      jobID,
 			"message":     "sync in progress, retry after completion",
 		})
@@ -561,7 +561,6 @@ func getSyncStatus(repo string) map[string]any {
 		"last_sync":        time.Time{},
 		"pr_count":         0,
 		"status":           "never",
-		"in_progress":      false,
 		"progress_percent": 0,
 	}
 
@@ -581,10 +580,36 @@ func getSyncStatus(repo string) map[string]any {
 		status["pr_count"] = len(prs)
 	}
 
+	// First check for active jobs (queued, running, resuming)
 	if job, ok, err := store.ResumeSyncJob(repo); err == nil && ok {
-		status["status"] = "in_progress"
-		status["in_progress"] = true
+		status["job_id"] = job.ID
+		status["status"] = string(job.Status)
 		status["last_sync"] = job.LastSyncAt
+
+		// Include resume_at for paused_rate_limit jobs
+		if job.Status == cache.SyncJobStatusPausedRateLimit {
+			if job.Progress.ScheduledResumeAt.IsZero() {
+				if pausedJob, err := store.GetPausedSyncJobByRepo(repo); err == nil {
+					job.Progress.ScheduledResumeAt = pausedJob.Progress.ScheduledResumeAt
+				}
+			}
+			if !job.Progress.ScheduledResumeAt.IsZero() {
+				status["resume_at"] = job.Progress.ScheduledResumeAt
+			}
+		}
+
+		// Include error for failed jobs
+		if job.Status == cache.SyncJobStatusFailed {
+			if job.Error == "" {
+				if latestJob, ok, err := store.GetLatestSyncJob(repo); err == nil && ok {
+					job.Error = latestJob.Error
+				}
+			}
+			if job.Error != "" {
+				status["error"] = job.Error
+			}
+		}
+
 		if job.Progress.TotalPRs > 0 {
 			percent := (job.Progress.ProcessedPRs * 100) / job.Progress.TotalPRs
 			if percent < 0 {
@@ -596,8 +621,54 @@ func getSyncStatus(repo string) map[string]any {
 			status["progress_percent"] = percent
 		}
 		return status
-	} else if err != nil {
-		status["error"] = sanitizedError(err)
+	}
+
+	// Check for paused_rate_limit or failed jobs using GetLatestSyncJob
+	if job, ok, err := store.GetLatestSyncJob(repo); err == nil && ok {
+		status["job_id"] = job.ID
+		status["status"] = string(job.Status)
+		status["last_sync"] = job.LastSyncAt
+
+		// Include resume_at for paused_rate_limit jobs
+		if job.Status == cache.SyncJobStatusPausedRateLimit {
+			if job.Progress.ScheduledResumeAt.IsZero() {
+				if pausedJob, err := store.GetPausedSyncJobByRepo(repo); err == nil {
+					job.Progress.ScheduledResumeAt = pausedJob.Progress.ScheduledResumeAt
+				}
+			}
+			if !job.Progress.ScheduledResumeAt.IsZero() {
+				status["resume_at"] = job.Progress.ScheduledResumeAt
+			}
+		}
+
+		// Include error for failed jobs
+		if job.Status == cache.SyncJobStatusFailed {
+			if job.Error == "" {
+				if latestJob, ok, err := store.GetLatestSyncJob(repo); err == nil && ok {
+					job.Error = latestJob.Error
+				}
+			}
+			if job.Error != "" {
+				status["error"] = job.Error
+			}
+		}
+
+		// For completed jobs, always report 100% progress regardless of progress values
+		if job.Status == cache.SyncJobStatusCompleted {
+			status["progress_percent"] = 100
+			return status
+		}
+
+		if job.Progress.TotalPRs > 0 {
+			percent := (job.Progress.ProcessedPRs * 100) / job.Progress.TotalPRs
+			if percent < 0 {
+				percent = 0
+			}
+			if percent > 100 {
+				percent = 100
+			}
+			status["progress_percent"] = percent
+		}
 		return status
 	}
 

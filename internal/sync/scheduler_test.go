@@ -68,8 +68,8 @@ func TestSchedulerStartResumesEligibleJobs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read resumed job: %v", err)
 	}
-	if resumed.Status != cache.SyncJobStatusInProgress {
-		t.Fatalf("expected resumed job to be in_progress, got %s", resumed.Status)
+	if resumed.Status != cache.SyncJobStatusResuming {
+		t.Fatalf("expected resumed job to be resuming, got %s", resumed.Status)
 	}
 }
 
@@ -110,7 +110,7 @@ func TestSchedulerStopPreventsFurtherChecks(t *testing.T) {
 	if len(paused) != 1 {
 		t.Fatalf("expected paused job to remain paused after Stop, got %d", len(paused))
 	}
-	if paused[0].Status != cache.SyncJobStatusPaused {
-		t.Fatalf("expected paused status, got %s", paused[0].Status)
+	if paused[0].Status != cache.SyncJobStatusPausedRateLimit {
+		t.Fatalf("expected paused_rate_limit status, got %s", paused[0].Status)
 	}
 }

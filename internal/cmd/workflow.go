@@ -60,7 +60,7 @@ Examples:
   pratc workflow --repo=owner/repo --progress
 
   # Write artifacts to a custom directory
-  pratc workflow --repo=owner/repo --out-dir=/tmp/pratc-workflow
+  pratc workflow --repo=owner/repo --out-dir=./projects/owner_repo/runs/latest
 
   # Use a higher max PR limit for large repos
   pratc workflow --repo=owner/repo --max-prs=5000`,
@@ -90,7 +90,9 @@ Examples:
 			if err := os.MkdirAll(resolvedOutDir, 0o755); err != nil {
 				return fmt.Errorf("create workflow output directory: %w", err)
 			}
-
+			if err := writeProjectManifest(resolvedOutDir, repo); err != nil {
+				return err
+			}
 			log.Info("starting workflow", "repo", repo, "out_dir", resolvedOutDir)
 			fmt.Fprintf(cmd.ErrOrStderr(), "Workflow output: %s\n", resolvedOutDir)
 			if progress {
@@ -162,7 +164,7 @@ Examples:
 	}
 
 	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
-	command.Flags().StringVar(&outDir, "out-dir", "", "Directory for workflow artifacts")
+	command.Flags().StringVar(&outDir, "out-dir", "", "Directory for workflow artifacts (defaults to projects/<repo>/runs/<timestamp>)")
 	command.Flags().BoolVar(&progress, "progress", true, "Show sync progress while the workflow runs")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch during analyze")
 	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch during analyze")
@@ -175,15 +177,7 @@ Examples:
 }
 
 func defaultWorkflowOutDir(repo string) string {
-	home, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
-		home = "."
-	}
-	slug := strings.NewReplacer("/", "_", string(os.PathSeparator), "_", " ", "_").Replace(strings.TrimSpace(repo))
-	if slug == "" {
-		slug = "repo"
-	}
-	return filepath.Join(home, ".pratc", "workflows", slug, time.Now().UTC().Format("20060102-150405"))
+	return projectRunDir(repo, time.Now())
 }
 
 func openWorkflowCacheStore() (*cache.Store, error) {

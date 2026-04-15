@@ -51,8 +51,8 @@ func TestWorkerResumeSyncJob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get resumed sync job: %v", err)
 	}
-	if resumedJob.Status != cache.SyncJobStatusInProgress {
-		t.Fatalf("expected status %s, got %s", cache.SyncJobStatusInProgress, resumedJob.Status)
+	if resumedJob.Status != cache.SyncJobStatusResuming {
+		t.Fatalf("expected status %s, got %s", cache.SyncJobStatusResuming, resumedJob.Status)
 	}
 	if resumedJob.Error != "" {
 		t.Fatalf("expected error cleared, got %q", resumedJob.Error)
@@ -90,8 +90,8 @@ func TestResumeJob(t *testing.T) {
 			t.Fatalf("expected resume to succeed, got error: %v", err)
 		}
 
-		if resumedJob.Status != cache.SyncJobStatusInProgress {
-			t.Errorf("expected status to be in_progress, got %s", resumedJob.Status)
+		if resumedJob.Status != cache.SyncJobStatusResuming {
+			t.Errorf("expected status to be resuming, got %s", resumedJob.Status)
 		}
 
 		if resumedJob.Error != "" {
@@ -192,8 +192,8 @@ func TestResumeJob(t *testing.T) {
 			t.Fatalf("expected no paused jobs after resume, got %d", len(pausedJobs))
 		}
 
-		if resumedJob.Status != cache.SyncJobStatusInProgress {
-			t.Errorf("expected status to be in_progress, got %s", resumedJob.Status)
+		if resumedJob.Status != cache.SyncJobStatusResuming {
+			t.Errorf("expected status to be resuming, got %s", resumedJob.Status)
 		}
 	})
 }

@@ -76,8 +76,8 @@ func TestGetPausedSyncJobByRepo(t *testing.T) {
 	if gotJob.ID != job.ID {
 		t.Errorf("expected job ID %s, got %s", job.ID, gotJob.ID)
 	}
-	if gotJob.Status != SyncJobStatusPaused {
-		t.Errorf("expected status %s, got %s", SyncJobStatusPaused, gotJob.Status)
+	if gotJob.Status != SyncJobStatusPausedRateLimit {
+		t.Errorf("expected status %s, got %s", SyncJobStatusPausedRateLimit, gotJob.Status)
 	}
 }
 
@@ -112,8 +112,8 @@ func TestResumeSyncJobClearsPauseFields(t *testing.T) {
 		t.Fatalf("failed to resume sync job: %v", err)
 	}
 
-	if resumed.Status != SyncJobStatusInProgress {
-		t.Fatalf("expected status %s, got %s", SyncJobStatusInProgress, resumed.Status)
+	if resumed.Status != SyncJobStatusResuming {
+		t.Fatalf("expected status %s, got %s", SyncJobStatusResuming, resumed.Status)
 	}
 	if resumed.Error != "" {
 		t.Fatalf("expected error cleared, got %q", resumed.Error)
@@ -224,8 +224,8 @@ func TestPauseSyncJobIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get sync job after first pause: %v", err)
 	}
-	if got.Status != SyncJobStatusPaused {
-		t.Fatalf("expected status %s after first pause, got %s", SyncJobStatusPaused, got.Status)
+	if got.Status != SyncJobStatusPausedRateLimit {
+		t.Fatalf("expected status %s after first pause, got %s", SyncJobStatusPausedRateLimit, got.Status)
 	}
 
 	// Second pause (idempotency test)
@@ -244,8 +244,8 @@ func TestPauseSyncJobIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get sync job after second pause: %v", err)
 	}
-	if got.Status != SyncJobStatusPaused {
-		t.Fatalf("expected status %s after second pause, got %s", SyncJobStatusPaused, got.Status)
+	if got.Status != SyncJobStatusPausedRateLimit {
+		t.Fatalf("expected status %s after second pause, got %s", SyncJobStatusPausedRateLimit, got.Status)
 	}
 
 	// Verify the pause fields were updated with the second pause values
@@ -292,32 +292,32 @@ func TestResumeSyncJobByIDIdempotency(t *testing.T) {
 		t.Fatalf("failed to resume sync job first time: %v", err)
 	}
 
-	// Verify job is now in-progress
+	// Verify job is now resuming
 	got, err := store.GetSyncJob(job.ID)
 	if err != nil {
 		t.Fatalf("failed to get sync job after first resume: %v", err)
 	}
-	if got.Status != SyncJobStatusInProgress {
-		t.Fatalf("expected status %s after first resume, got %s", SyncJobStatusInProgress, got.Status)
+	if got.Status != SyncJobStatusResuming {
+		t.Fatalf("expected status %s after first resume, got %s", SyncJobStatusResuming, got.Status)
 	}
 
-	// Second resume (idempotency test) - job is already in-progress, not paused
+	// Second resume (idempotency test) - job is already resuming, not paused
 	err = store.ResumeSyncJobByID(job.ID)
 
 	// Current behavior: Succeeds (no error) because the UPDATE doesn't check status
-	// The job status is set to in_progress again (no-op), rowsAffected = 1
+	// The job status is set to resuming again (no-op), rowsAffected = 1
 	if err != nil {
 		t.Fatalf("unexpected error on second resume: %v", err)
 	}
 
-	// Verify job is still in-progress (state unchanged)
+	// Verify job is still resuming (state unchanged)
 	got, err = store.GetSyncJob(job.ID)
 	if err != nil {
 		t.Fatalf("failed to get sync job after second resume: %v", err)
 	}
-	if got.Status != SyncJobStatusInProgress {
-		t.Fatalf("expected status %s to remain unchanged, got %s", SyncJobStatusInProgress, got.Status)
+	if got.Status != SyncJobStatusResuming {
+		t.Fatalf("expected status %s to remain unchanged, got %s", SyncJobStatusResuming, got.Status)
 	}
 
-	t.Log("Idempotency behavior: Second resume succeeds (no-op), job remains in-progress")
+	t.Log("Idempotency behavior: Second resume succeeds (no-op), job remains resuming")
 }

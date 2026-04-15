@@ -854,8 +854,8 @@ func TestCachePauseAndListPausedSyncJobs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get sync job after pause: %v", err)
 	}
-	if got.Status != "paused" {
-		t.Fatalf("expected status 'paused', got %q", got.Status)
+	if got.Status != SyncJobStatusPausedRateLimit {
+		t.Fatalf("expected status %s, got %q", SyncJobStatusPausedRateLimit, got.Status)
 	}
 	if got.Error != pauseReason {
 		t.Fatalf("expected error %q, got %q", pauseReason, got.Error)

@@ -145,8 +145,9 @@ func TestHandleRepoActionSyncStatusNever(t *testing.T) {
 	if resp["status"] != "never" {
 		t.Fatalf("expected status never, got %v", resp["status"])
 	}
-	if resp["in_progress"] != false {
-		t.Fatalf("expected in_progress false, got %v", resp["in_progress"])
+	// New contract: no in_progress field - use explicit state instead
+	if _, hasInProgress := resp["in_progress"]; hasInProgress {
+		t.Fatalf("expected no in_progress field in response (use explicit state), got %v", resp["in_progress"])
 	}
 	if resp["progress_percent"] != float64(0) {
 		t.Fatalf("expected progress_percent 0, got %v", resp["progress_percent"])
@@ -186,11 +187,13 @@ func TestHandleRepoActionSyncStatusInProgress(t *testing.T) {
 		t.Fatalf("expected valid JSON response, got error: %v", err)
 	}
 
-	if resp["status"] != "in_progress" {
-		t.Fatalf("expected status in_progress, got %v", resp["status"])
+	// New contract: explicit "running" state instead of "in_progress"
+	if resp["status"] != "running" {
+		t.Fatalf("expected status running, got %v", resp["status"])
 	}
-	if resp["in_progress"] != true {
-		t.Fatalf("expected in_progress true, got %v", resp["in_progress"])
+	// No in_progress field - use explicit state
+	if _, hasInProgress := resp["in_progress"]; hasInProgress {
+		t.Fatalf("expected no in_progress field in response (use explicit state), got %v", resp["in_progress"])
 	}
 	if resp["progress_percent"] != float64(30) {
 		t.Fatalf("expected progress_percent 30, got %v", resp["progress_percent"])
@@ -229,8 +232,9 @@ func TestHandleRepoActionSyncStatusCompleted(t *testing.T) {
 	if resp["status"] != "completed" {
 		t.Fatalf("expected status completed, got %v", resp["status"])
 	}
-	if resp["in_progress"] != false {
-		t.Fatalf("expected in_progress false, got %v", resp["in_progress"])
+	// New contract: no in_progress field - use explicit state instead
+	if _, hasInProgress := resp["in_progress"]; hasInProgress {
+		t.Fatalf("expected no in_progress field in response (use explicit state), got %v", resp["in_progress"])
 	}
 	if resp["progress_percent"] != float64(100) {
 		t.Fatalf("expected progress_percent 100, got %v", resp["progress_percent"])
@@ -266,8 +270,9 @@ func TestHandleAnalyzeReturnsImmediateSyncInProgressResponseWhenBackgroundSyncSt
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("expected valid JSON response, got error: %v", err)
 	}
-	if resp["sync_status"] != "in_progress" {
-		t.Fatalf("expected sync_status in_progress, got %v", resp["sync_status"])
+	// New contract: sync_status is "running" not "in_progress"
+	if resp["sync_status"] != "running" {
+		t.Fatalf("expected sync_status running, got %v", resp["sync_status"])
 	}
 	jobID, _ := resp["job_id"].(string)
 	if jobID == "" {
@@ -363,8 +368,8 @@ func TestHandleAnalyzeWaitsForActiveSyncAndReturnsAnalysisWhenItCompletes(t *tes
 	if err != nil {
 		t.Fatalf("create sync job: %v", err)
 	}
-	if job.Status != cache.SyncJobStatusInProgress {
-		t.Fatalf("expected sync job to start in progress, got %s", job.Status)
+	if job.Status != cache.SyncJobStatusQueued {
+		t.Fatalf("expected sync job to start queued, got %s", job.Status)
 	}
 
 	firstReq := httptest.NewRequest(http.MethodGet, "/api/repos/"+manifest.Repo+"/analyze", nil)
@@ -381,8 +386,13 @@ func TestHandleAnalyzeWaitsForActiveSyncAndReturnsAnalysisWhenItCompletes(t *tes
 	if !ok {
 		t.Fatal("expected active sync job before completion")
 	}
-	if resumed.ID != job.ID || resumed.Status != cache.SyncJobStatusInProgress {
-		t.Fatalf("expected resumable in-progress job, got %+v", resumed)
+	// Under new explicit-state contract, ResumeSyncJob returns job in queued/running/resuming state
+	// A newly created job that hasn't started processing should be in queued state
+	if resumed.ID != job.ID {
+		t.Fatalf("expected resumed job to match original job ID")
+	}
+	if resumed.Status != cache.SyncJobStatusQueued && resumed.Status != cache.SyncJobStatusRunning {
+		t.Fatalf("expected resumable job in queued or running state, got %s", resumed.Status)
 	}
 
 	time.Sleep(50 * time.Millisecond)
@@ -391,8 +401,9 @@ func TestHandleAnalyzeWaitsForActiveSyncAndReturnsAnalysisWhenItCompletes(t *tes
 	if err != nil {
 		t.Fatalf("get sync job: %v", err)
 	}
-	if got.Status != cache.SyncJobStatusInProgress {
-		t.Fatalf("expected sync job to stay in progress until completion is explicit, got %s", got.Status)
+	// Job should remain in queued or running state until completion is explicit
+	if got.Status != cache.SyncJobStatusQueued && got.Status != cache.SyncJobStatusRunning {
+		t.Fatalf("expected sync job to stay queued or running until completion is explicit, got %s", got.Status)
 	}
 
 	if err := store.MarkSyncJobComplete(job.ID, time.Now().UTC()); err != nil {

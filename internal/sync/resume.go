@@ -25,13 +25,13 @@ func ResumeJob(store *cache.Store, repo string) (cache.SyncJob, error) {
 		return cache.SyncJob{}, fmt.Errorf("sync job not yet due for resume, scheduled at %s", nextScheduledAt.Format(time.RFC3339))
 	}
 
-	// Update sync_jobs SET status='in_progress', error_message='', updated_at=now WHERE id=jobID
+	// Update sync_jobs SET status='resuming', error_message='', updated_at=now WHERE id=jobID
 	if err := store.ResumeSyncJobByID(job.ID); err != nil {
 		return cache.SyncJob{}, fmt.Errorf("resume job: %w", err)
 	}
 
 	// Update the job with new status and timestamp
-	job.Status = cache.SyncJobStatusInProgress
+	job.Status = cache.SyncJobStatusResuming
 	job.Error = ""
 	job.UpdatedAt = now
 

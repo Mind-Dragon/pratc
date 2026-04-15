@@ -3,6 +3,9 @@
 !.gitignore
 !.env.example
 
+# prATC project run artifacts
+/projects/
+
 # prATC analysis results and workflow outputs
 .pratc/
 .pratc-tree/

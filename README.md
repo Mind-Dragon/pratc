@@ -15,6 +15,7 @@ prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull re
 - [CHANGELOG.md](CHANGELOG.md) — Release history
 - [ROADMAP.md](ROADMAP.md) — Upcoming priorities (v1.4-v1.6)
 - [version1.4.md](version1.4.md) — v1.4 operating model and locked vocabulary
+- [projects/](projects/) — persistent workflow runs and document-style artifacts
 - [docs/plans/2026-04-09-pratc-v1-3-review-engine-design.md](docs/plans/2026-04-09-pratc-v1-3-review-engine-design.md) — v1.3 review engine design
 
 ## Features
@@ -27,6 +28,7 @@ prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull re
 - **Rate-Limit Aware**: Built-in retry and budget management
 - **Review Pipeline**: Advisory analyzers for security, reliability, performance, and quality review output
 - **v1.4 Decision Map**: Risk buckets, decision trails, analyst summaries, and PDF packet generation
+- **Persistent project runs**: Workflow artifacts live under `projects/<repo>/runs/<timestamp>/` with a README manifest so runs behave like document sets, not scratch output.
 
 ## Quick Start
 
