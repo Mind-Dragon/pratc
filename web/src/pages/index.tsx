@@ -93,11 +93,11 @@ export default function DashboardPage({ analysis }: DashboardProps) {
   const review = analysis.review_payload;
   const reviewCards = review
     ? [
-        { label: "Merge now", value: reviewBucketCount(review, "Merge now"), tone: REVIEW_CARD_TONES[0] },
-        { label: "Focused review", value: reviewBucketCount(review, "Merge after focused review"), tone: REVIEW_CARD_TONES[1] },
-        { label: "Duplicate / superseded", value: reviewBucketCount(review, "Duplicate / superseded"), tone: REVIEW_CARD_TONES[2] },
-        { label: "Problematic / quarantine", value: reviewBucketCount(review, "Problematic / quarantine"), tone: REVIEW_CARD_TONES[3] },
-        { label: "Unknown / escalate", value: reviewBucketCount(review, "Unknown / escalate"), tone: REVIEW_CARD_TONES[4] }
+        { label: "now", value: reviewBucketCount(review, "now"), tone: REVIEW_CARD_TONES[0] },
+        { label: "future", value: reviewBucketCount(review, "future"), tone: REVIEW_CARD_TONES[1] },
+        { label: "duplicate", value: reviewBucketCount(review, "duplicate"), tone: REVIEW_CARD_TONES[2] },
+        { label: "junk", value: reviewBucketCount(review, "junk"), tone: REVIEW_CARD_TONES[3] },
+        { label: "blocked", value: reviewBucketCount(review, "blocked"), tone: REVIEW_CARD_TONES[4] }
       ] as const
     : [];
 

@@ -164,9 +164,9 @@ func TestV13_ReviewPayloadStructure(t *testing.T) {
 			{Category: "problematic", Count: 2},
 		},
 		Buckets: []types.BucketCount{
-			{Bucket: "Merge now", Count: 3},
-			{Bucket: "Merge after focused review", Count: 5},
-			{Bucket: "Problematic / quarantine", Count: 2},
+			{Bucket: "now", Count: 3},
+			{Bucket: "future", Count: 5},
+			{Bucket: "junk", Count: 2},
 		},
 		PriorityTiers: []types.PriorityTierCount{
 			{Tier: "high", Count: 3},

@@ -71,11 +71,11 @@ func (s *ReviewSection) renderBucketRows(pdf *fpdf.Fpdf) {
 		value   int
 		r, g, b int
 	}{
-		{"Merge now", s.Dashboard.MergeNow, 52, 152, 219},
-		{"Merge after focused review", s.Dashboard.FocusedReview, 46, 204, 113},
-		{"Duplicate / superseded", s.Dashboard.Duplicate, 241, 196, 15},
-		{"Problematic / quarantine", s.Dashboard.Problematic, 231, 76, 60},
-		{"Unknown / escalate", s.Dashboard.Escalate, 142, 68, 173},
+		{"now", s.Dashboard.MergeNow, 52, 152, 219},
+		{"future", s.Dashboard.FocusedReview, 46, 204, 113},
+		{"duplicate", s.Dashboard.Duplicate, 241, 196, 15},
+		{"junk", s.Dashboard.Problematic, 231, 76, 60},
+		{"blocked", s.Dashboard.Escalate, 142, 68, 173},
 	}
 
 	for i, card := range bucketCards {
@@ -189,15 +189,15 @@ func LoadReviewSection(inputDir, repo string) (*ReviewSection, error) {
 
 	for _, bucket := range review.Buckets {
 		switch bucket.Bucket {
-		case "Merge now":
+		case "now":
 			section.Dashboard.MergeNow = bucket.Count
-		case "Merge after focused review":
+		case "future":
 			section.Dashboard.FocusedReview = bucket.Count
-		case "Duplicate / superseded":
+		case "duplicate":
 			section.Dashboard.Duplicate = bucket.Count
-		case "Problematic / quarantine":
+		case "junk":
 			section.Dashboard.Problematic = bucket.Count
-		case "Unknown / escalate":
+		case "blocked":
 			section.Dashboard.Escalate = bucket.Count
 		}
 	}

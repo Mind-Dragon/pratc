@@ -284,17 +284,17 @@ func formatAnalyzeSyncWarning(repo string, openPRCount int, hasOpenPRCount bool)
 func reviewBucketLabel(category types.ReviewCategory) string {
 	switch category {
 	case types.ReviewCategoryMergeNow:
-		return "Merge now"
+		return "now"
 	case types.ReviewCategoryMergeAfterFocusedReview:
-		return "Merge after focused review"
+		return "future"
 	case types.ReviewCategoryDuplicateSuperseded:
-		return "Duplicate / superseded"
+		return "duplicate"
 	case types.ReviewCategoryProblematicQuarantine:
-		return "Problematic / quarantine"
+		return "junk"
 	case types.ReviewCategoryUnknownEscalate:
-		return "Unknown / escalate"
+		return "blocked"
 	default:
-		return "Unknown / escalate"
+		return "blocked"
 	}
 }
 

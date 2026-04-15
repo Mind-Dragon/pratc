@@ -134,11 +134,11 @@ export default function TriageView({
   const review = analysis?.review_payload ?? null;
   const reviewBuckets = review
     ? [
-        { label: "Merge now", value: review.buckets.find((bucket) => bucket.bucket === "Merge now")?.count ?? 0, tone: "mint" },
-        { label: "Focused review", value: review.buckets.find((bucket) => bucket.bucket === "Merge after focused review")?.count ?? 0, tone: "sky" },
-        { label: "Duplicate / superseded", value: review.buckets.find((bucket) => bucket.bucket === "Duplicate / superseded")?.count ?? 0, tone: "sand" },
-        { label: "Problematic / quarantine", value: review.buckets.find((bucket) => bucket.bucket === "Problematic / quarantine")?.count ?? 0, tone: "rose" },
-        { label: "Unknown / escalate", value: review.buckets.find((bucket) => bucket.bucket === "Unknown / escalate")?.count ?? 0, tone: "sand" }
+        { label: "now", value: review.buckets.find((bucket) => bucket.bucket === "now")?.count ?? 0, tone: "mint" },
+        { label: "future", value: review.buckets.find((bucket) => bucket.bucket === "future")?.count ?? 0, tone: "sky" },
+        { label: "duplicate", value: review.buckets.find((bucket) => bucket.bucket === "duplicate")?.count ?? 0, tone: "sand" },
+        { label: "junk", value: review.buckets.find((bucket) => bucket.bucket === "junk")?.count ?? 0, tone: "rose" },
+        { label: "blocked", value: review.buckets.find((bucket) => bucket.bucket === "blocked")?.count ?? 0, tone: "sand" }
       ] as const
     : [];
 

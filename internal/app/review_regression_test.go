@@ -109,13 +109,13 @@ func TestReviewContractRegression(t *testing.T) {
 		t.Errorf("bucket sum %d != reviewed_prs %d", totalFromBuckets, response.ReviewPayload.ReviewedPRs)
 	}
 
-	// Contract: All 5 bucket labels must be present
+	// Contract: All 5 bucket labels must be present (v1.4 vocabulary)
 	expectedBuckets := map[string]bool{
-		"Merge now":                  false,
-		"Merge after focused review": false,
-		"Duplicate / superseded":     false,
-		"Problematic / quarantine":   false,
-		"Unknown / escalate":         false,
+		"now":       false,
+		"future":    false,
+		"duplicate": false,
+		"junk":      false,
+		"blocked":   false,
 	}
 	for _, bucket := range response.ReviewPayload.Buckets {
 		if _, ok := expectedBuckets[bucket.Bucket]; ok {
@@ -199,10 +199,11 @@ func TestBucketVisibilityRegression(t *testing.T) {
 
 	// Verify bucket-to-category mapping consistency
 	bucketCategoryMap := map[string]types.ReviewCategory{
-		"Merge now":                  types.ReviewCategoryMergeNow,
-		"Merge after focused review": types.ReviewCategoryMergeAfterFocusedReview,
-		"Duplicate / superseded":     types.ReviewCategoryDuplicateSuperseded,
-		"Problematic / quarantine":   types.ReviewCategoryProblematicQuarantine,
+		"now":       types.ReviewCategoryMergeNow,
+		"future":    types.ReviewCategoryMergeAfterFocusedReview,
+		"duplicate": types.ReviewCategoryDuplicateSuperseded,
+		"junk":      types.ReviewCategoryProblematicQuarantine,
+		"blocked":   types.ReviewCategoryUnknownEscalate,
 	}
 
 	// Count PRs by category from results

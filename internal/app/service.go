@@ -595,26 +595,27 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 }
 
 func buildReviewBuckets(categoryCount map[types.ReviewCategory]int) []types.BucketCount {
+	// v1.4 bucket labels
 	bucketLabels := map[types.ReviewCategory]string{
-		types.ReviewCategoryMergeNow:                "Merge now",
-		types.ReviewCategoryMergeAfterFocusedReview: "Merge after focused review",
-		types.ReviewCategoryDuplicateSuperseded:     "Duplicate / superseded",
-		types.ReviewCategoryProblematicQuarantine:   "Problematic / quarantine",
+		types.ReviewCategoryMergeNow:                "now",
+		types.ReviewCategoryMergeAfterFocusedReview: "future",
+		types.ReviewCategoryDuplicateSuperseded:     "duplicate",
+		types.ReviewCategoryProblematicQuarantine:   "junk",
 	}
 
 	bucketCounts := make(map[string]int)
 	for cat, label := range bucketLabels {
 		bucketCounts[label] = categoryCount[cat]
 	}
-	bucketCounts["Unknown / escalate"] = categoryCount[types.ReviewCategoryUnknownEscalate] + categoryCount[types.ReviewCategory("")]
+	bucketCounts["blocked"] = categoryCount[types.ReviewCategoryUnknownEscalate] + categoryCount[types.ReviewCategory("")]
 
 	var buckets []types.BucketCount
 	for _, label := range []string{
-		"Merge now",
-		"Merge after focused review",
-		"Duplicate / superseded",
-		"Problematic / quarantine",
-		"Unknown / escalate",
+		"now",
+		"future",
+		"duplicate",
+		"junk",
+		"blocked",
 	} {
 		buckets = append(buckets, types.BucketCount{Bucket: label, Count: bucketCounts[label]})
 	}

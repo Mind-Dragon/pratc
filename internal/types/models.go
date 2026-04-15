@@ -355,8 +355,7 @@ type ReviewResponse struct {
 	// Categories contains counts of PRs by review category (merge_safe, duplicate, problematic, needs_review).
 	Categories []ReviewCategoryCount `json:"categories"`
 	// Buckets contains counts of PRs by operator-facing review buckets:
-	// "Merge now", "Merge after focused review", "Duplicate / superseded",
-	// "Problematic / quarantine", "Unknown / escalate".
+	// "now", "future", "duplicate", "junk", "blocked".
 	Buckets []BucketCount `json:"buckets"`
 	// PriorityTiers contains counts of PRs by priority tier (fast_merge, review_required, blocked).
 	PriorityTiers []PriorityTierCount `json:"priority_tiers"`

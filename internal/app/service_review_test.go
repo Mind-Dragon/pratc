@@ -185,11 +185,11 @@ func TestAnalyzeReviewPayloadIncludesBucketCounts(t *testing.T) {
 	}
 
 	expectedBuckets := map[string]bool{
-		"Merge now":                  false,
-		"Merge after focused review": false,
-		"Duplicate / superseded":     false,
-		"Problematic / quarantine":   false,
-		"Unknown / escalate":         false,
+		"now":       false,
+		"future":    false,
+		"duplicate": false,
+		"junk":      false,
+		"blocked":   false,
 	}
 
 	for _, bucket := range response.ReviewPayload.Buckets {

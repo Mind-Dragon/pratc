@@ -35,9 +35,9 @@ Locked by GUIDELINE.md:
 
 ## Next sprint backlog
 
-### 1. Review vocabulary migration to the v1.4 model
+### 1. Review vocabulary migration to the v1.4 top-level review buckets
 
-**Objective:** Replace the legacy review-category surface with the v1.4 bucket vocabulary everywhere the user sees or consumes review output.
+**Objective:** Replace the legacy review-category surface with the v1.4 top-level bucket vocabulary everywhere the user sees or consumes review output.
 
 **Files:**
 - Modify: `internal/types/models.go`
@@ -47,21 +47,21 @@ Locked by GUIDELINE.md:
 - Modify: `web/src/types/api.ts`
 - Modify: `web/src/pages/index.tsx`
 - Modify: `web/src/components/TriageView.tsx`
-- Update tests: `internal/app/service_review_test.go`, `internal/app/review_boundary_test.go`, `internal/report/analyst_sections_test.go`, `internal/cmd/analyze_command_test.go`, `web/src/__tests__/` review-vocabulary tests
+- Update tests: `internal/app/review_vocabulary_test.go`, `internal/app/service_review_test.go`, `internal/app/review_boundary_test.go`, `internal/app/review_regression_test.go`, `internal/cmd/analyze_vocabulary_test.go`, `internal/cmd/analyze_command_test.go`, `internal/report/analyst_sections_test.go`, `web/src/components/TriageView.test.tsx`
 
 **TDD steps:**
-1. Add failing tests that assert the primary path emits `now`, `future`, `blocked`, `high_value`, `merge_candidate`, `needs_review`, `re_engage`, `low_value`, `duplicate`, `junk`, `stale`, `security_risk`, `reliability_risk`, and `performance_risk`.
+1. Add failing tests that assert the visible review summary emits `now`, `future`, `blocked`, `duplicate`, and `junk` instead of the legacy labels.
 2. Verify the tests fail against the current legacy labels.
-3. Implement the smallest compatibility layer needed in `internal/types/models.go` and the downstream renderers.
+3. Implement the smallest compatibility layer needed in `internal/app/service.go`, `internal/cmd/analyze.go`, and the downstream renderers.
 4. Re-run the tests until the new vocabulary is present in CLI, report, and web output.
 
 **Verification:**
 - `go test ./internal/app ./internal/cmd ./internal/report -run 'Review|Bucket|Vocabulary|Priority' -v`
 - `bun run test`
-- Manual scan of rendered output to confirm legacy labels no longer appear on the primary path.
+- Manual scan of rendered output to confirm legacy labels no longer appear on the primary review summary path.
 
 **Done when:**
-- The review payload and UI/report surfaces expose the v1.4 bucket model.
+- The review payload and UI/report surfaces expose the v1.4 top-level bucket labels.
 - Any legacy strings survive only in clearly documented compatibility shims or tests.
 
 ### 2. Formalize the outer-peel ladder

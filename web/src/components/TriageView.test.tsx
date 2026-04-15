@@ -60,6 +60,24 @@ function createMockAnalysis(prs: PR[]): AnalysisResponse {
     overlaps: [],
     conflicts: [],
     stalenessSignals: [],
+    review_payload: {
+      total_prs: prs.length,
+      reviewed_prs: prs.length,
+      categories: [],
+      buckets: [
+        { bucket: "now", count: 2 },
+        { bucket: "future", count: 1 },
+        { bucket: "duplicate", count: 0 },
+        { bucket: "junk", count: 0 },
+        { bucket: "blocked", count: 0 },
+      ],
+      priority_tiers: [
+        { tier: "fast_merge", count: 2 },
+        { tier: "review_required", count: 1 },
+        { tier: "blocked", count: 0 },
+      ],
+      results: [],
+    },
   };
 }
 
@@ -102,5 +120,31 @@ describe("TriageView", () => {
     expect(screen.getByText(/Intent logged: would approve PR #100/)).toBeTruthy();
     expect(screen.getByText("Intent Log")).toBeTruthy();
     expect(screen.getByText("approve")).toBeTruthy();
+  });
+
+  it("renders review bucket labels using v1.4 vocabulary (now, future, duplicate, junk, blocked)", () => {
+    const prs = [createMockPR(1), createMockPR(2), createMockPR(3)];
+    render(<TriageView analysis={createMockAnalysis(prs)} />);
+
+    // Verify new bucket labels appear in the review summary section
+    // Use getAllByText since these words may appear in multiple contexts
+    expect(screen.getAllByText("now").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("future").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("duplicate").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("junk").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("blocked").length).toBeGreaterThan(0);
+
+    // Verify bucket counts appear next to their labels in the stats-grid
+    // The stat-card structure is: <article><span>label</span><strong>count</strong></article>
+    const nowCard = screen.getAllByText("now")[0].closest("article");
+    expect(nowCard?.textContent).toContain("2");
+    const futureCard = screen.getAllByText("future")[0].closest("article");
+    expect(futureCard?.textContent).toContain("1");
+    const duplicateCard = screen.getAllByText("duplicate")[0].closest("article");
+    expect(duplicateCard?.textContent).toContain("0");
+    const junkCard = screen.getAllByText("junk")[0].closest("article");
+    expect(junkCard?.textContent).toContain("0");
+    const blockedCard = screen.getAllByText("blocked")[0].closest("article");
+    expect(blockedCard?.textContent).toContain("0");
   });
 });

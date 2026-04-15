@@ -171,11 +171,11 @@ func TestWriteAnalyzeTextShowsReviewBucketVocabulary(t *testing.T) {
 				{Category: "problematic_quarantine", Count: 1},
 			},
 			Buckets: []types.BucketCount{
-				{Bucket: "Merge now", Count: 3},
-				{Bucket: "Merge after focused review", Count: 4},
-				{Bucket: "Duplicate / superseded", Count: 2},
-				{Bucket: "Problematic / quarantine", Count: 1},
-				{Bucket: "Unknown / escalate", Count: 0},
+				{Bucket: "now", Count: 3},
+				{Bucket: "future", Count: 4},
+				{Bucket: "duplicate", Count: 2},
+				{Bucket: "junk", Count: 1},
+				{Bucket: "blocked", Count: 0},
 			},
 		},
 		PRs: []types.PR{
@@ -196,11 +196,11 @@ func TestWriteAnalyzeTextShowsReviewBucketVocabulary(t *testing.T) {
 	output := buf.String()
 
 	bucketLabels := []string{
-		"Merge now",
-		"Merge after focused review",
-		"Duplicate / superseded",
-		"Problematic / quarantine",
-		"Unknown / escalate",
+		"now",
+		"future",
+		"duplicate",
+		"junk",
+		"blocked",
 	}
 
 	for _, label := range bucketLabels {
