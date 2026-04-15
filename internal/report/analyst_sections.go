@@ -33,6 +33,13 @@ type AnalystDuplicateEntry struct {
 	DuplicatePRs      []AnalystRow
 }
 
+type DecisionTrailRow struct {
+	PRNumber int
+	Title    string
+	Action   string
+	Layers   []string
+}
+
 type analystDataset struct {
 	Repo         string
 	GeneratedAt  time.Time
@@ -44,6 +51,10 @@ type analystDataset struct {
 	CategoryExamples map[string][]AnalystRow
 	PlanSelected []AnalystRow
 	PlanRejected []AnalystRow
+}
+
+func LoadAnalystDataset(inputDir, repo string) (*analystDataset, error) {
+	return loadAnalystDataset(inputDir, repo)
 }
 
 func loadAnalystDataset(inputDir, repo string) (*analystDataset, error) {
@@ -104,7 +115,7 @@ func loadAnalystDataset(inputDir, repo string) (*analystDataset, error) {
 			Action:         analystAction(result, classification),
 			ProblemType:    result.ProblemType,
 			Score:          result.Confidence,
-			Reasons:        reasons,
+			Reasons:        mergeAnalystReasonLists(reasons, decisionLayerSummaries(result.DecisionLayers)),
 		}
 		rowsByPR[row.PRNumber] = row
 		dataset.Rows = append(dataset.Rows, row)
@@ -255,6 +266,21 @@ func classifyAnalystRow(result types.ReviewResult, stale types.StalenessReport) 
 		}
 		return "low_value"
 	}
+}
+
+func decisionLayerSummaries(layers []types.DecisionLayer) []string {
+	if len(layers) == 0 {
+		return nil
+	}
+	summaries := make([]string, 0, len(layers))
+	for _, layer := range layers {
+		if len(layer.Reasons) == 0 {
+			summaries = append(summaries, fmt.Sprintf("L%d %s", layer.Layer, layer.Name))
+			continue
+		}
+		summaries = append(summaries, fmt.Sprintf("L%d %s: %s", layer.Layer, layer.Name, strings.Join(layer.Reasons, "; ")))
+	}
+	return summaries
 }
 
 func analystAction(result types.ReviewResult, classification string) string {
@@ -439,6 +465,77 @@ func (s *AnalystSummarySection) Render(pdf *fpdf.Fpdf) {
 			pdf.AddPage()
 			y = 20
 		}
+	}
+}
+
+type DecisionTrailSection struct {
+	Repo        string
+	GeneratedAt time.Time
+	Rows        []DecisionTrailRow
+}
+
+func LoadDecisionTrailSection(inputDir, repo string) (*DecisionTrailSection, error) {
+	data, err := loadAnalystDataset(inputDir, repo)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]DecisionTrailRow, 0, len(data.Rows))
+	for _, row := range data.Rows {
+		rows = append(rows, DecisionTrailRow{
+			PRNumber: row.PRNumber,
+			Title:    row.Title,
+			Action:   row.Action,
+			Layers:   row.Reasons,
+		})
+	}
+	return &DecisionTrailSection{Repo: repo, GeneratedAt: data.GeneratedAt, Rows: rows}, nil
+}
+
+func (s *DecisionTrailSection) Render(pdf *fpdf.Fpdf) {
+	pdf.AddPage()
+	pdf.SetFillColor(26, 82, 118)
+	pdf.Rect(0, 0, 210, 35, "F")
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetFont("Arial", "B", 18)
+	pdf.SetXY(15, 12)
+	pdf.Cell(180, 10, "Decision Trail")
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFont("Arial", "", 10)
+	pdf.SetXY(15, 40)
+	pdf.Cell(180, 6, fmt.Sprintf("Repository: %s | Generated: %s | Rows: %d", s.Repo, s.GeneratedAt.Format(time.RFC1123), len(s.Rows)))
+
+	pdf.SetFont("Arial", "B", 7)
+	pdf.SetFillColor(52, 73, 94)
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetXY(10, 50)
+	pdf.CellFormat(14, 8, "PR", "1", 0, "L", true, 0, "")
+	pdf.CellFormat(52, 8, "Title", "1", 0, "L", true, 0, "")
+	pdf.CellFormat(20, 8, "Action", "1", 0, "L", true, 0, "")
+	pdf.CellFormat(104, 8, "Decision trail", "1", 1, "L", true, 0, "")
+	pdf.SetTextColor(0, 0, 0)
+
+	y := 58.0
+	for _, row := range s.Rows {
+		if y > 270 {
+			pdf.AddPage()
+			pdf.SetFont("Arial", "B", 7)
+			pdf.SetFillColor(52, 73, 94)
+			pdf.SetTextColor(255, 255, 255)
+			pdf.SetXY(10, 20)
+			pdf.CellFormat(14, 8, "PR", "1", 0, "L", true, 0, "")
+			pdf.CellFormat(52, 8, "Title", "1", 0, "L", true, 0, "")
+			pdf.CellFormat(20, 8, "Action", "1", 0, "L", true, 0, "")
+			pdf.CellFormat(104, 8, "Decision trail", "1", 1, "L", true, 0, "")
+			pdf.SetTextColor(0, 0, 0)
+			y = 28
+		}
+		pdf.SetFont("Arial", "", 7)
+		pdf.SetXY(10, y)
+		pdf.CellFormat(14, 8, fmt.Sprintf("#%d", row.PRNumber), "1", 0, "L", false, 0, "")
+		pdf.CellFormat(52, 8, truncate(row.Title, 34), "1", 0, "L", false, 0, "")
+		pdf.CellFormat(20, 8, truncate(row.Action, 12), "1", 0, "L", false, 0, "")
+		pdf.CellFormat(104, 8, truncate(strings.Join(row.Layers, " | "), 95), "1", 1, "L", false, 0, "")
+		y += 8
 	}
 }
 

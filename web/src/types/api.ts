@@ -262,11 +262,20 @@ export interface AnalyzerMetadata {
   confidence: number;
 }
 
+export interface DecisionLayer {
+  layer: number;
+  name: string;
+  bucket: string;
+  status: string;
+  reasons: string[];
+}
+
 export interface ReviewResult {
   category: ReviewCategory;
   priority_tier: PriorityTier;
   confidence: number;
   reasons: string[];
+  decision_layers: DecisionLayer[];
   blockers: string[];
   evidence_references: string[];
   next_action: string;
@@ -293,6 +302,7 @@ export interface ReviewResponse {
   reviewed_prs: number;
   categories: ReviewCategoryCount[];
   buckets: BucketCount[];
+  risk_buckets: BucketCount[];
   priority_tiers: PriorityTierCount[];
   results: ReviewResult[];
 }

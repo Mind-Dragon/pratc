@@ -357,6 +357,9 @@ type ReviewResponse struct {
 	// Buckets contains counts of PRs by operator-facing review buckets:
 	// "now", "future", "duplicate", "junk", "blocked".
 	Buckets []BucketCount `json:"buckets"`
+	// RiskBuckets contains counts of PRs by risk buckets:
+	// "security_risk", "reliability_risk", "performance_risk".
+	RiskBuckets []BucketCount `json:"risk_buckets"`
 	// PriorityTiers contains counts of PRs by priority tier (fast_merge, review_required, blocked).
 	PriorityTiers []PriorityTierCount `json:"priority_tiers"`
 	// Results contains individual review results for each PR.

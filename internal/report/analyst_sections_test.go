@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jeffersonnunn/pratc/internal/types"
@@ -34,7 +35,7 @@ func TestLoadAnalystDataset_BuildsRowsAndRecommendations(t *testing.T) {
 			TotalPRs:    3,
 			ReviewedPRs: 3,
 			Results: []types.ReviewResult{
-				{PRNumber: 11, Title: "Useful feature", Author: "alice", Category: types.ReviewCategoryMergeNow, PriorityTier: types.PriorityTierFastMerge, Confidence: 0.93, Reasons: []string{"approved", "CI passing"}, NextAction: "merge"},
+				{PRNumber: 11, Title: "Useful feature", Author: "alice", Category: types.ReviewCategoryMergeNow, PriorityTier: types.PriorityTierFastMerge, Confidence: 0.93, Reasons: []string{"approved", "CI passing"}, DecisionLayers: []types.DecisionLayer{{Layer: 1, Name: "Garbage", Bucket: "low_value", Status: "clear", Reasons: []string{"no garbage"}}, {Layer: 16, Name: "Signal quality", Bucket: "high_value", Status: "observed", Reasons: []string{"confidence 0.93"}}}, NextAction: "merge"},
 				{PRNumber: 12, Title: "Duplicate feature", Author: "bob", Category: types.ReviewCategoryDuplicateSuperseded, PriorityTier: types.PriorityTierBlocked, Confidence: 0.87, Reasons: []string{"duplicate"}, NextAction: "duplicate"},
 				{PRNumber: 13, Title: "Bump deps", Author: "dependabot[bot]", Category: types.ReviewCategoryProblematicQuarantine, PriorityTier: types.PriorityTierBlocked, Confidence: 0.91, Reasons: []string{"bot author", "empty body"}, ProblemType: "junk", NextAction: "close"},
 			},
@@ -51,7 +52,7 @@ func TestLoadAnalystDataset_BuildsRowsAndRecommendations(t *testing.T) {
 	writeJSON(t, filepath.Join(tmp, "analyze.json"), analyze)
 	writeJSON(t, filepath.Join(tmp, "step-5-plan.json"), plan)
 
-	data, err := loadAnalystDataset(tmp, "owner/repo")
+	data, err := LoadAnalystDataset(tmp, "owner/repo")
 	if err != nil {
 		t.Fatalf("loadAnalystDataset: %v", err)
 	}
@@ -70,6 +71,18 @@ func TestLoadAnalystDataset_BuildsRowsAndRecommendations(t *testing.T) {
 	if data.CategoryCounts["junk"] != 1 {
 		t.Fatalf("junk category count = %d, want 1", data.CategoryCounts["junk"])
 	}
+	if !containsSubstring(data.Rows[0].Reasons, "L1 Garbage:") {
+		t.Fatalf("expected decision layer summary in reasons, got %#v", data.Rows[0].Reasons)
+	}
+}
+
+func containsSubstring(items []string, want string) bool {
+	for _, item := range items {
+		if strings.Contains(item, want) {
+			return true
+		}
+	}
+	return false
 }
 
 func writeJSON(t *testing.T, path string, v any) {

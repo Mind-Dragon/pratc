@@ -173,6 +173,11 @@ func TestV13_ReviewPayloadStructure(t *testing.T) {
 			{Tier: "medium", Count: 5},
 			{Tier: "low", Count: 2},
 		},
+		RiskBuckets: []types.BucketCount{
+			{Bucket: "security_risk", Count: 1},
+			{Bucket: "reliability_risk", Count: 1},
+			{Bucket: "performance_risk", Count: 1},
+		},
 		Results: []types.ReviewResult{
 			{
 				Category:     types.ReviewCategoryMergeNow,

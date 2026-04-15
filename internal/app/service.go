@@ -452,10 +452,13 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 			TotalPRs:      len(response.PRs),
 			ReviewedPRs:   0,
 			Categories:    []types.ReviewCategoryCount{},
+			Buckets:       []types.BucketCount{},
+			RiskBuckets:   []types.BucketCount{},
 			PriorityTiers: []types.PriorityTierCount{},
 			Results:       []types.ReviewResult{},
 		}
 	}
+
 	response.ReviewPayload = reviewPayload
 
 	return response, nil
@@ -472,6 +475,8 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 			TotalPRs:      0,
 			ReviewedPRs:   0,
 			Categories:    []types.ReviewCategoryCount{},
+			Buckets:       []types.BucketCount{},
+			RiskBuckets:   []types.BucketCount{},
 			PriorityTiers: []types.PriorityTierCount{},
 			Results:       []types.ReviewResult{},
 		}, nil
@@ -583,12 +588,14 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 	}
 
 	buckets := buildReviewBuckets(categoryCount)
+	riskBuckets := buildRiskBuckets(allResults)
 
 	return &types.ReviewResponse{
 		TotalPRs:      len(response.PRs),
 		ReviewedPRs:   len(allResults),
 		Categories:    categories,
 		Buckets:       buckets,
+		RiskBuckets:   riskBuckets,
 		PriorityTiers: tiers,
 		Results:       allResults,
 	}, nil
@@ -618,6 +625,44 @@ func buildReviewBuckets(categoryCount map[types.ReviewCategory]int) []types.Buck
 		"blocked",
 	} {
 		buckets = append(buckets, types.BucketCount{Bucket: label, Count: bucketCounts[label]})
+	}
+	return buckets
+}
+
+func buildRiskBuckets(results []types.ReviewResult) []types.BucketCount {
+	const (
+		securityBucket    = "security_risk"
+		reliabilityBucket = "reliability_risk"
+		performanceBucket = "performance_risk"
+	)
+	seen := map[string]map[int]struct{}{
+		securityBucket:    {},
+		reliabilityBucket: {},
+		performanceBucket: {},
+	}
+	for _, result := range results {
+		found := map[string]struct{}{}
+		for _, finding := range result.AnalyzerFindings {
+			switch finding.AnalyzerName {
+			case "security":
+				found[securityBucket] = struct{}{}
+			case "reliability":
+				found[reliabilityBucket] = struct{}{}
+			case "performance":
+				found[performanceBucket] = struct{}{}
+			}
+		}
+		for bucket := range found {
+			if seen[bucket] == nil {
+				seen[bucket] = make(map[int]struct{})
+			}
+			seen[bucket][result.PRNumber] = struct{}{}
+		}
+	}
+
+	buckets := make([]types.BucketCount, 0, 3)
+	for _, label := range []string{securityBucket, reliabilityBucket, performanceBucket} {
+		buckets = append(buckets, types.BucketCount{Bucket: label, Count: len(seen[label])})
 	}
 	return buckets
 }

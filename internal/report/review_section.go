@@ -10,16 +10,19 @@ import (
 
 // ReviewDashboard summarizes the review payload for PDF rendering.
 type ReviewDashboard struct {
-	TotalPRs       int
-	ReviewedPRs    int
-	MergeNow       int
-	FocusedReview  int
-	Duplicate      int
-	Problematic    int
-	Escalate       int
-	FastMerge      int
-	ReviewRequired int
-	Blocked        int
+	TotalPRs         int
+	ReviewedPRs      int
+	MergeNow         int
+	FocusedReview    int
+	Duplicate        int
+	Problematic      int
+	Escalate         int
+	SecurityRisk     int
+	ReliabilityRisk  int
+	PerformanceRisk  int
+	FastMerge        int
+	ReviewRequired   int
+	Blocked          int
 }
 
 // ReviewSection renders review buckets and priority tiers.
@@ -56,6 +59,7 @@ func (s *ReviewSection) Render(pdf *fpdf.Fpdf) {
 	pdf.Cell(180, 6, coverageText)
 
 	s.renderBucketRows(pdf)
+	s.renderRiskRow(pdf)
 	s.renderPriorityRow(pdf)
 }
 
@@ -91,12 +95,39 @@ func (s *ReviewSection) renderBucketRows(pdf *fpdf.Fpdf) {
 	}
 }
 
-func (s *ReviewSection) renderPriorityRow(pdf *fpdf.Fpdf) {
+func (s *ReviewSection) renderRiskRow(pdf *fpdf.Fpdf) {
 	boxWidth := 58.0
 	boxHeight := 25.0
 	gap := 2.0
 	startX := 15.0
 	y := 135.0
+
+	pdf.SetFont("Arial", "B", 14)
+	pdf.SetXY(15, y-12)
+	pdf.Cell(180, 8, "Risk buckets")
+
+	riskCards := []struct {
+		label   string
+		value   int
+		r, g, b int
+	}{
+		{"security_risk", s.Dashboard.SecurityRisk, 155, 89, 182},
+		{"reliability_risk", s.Dashboard.ReliabilityRisk, 230, 126, 34},
+		{"performance_risk", s.Dashboard.PerformanceRisk, 231, 76, 60},
+	}
+
+	for i, card := range riskCards {
+		x := startX + float64(i)*(boxWidth+gap)
+		renderReviewMetricBox(pdf, x, y, boxWidth, boxHeight, card.label, card.value, card.r, card.g, card.b)
+	}
+}
+
+func (s *ReviewSection) renderPriorityRow(pdf *fpdf.Fpdf) {
+	boxWidth := 58.0
+	boxHeight := 25.0
+	gap := 2.0
+	startX := 15.0
+	y := 180.0
 
 	pdf.SetFont("Arial", "B", 14)
 	pdf.SetXY(15, y-12)
@@ -162,6 +193,10 @@ func LoadReviewSection(inputDir, repo string) (*ReviewSection, error) {
 				Bucket string `json:"bucket"`
 				Count  int    `json:"count"`
 			} `json:"buckets"`
+			RiskBuckets []struct {
+				Bucket string `json:"bucket"`
+				Count  int    `json:"count"`
+			} `json:"risk_buckets"`
 			PriorityTiers []struct {
 				Tier  string `json:"tier"`
 				Count int    `json:"count"`
@@ -199,6 +234,17 @@ func LoadReviewSection(inputDir, repo string) (*ReviewSection, error) {
 			section.Dashboard.Problematic = bucket.Count
 		case "blocked":
 			section.Dashboard.Escalate = bucket.Count
+		}
+	}
+
+	for _, bucket := range review.RiskBuckets {
+		switch bucket.Bucket {
+		case "security_risk":
+			section.Dashboard.SecurityRisk = bucket.Count
+		case "reliability_risk":
+			section.Dashboard.ReliabilityRisk = bucket.Count
+		case "performance_risk":
+			section.Dashboard.PerformanceRisk = bucket.Count
 		}
 	}
 

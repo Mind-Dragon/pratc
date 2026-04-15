@@ -110,6 +110,11 @@ Example:
 			} else {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load analyst summary section: %v\n", err)
 			}
+			if decisionTrail, err := report.LoadDecisionTrailSection(resolvedInputDir, repo); err == nil {
+				exporter.AddSection(decisionTrail)
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load decision trail section: %v\n", err)
+			}
 			if fullTable, err := report.LoadFullPRTableSection(resolvedInputDir, repo); err == nil {
 				exporter.AddSection(fullTable)
 			} else {
