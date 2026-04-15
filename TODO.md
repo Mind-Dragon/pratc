@@ -174,6 +174,30 @@ Locked by GUIDELINE.md:
 4. Add the 6,000+ PR corpus proof.
 5. Finish report composition and validation.
 
+## 16-layer crosswalk
+
+- Layers 1–3 belong to `outer-peel-ladder`:
+  - 1 Garbage
+  - 2 Duplicates
+  - 3 Obvious badness
+- Layers 4–5 are already embodied in the existing scoring/bucket routing path:
+  - 4 Substance score
+  - 5 Now vs future
+- Layers 6–16 belong to `deep-judgment-layers`:
+  - 6 Confidence
+  - 7 Dependency
+  - 8 Blast radius
+  - 9 Leverage
+  - 10 Ownership
+  - 11 Stability
+  - 12 Mergeability
+  - 13 Strategic weight
+  - 14 Attention cost
+  - 15 Reversibility
+  - 16 Signal quality
+- `report-composition-validation` owns the report surfaces that expose the ladder to humans.
+- `review-vocabulary-migration` owns the surface labels that keep the buckets aligned with GUIDELINE.md.
+
 ## Notes
 
 - The worktree branch is now redundant once its changes are represented on `main`.
