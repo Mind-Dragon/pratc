@@ -50,10 +50,7 @@ The doc suite now tells one coherent story.
 This is the main unfinished v1.4 gap.
 
 - [x] Remove the hidden maxPRs=1000 default in internal/cmd/analyze.go, internal/cmd/workflow.go, and related help text; no-cap behavior is explicit.
-- [ ] Make DefaultPoolCap (internal/types/models.go + internal/filter/pipeline.go + internal/app/service.go + internal/formula/config.go) configurable via settings or remove it as a hard gate on analysis coverage; verify analysis keeps the full active set unless a visible truncation reason is emitted.
-- [ ] Make DefaultCandidatePoolCap (internal/types/constants.go + internal/app/service.go + internal/planning/hierarchy.go) configurable via settings or remove it as a hard gate on planning coverage; verify planning does not silently drop candidates.
-- [ ] Add cursor-based pagination to ListPRs() in internal/cache/sqlite.go; verify large repos can stream through the cache API without loading the whole corpus at once.
-- [x] Add streaming insert to bootstrap sync in internal/sync/worker.go; verify sync inserts remain bounded in memory and preserve all rows.
+- [ ] Expose caller-visible cursor/paged access for `ListPRs()` in internal/cache/sqlite.go. The store already pages internally in 1000-row chunks, but callers still receive a full slice; the remaining gap is a streaming or paged API that does not require materializing the entire corpus at once.
 - [ ] Confirm the ingest path can represent every PR in the repository end-to-end; verify with a corpus-size fixture or synthetic load.
 - [ ] Preserve the full corpus in storage even when later layers narrow the active queue; verify active filtering never destroys the underlying data.
 - [ ] Keep a reason trail for every item that leaves the active path; verify in report output and rejection metadata.
@@ -133,12 +130,19 @@ This is the proof pass for v1.4.
 
 ## Suggested execution order
 
-1. Corpus coverage and cap removal.
-2. Large-corpus proof and pagination.
+1. Corpus coverage and corpus-visible paging/streaming.
+2. Large-corpus proof and benchmark.
 3. Outer peel formalization.
 4. Substance scoring and routing.
 5. Deep judgment layers.
 6. Report composition and validation.
+
+## Retired / stale items from earlier passes
+
+These items were useful while the docs and code were out of sync, but they are not current v1.4 blockers anymore:
+
+- `DefaultPoolCap` / `DefaultCandidatePoolCap` hard-cap work: the active filter pipeline does not enforce those caps in the runtime path, so the open work is not "wire the cap". If the project wants a real cap again, that should be reintroduced explicitly and configured deliberately.
+- `ListPRs()` "add pagination" wording: the store already pages internally; the remaining problem is caller-visible streaming/paged access, not the absence of any paging logic at all.
 
 ## Notes
 

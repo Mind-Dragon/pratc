@@ -50,8 +50,9 @@ const (
 	// when no target is explicitly specified.
 	DefaultTarget = 20
 
-	// DefaultCandidatePoolCap is the default maximum size of the candidate pool
-	// used during plan generation. PRs beyond this cap are rejected.
+	// DefaultCandidatePoolCap is a legacy candidate-pool cap constant retained
+	// for compatibility. The active BuildCandidatePool pipeline does not enforce
+	// it by default.
 	DefaultCandidatePoolCap = 100
 
 	// MaxTarget is the upper bound for plan targets, derived from P1.3

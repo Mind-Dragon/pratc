@@ -472,7 +472,8 @@ const (
 	// PairwiseShardSize is the number of PRs processed per shard in pairwise comparison.
 	PairwiseShardSize = 256
 
-	// DefaultPoolCap is the default maximum size of a candidate pool.
+	// DefaultPoolCap is a legacy candidate pool cap constant retained for
+	// compatibility. The active BuildCandidatePool pipeline does not enforce it.
 	DefaultPoolCap = 64
 
 	// SLO thresholds in milliseconds.

@@ -150,14 +150,14 @@ The architecture accepts that the corpus may be large.
 What it may not do is silently narrow the corpus.
 
 ### Known scaling constraints to address
-- `maxPRs` default of 1000 in `internal/cmd/analyze.go` — must be removed or made explicit
-- `DefaultPoolCap = 100` in `internal/types/constants.go` — must become configurable or be removed as a hard gate
-- `ListPRs()` in `internal/cache/sqlite.go` has no pagination — needs cursor-based pagination for 6k+ corpora
-- Bootstrap sync in `internal/sync/worker.go` loads all PRs into memory — needs streaming insert
+- `maxPRs` default of 1000 in `internal/cmd/analyze.go` — removed; no-cap behavior is now explicit
+- Legacy pool-cap constants still exist in `internal/types/`, but `BuildCandidatePool()` does not enforce them in the active runtime path
+- `ListPRs()` in `internal/cache/sqlite.go` paginates internally, but callers still receive a full slice — a caller-visible streaming or paged API remains open
+- Bootstrap sync in `internal/sync/worker.go` now streams into the cache store
 
 ## Technical reference
 
-This section replaces the old docs/techref.md file. It keeps the concrete routes, command surface, and service contracts close to the architecture they support.
+This section keeps the concrete routes, command surface, and service contracts close to the architecture they support.
 
 ### CLI surface
 
