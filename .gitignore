@@ -83,6 +83,10 @@ out/
 *.db
 /--viewport
 
+# Local generated media/artifacts
+scorecard.png
+videos/
+
 # Fixtures data (fetched via scripts/fetch_fixtures.py - keep script, ignore data)
 fixtures/prs/
 fixtures/cache/

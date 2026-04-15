@@ -2,151 +2,180 @@
 
 ## Goal
 
-Build the full-corpus triage engine for large repositories.
-Every PR is accounted for. Noise is peeled away in 16 layers. Duplicates are collapsed. Substance is scored. Current priorities are separated from future work. The final output is a decision map, not a flat list.
+Finish the v1.4 full-corpus triage engine so the codebase, docs, tests, and outputs all describe the same system.
 
 ## Definition of done
 
 - Every PR in the corpus is represented somewhere in the system.
-- No hidden cap silently drops PRs from analysis.
+- No hidden cap silently drops PRs from analysis or reporting.
 - The 16-layer decision ladder is defined and applied.
 - Duplicates are canonicalized and linked.
 - Obvious garbage is separated from meaningful work.
 - Current and future priorities are split explicitly.
 - The report shows reasons, confidence, and bucket placement.
-- The architecture, guideline, roadmap, and milestone docs match the behavior.
-- All tests on main are green.
+- GUIDELINE.md, ARCHITECTURE.md, ROADMAP.md, version1.4.md, and TODO.md agree with the code.
+- `git status` is clean on `main` except for intentionally ignored generated artifacts.
+- Relevant tests on `main` are green.
 
-## Bucket vocabulary (locked — GUIDELINE.md is the authority)
+## Bucket vocabulary
 
-Temporal (mutually exclusive): `now`, `future`, `blocked`
-Quality: `high_value`, `merge_candidate`, `needs_review`, `re_engage`, `low_value`
-Disposal: `duplicate`, `junk`, `stale`
-Risk (additive): `security_risk`, `reliability_risk`, `performance_risk`
+Locked by GUIDELINE.md:
+- Temporal: `now`, `future`, `blocked`
+- Quality: `high_value`, `merge_candidate`, `needs_review`, `re_engage`, `low_value`
+- Disposal: `duplicate`, `junk`, `stale`
+- Risk: `security_risk`, `reliability_risk`, `performance_risk`
 
-## Workstreams
+## Completed foundation
 
-### 0. Phase 0 — Baseline repair
-These items were debt from prior work. They are complete.
+- [x] Synchronize the doc suite around the v1.4 full-corpus triage model.
+- [x] Remove the hidden `maxPRs=1000` truncation from the primary analysis path.
+- [x] Add caller-visible paging/streaming for cache PR listing and wire the streaming consumer.
+- [x] Merge the paged PR listing slice back into `main`.
+- [x] Ignore generated media artifacts (`scorecard.png`, `videos/`) so the repo can stay clean.
 
-- [x] Fix TestHandleAnalyze x3 failures in internal/cmd/sync_api_test.go
-- [x] Fix TestCorsMiddleware x2 failures in internal/cmd/cors_test.go
-- [x] Verify `make test-go` is fully green on main after fixes
-- [x] Verify `make build` succeeds on main after fixes
+## Next sprint backlog
 
-### 1. Contract alignment
-The doc suite now tells one coherent story.
+### 1. Review vocabulary migration to the v1.4 model
 
-- [x] Rewrite ROADMAP.md to define v1.4 as the full-corpus triage engine with Phase 0 history.
-- [x] Create GUIDELINE.md with the 16-layer decision ladder and full bucket vocabulary.
-- [x] Create ARCHITECTURE.md with system shape, data flow, and codebase mapping.
-- [x] Fold the old docs/techref.md content into ARCHITECTURE.md and remove docs/techref.md.
-- [x] Create version1.4.md as the milestone summary / working contract.
-- [x] Archive pratc14a.md to docs/archive/pratc14a-remediation.md.
-- [x] Audit the v1.4 doc set for bucket vocabulary consistency; keep historical v1.3 names quarantined to ROADMAP Phase 0 context.
-- [x] Cross-reference ROADMAP phase labels with CHANGELOG phase labels so Phase 0 and Phase A–F mean the same thing everywhere.
+**Objective:** Replace the legacy review-category surface with the v1.4 bucket vocabulary everywhere the user sees or consumes review output.
 
-### 2. Corpus coverage
-This is the main unfinished v1.4 gap.
+**Files:**
+- Modify: `internal/types/models.go`
+- Modify: `internal/app/service.go`
+- Modify: `internal/cmd/analyze.go`
+- Modify: `internal/report/review_section.go`
+- Modify: `web/src/types/api.ts`
+- Modify: `web/src/pages/index.tsx`
+- Modify: `web/src/components/TriageView.tsx`
+- Update tests: `internal/app/service_review_test.go`, `internal/app/review_boundary_test.go`, `internal/report/analyst_sections_test.go`, `internal/cmd/analyze_command_test.go`, `web/src/__tests__/` review-vocabulary tests
 
-- [x] Remove the hidden maxPRs=1000 default in internal/cmd/analyze.go, internal/cmd/workflow.go, and related help text; no-cap behavior is explicit.
-- [x] Expose caller-visible cursor/paged access for `ListPRs()` in internal/cache/sqlite.go. The store now pages internally and exposes caller-visible page/stream access, so callers no longer need to materialize the entire corpus at once.
-- [ ] Confirm the ingest path can represent every PR in the repository end-to-end; verify with a corpus-size fixture or synthetic load.
-- [ ] Preserve the full corpus in storage even when later layers narrow the active queue; verify active filtering never destroys the underlying data.
-- [ ] Keep a reason trail for every item that leaves the active path; verify in report output and rejection metadata.
-- [ ] Add a large-corpus fixture or benchmark case for 6,000+ PRs; verify with a reproducible test or benchmark command.
+**TDD steps:**
+1. Add failing tests that assert the primary path emits `now`, `future`, `blocked`, `high_value`, `merge_candidate`, `needs_review`, `re_engage`, `low_value`, `duplicate`, `junk`, `stale`, `security_risk`, `reliability_risk`, and `performance_risk`.
+2. Verify the tests fail against the current legacy labels.
+3. Implement the smallest compatibility layer needed in `internal/types/models.go` and the downstream renderers.
+4. Re-run the tests until the new vocabulary is present in CLI, report, and web output.
 
-### 3. Outer peel layers
-The code has building blocks, but the layer model still needs to be made explicit.
+**Verification:**
+- `go test ./internal/app ./internal/cmd ./internal/report -run 'Review|Bucket|Vocabulary|Priority' -v`
+- `bun run test`
+- Manual scan of rendered output to confirm legacy labels no longer appear on the primary path.
 
-- [ ] Layer 1 (garbage): extend internal/analysis/ bot detection + new classifiers for abandoned, malformed, empty PRs. Emit reason codes.
-- [ ] Layer 2 (duplicates): wire existing ML duplicate detection (internal/ml/ bridge → Python) into the layered pipeline. Choose canonical. Link duplicates.
-- [ ] Layer 3 (obvious badness): extend existing spam classification into a formal layer. Add malware/junkware patterns.
-- [ ] Verify each layer emits a readable reason per PR.
-- [ ] Verify a PR can move out of the active queue without disappearing from the corpus report.
+**Done when:**
+- The review payload and UI/report surfaces expose the v1.4 bucket model.
+- Any legacy strings survive only in clearly documented compatibility shims or tests.
 
-### 4. Substance scoring
-This layer is still mostly a TODO by design.
+### 2. Formalize the outer-peel ladder
 
-- [ ] Layer 4 (substance): extend internal/review/ security analyzer to emit a layer-4 security score.
-- [ ] Extend internal/review/ reliability analyzer to emit a layer-4 reliability score.
-- [ ] Add performance scoring (new, or extend quality analyzer).
-- [ ] Add roadmap alignment scoring (new — requires roadmap context as input).
-- [ ] Define what "low score" means: threshold, where low-score PRs go (low_value bucket).
-- [ ] Keep score explanations short but specific.
+**Objective:** Make garbage, duplicates, and obvious badness explicit first-class layers with readable reason trails.
 
-### 5. Now vs future routing
-This is the explicit decision boundary between immediate work and deferred work.
+**Files:**
+- Modify: `internal/analysis/`
+- Modify: `internal/filter/pipeline.go`
+- Modify: `internal/review/orchestrator.go`
+- Modify: `internal/app/service.go`
+- Modify: `internal/report/analyst_sections.go`
+- Update tests: `internal/filter/pipeline_test.go`, `internal/review/classifier_test.go`, `internal/app/review_boundary_test.go`, `internal/report/analyst_sections_test.go`
 
-- [ ] Layer 5: define what counts as current priority (CI green + active author + current roadmap alignment).
-- [ ] Define what counts as future priority (aligns with v1.5+ roadmap, or touches areas not yet active).
-- [ ] Make future work visible without mixing it into the now queue.
-- [ ] Preserve future items with enough detail to revisit later.
-- [ ] Ensure "good, but later" is a distinct bucket outcome.
+**TDD steps:**
+1. Write a test that proves a PR can be classified as garbage, duplicate, or obvious badness and still keep a reason trail.
+2. Verify the test fails with the current implicit layering.
+3. Add the smallest layer objects / helpers needed to express the peel order.
+4. Ensure each rejected or peeled item still appears in the corpus report with a reason code.
 
-### 6. Deep judgment layers
-These are the v1.4 judgment layers after the outer peel.
+**Verification:**
+- `go test ./internal/analysis ./internal/filter ./internal/review ./internal/report -run 'Peel|Reason|Duplicate|Junk|Stale' -v`
+- Inspect report output for non-disappearing PRs.
 
-- [ ] Layer 6 (confidence): flag PRs where the system's judgment is below 0.5. Respect HighRiskConfidenceCap=0.79 for risk claims.
-- [ ] Layer 7 (dependency): detect PRs blocked on other PRs using existing graph data.
-- [ ] Layer 8 (blast radius): estimate from changed_files count, subsystem detection, and additions/deletions.
-- [ ] Layer 9 (leverage): detect PRs that unblock other blocked PRs using reverse dependency lookup.
-- [ ] Layer 10 (ownership): check author activity recency and review assignment status.
-- [ ] Layer 11 (stability): check recent commit churn on the PR.
-- [ ] Layer 12 (mergeability): use existing mergeable field + CI status + conflict detection from graph.
-- [ ] Layer 13 (strategic weight): score alignment with ROADMAP current and future phases.
-- [ ] Layer 14 (attention cost): estimate from PR size, file count, and body length.
-- [ ] Layer 15 (reversibility): heuristic from changed file paths — config/migration/schema = low reversibility, docs/tests = high.
-- [ ] Layer 16 (signal quality): compare title/body coherence, presence of description, test file changes alongside source changes.
-- [ ] Make the layer order explicit in the pipeline so the sequence stays understandable.
+**Done when:**
+- Layer 1–3 are explicit in code and docs.
+- Every peeled item keeps a reason trail.
+- No PR silently vanishes from the report.
 
-### 7. Report composition
-The report needs to reflect the full decision model.
+### 3. Implement the remaining deep judgment layers
 
-- [ ] Executive summary section.
-- [ ] Now section (temporal bucket: now).
-- [ ] Future section (temporal bucket: future).
-- [ ] Blocked section (temporal bucket: blocked).
-- [ ] Duplicates section (disposal bucket: duplicate, with canonical chains).
-- [ ] Junk/noise section (disposal bucket: junk).
-- [ ] Stale section (disposal bucket: stale).
-- [ ] Risk section (risk buckets: security_risk, reliability_risk, performance_risk).
-- [ ] Full appendix covering every PR with bucket and reason code.
-- [ ] Make sure every PR has at least one visible reason code.
-- [ ] Make the output read like a decision map.
+**Objective:** Finish the v1.4 judgment stack for confidence, dependency, blast radius, leverage, ownership, stability, mergeability, strategic weight, attention cost, reversibility, and signal quality.
 
-### 8. Validation
-This is the proof pass for v1.4.
+**Files:**
+- Modify: `internal/review/`
+- Modify: `internal/planning/`
+- Modify: `internal/app/service.go`
+- Modify: `internal/types/models.go`
+- Update tests: `internal/app/planning_integration_test.go`, `internal/app/service_review_test.go`, `internal/review/*_test.go`, `internal/planning/*_test.go`
 
-- [ ] Test: all PRs are accounted for (no PR in corpus missing from report).
-- [ ] Test: duplicates are canonicalized (canonical has links, duplicates point back).
-- [ ] Test: junk is separated early (junk PRs do not appear in substance scoring).
-- [ ] Test: now/future routing works (PRs land in correct temporal bucket).
-- [ ] Test: low-score PRs are excluded from active queue but not lost (appear in low_value or appendix).
-- [ ] Test: blocked PRs are identified and linked to their dependency.
-- [ ] Benchmark: 6,000+ PRs end-to-end through the full pipeline.
-- [ ] Cross-check: docs, tests, and implementation use the same bucket names.
-- [ ] Cross-check: layer ordering in code matches GUIDELINE.md ladder.
+**TDD steps:**
+1. Add tests for each layer’s scoring/reason behavior in the smallest unit that already exists.
+2. Verify the tests fail before implementation.
+3. Implement the layer logic one layer at a time, starting with the ones that already have data sources in the repo.
+4. Wire the layer order explicitly so the sequence is readable and stable.
+
+**Verification:**
+- `go test ./internal/review ./internal/planning ./internal/app -run 'Confidence|Dependency|Blast|Leverage|Ownership|Stability|Mergeability|Strategic|Attention|Reversibility|Signal' -v`
+- Confirm telemetry and rejection output include the new layer reasons.
+
+**Done when:**
+- The layer order matches GUIDELINE.md and ARCHITECTURE.md.
+- The new reasons show up in the response payloads and report surfaces.
+
+### 4. Add a 6,000+ PR corpus proof
+
+**Objective:** Prove the system handles the intended corpus scale without hidden truncation or accidental narrowing.
+
+**Files:**
+- Create: `internal/app/v1_4_scale_benchmark_test.go` or `internal/app/plan_benchmark_test.go`
+- Modify: `internal/testutil/` fixture helpers if a synthetic generator is needed
+- Modify: `scripts/` only if a repeatable benchmark runner is needed
+
+**TDD steps:**
+1. Add a synthetic 6,000+ PR benchmark or reproducible fixture generator.
+2. Verify the benchmark or test fails or is missing before implementation.
+3. Implement the minimal generator / benchmark wiring.
+4. Run the benchmark and capture the results in a local artifact or report.
+
+**Verification:**
+- `go test ./internal/app -run 'Test.*6000|Benchmark.*6000' -v`
+- `go test ./internal/app -bench 'Benchmark.*6000' -run '^$'`
+- Record the benchmark output in the sprint evidence if it is used for signoff.
+
+**Done when:**
+- A 6,000+ PR corpus run completes with the expected outputs.
+- The benchmark proves the corpus path is still complete after the new layers are added.
+
+### 5. Finish report composition and validation
+
+**Objective:** Make the PDF / report path reflect the full decision model, not just a summary of legacy buckets.
+
+**Files:**
+- Modify: `internal/report/pdf.go`
+- Modify: `internal/report/analyst_sections.go`
+- Modify: `internal/report/review_section.go`
+- Modify: `internal/report/validator.go`
+- Modify: `internal/cmd/report.go`
+- Update tests: `internal/report/pdf_test.go`, `internal/report/analyst_sections_test.go`, `internal/report/validator_test.go`
+
+**TDD steps:**
+1. Add tests that assert the report contains the new bucket sections and reason trails.
+2. Verify the tests fail against the current report structure.
+3. Update the report composer so the sections line up with the v1.4 vocabulary.
+4. Verify the report validator rejects missing or truncated artifacts.
+
+**Verification:**
+- `go test ./internal/report ./internal/cmd -run 'Report|Validator|Analyst|ReviewSection' -v`
+- Generate a sample report and inspect the produced sections.
+
+**Done when:**
+- The report reads like a decision map.
+- Every PR has a visible reason or a visible place in the appendix.
 
 ## Suggested execution order
 
-1. Corpus coverage and corpus-visible paging/streaming.
-2. Large-corpus proof and benchmark.
-3. Outer peel formalization.
-4. Substance scoring and routing.
-5. Deep judgment layers.
-6. Report composition and validation.
-
-## Retired / stale items from earlier passes
-
-These items were useful while the docs and code were out of sync, but they are not current v1.4 blockers anymore:
-
-- `DefaultPoolCap` / `DefaultCandidatePoolCap` hard-cap work: the active filter pipeline does not enforce those caps in the runtime path, so the open work is not "wire the cap". If the project wants a real cap again, that should be reintroduced explicitly and configured deliberately.
-- `ListPRs()` "add pagination" wording: resolved in mainline by exposing caller-visible paging/streaming access; keep this only as historical context if needed.
+1. Review vocabulary migration to the v1.4 model.
+2. Formalize the outer-peel ladder.
+3. Implement the remaining deep judgment layers.
+4. Add the 6,000+ PR corpus proof.
+5. Finish report composition and validation.
 
 ## Notes
 
-- The planning stack and review bucket ordering are already wired; do not spend the next pass reinventing them.
-- The remaining work is about corpus integrity, explicit reasoning, and proof at scale.
-- Hidden truncation is not allowed.
-- The docs now have a single milestone summary in version1.4.md.
+- The worktree branch is now redundant once its changes are represented on `main`.
+- Do not treat a nice-looking label swap as complete unless the downstream report/UI surfaces and tests also changed.
+- Keep `TODO.md`, `GUIDELINE.md`, `ARCHITECTURE.md`, and `version1.4.md` in lockstep.
