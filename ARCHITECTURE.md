@@ -6,7 +6,7 @@ This document describes the system shape for the v1.4 full-corpus triage engine.
 
 The point is not to make the system clever in one shot. The point is to make it honest, layered, and complete: every PR enters, every decision is explainable, and the system keeps separating the obvious from the subtle until what remains is worth human attention.
 
-For detailed component breakdowns, API routes, data model, SLOs, and technology stack, see [docs/techref.md](docs/techref.md).
+For the detailed component breakdowns, API routes, data model, SLOs, and technology stack, see the technical reference section in this document.
 
 ## System shape
 
@@ -155,6 +155,93 @@ What it may not do is silently narrow the corpus.
 - `ListPRs()` in `internal/cache/sqlite.go` has no pagination — needs cursor-based pagination for 6k+ corpora
 - Bootstrap sync in `internal/sync/worker.go` loads all PRs into memory — needs streaming insert
 
+## Technical reference
+
+This section replaces the old docs/techref.md file. It keeps the concrete routes, command surface, and service contracts close to the architecture they support.
+
+### CLI surface
+
+| Command | Purpose | Key flags |
+|---------|---------|-----------|
+| `analyze` | Full PR analysis | `--repo`, `--format`, `--use-cache-first` |
+| `cluster` | ML clustering only | `--repo`, `--format` |
+| `graph` | Dependency graph | `--repo`, `--format` (dot/json) |
+| `plan` | Merge planning | `--repo`, `--target`, `--mode`, `--dry-run` |
+| `report` | Generate PDF report | `--repo`, `--input-dir`, `--output`, `--format` |
+| `serve` | Start API server | `--port`, `--repo` |
+| `sync` | GitHub sync | `--repo`, `--watch`, `--interval` |
+| `audit` | Query audit log | `--limit`, `--format` |
+| `mirror` | Git mirror management | `list`, `info`, `prune`, `clean` |
+
+### HTTP routes
+
+RESTful routes:
+
+GET  /api/repos/{owner}/{repo}/analyze
+GET  /api/repos/{owner}/{repo}/cluster
+GET  /api/repos/{owner}/{repo}/graph
+GET  /api/repos/{owner}/{repo}/plan
+POST /api/repos/{owner}/{repo}/sync
+GET  /api/repos/{owner}/{repo}/sync/stream
+
+Legacy routes:
+
+GET /analyze?repo=owner/repo
+GET /cluster?repo=owner/repo
+GET /graph?repo=owner/repo&format=dot
+GET /plan?repo=owner/repo&target=20
+
+### Service contract
+
+The service facade exposes the primary app operations:
+
+```go
+Analyze(ctx context.Context, repo string) (*AnalysisResponse, error)
+Cluster(ctx context.Context, repo string) (*ClusterResponse, error)
+Graph(ctx context.Context, repo string) (*GraphResponse, error)
+Plan(ctx context.Context, repo string, target int, mode formula.Mode) (*PlanResponse, error)
+Health() *HealthResponse
+```
+
+### Shared thresholds and defaults
+
+- Duplicate threshold: 0.90
+- Overlap threshold: 0.70
+- Default target: 20
+- Default candidate pool cap: 100
+- Max target: 1000
+- Plan dry-run default: true
+- Default deep candidate subset size: 64
+
+### Core packages
+
+- `internal/filter/` — pre-filter pipeline, scoring, and rejection logic
+- `internal/graph/` — dependency and conflict graph construction
+- `internal/planner/` — functional-options planner implementation
+- `internal/formula/` — combinatorial counting and generation
+- `internal/github/` — rate-limited GitHub GraphQL client
+- `internal/ml/` — JSON stdin/stdout bridge to the Python ML service
+- `internal/sync/` — incremental sync, bootstrap, and drift handling
+
+### Data layer
+
+- SQLite with forward-only migrations
+- Schema version 2
+- Pragmas on open: WAL, busy_timeout, foreign_keys
+
+### Sync and rate limiting
+
+- Sync jobs track open PRs, closed PRs, and cursor position
+- Bootstrap can stream directly into the cache store
+- GitHub rate limiting keeps a reserve budget and backs off on secondary limits
+
+### Performance SLOs
+
+- Analyze: 300s
+- Cluster: 180s
+- Graph: 120s
+- Plan: 90s
+
 ## Key design principle
 
 prATC is not a single ranking function.
@@ -173,5 +260,5 @@ The architecture exists to answer those questions without flattening them into o
 ## Relationship to other documents
 - **GUIDELINE.md** is the authority on bucket definitions, layer ordering, and non-negotiables.
 - **ROADMAP.md** defines what gets built and when.
-- **docs/techref.md** has the detailed component breakdowns, API routes, data model, and SLOs.
-- **This document** defines the system shape, data flow, and design philosophy.
+- **version1.4.md** is the milestone summary and working contract.
+- **This document** defines the system shape, data flow, technical reference details, and design philosophy.

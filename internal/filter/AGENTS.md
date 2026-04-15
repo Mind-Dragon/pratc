@@ -38,6 +38,6 @@ Returned in `PlanRejection.Reason`:
 ## Gotchas
 
 - `ScoreAndSortPool` was O(n²) bubble sort — FIXED in Phase 2, now uses `sort.Slice`
-- Pool cap is `types.DefaultPoolCap` (100), configurable via constants
+- Pool cap is `types.DefaultPoolCap` (64), configurable via constants
 - `ApplyFilters` returns two slices; both must be preserved for `plan` output.
 - `PlannerRationale` strings used in plan output for human-readable justification.

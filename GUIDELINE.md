@@ -128,5 +128,5 @@ The system uses confidence scores to express how much it trusts its own judgment
 - **ROADMAP.md** defines what gets built and when.
 - **ARCHITECTURE.md** defines the system shape and data flow.
 - **This document** defines the rules the system must follow.
-- **docs/techref.md** is the technical reference for component details, API routes, data model, and SLOs.
+- **ARCHITECTURE.md** now includes the technical reference details for component breakdowns, API routes, data model, and SLOs.
 - If any document conflicts with this one on bucket definitions, layer ordering, or non-negotiables, this document wins.

@@ -35,7 +35,7 @@ Work already shipped that v1.4 builds on top of.
 - 5 pre-existing test failures on main: TestHandleAnalyze (x3), TestCorsMiddleware (x2) in internal/cmd/
 - `maxPRs` default of 1000 in analyze command caps visible corpus
 - `DefaultPoolCap = 100` hard-caps the candidate pool
-- `docs/architecture.md` renamed to `docs/techref.md` (technical reference)
+- The detailed technical reference now lives in ARCHITECTURE.md; docs/techref.md has been removed.
 - `pratc14a.md` remediation plan archived to `docs/archive/pratc14a-remediation.md`; relevant items absorbed into v1.4 workstreams
 
 ### Phase A — Corpus Coverage + Baseline Repair
