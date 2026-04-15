@@ -13,6 +13,12 @@ type PRFilter struct {
 	UpdatedSince time.Time
 }
 
+type PRPage struct {
+	PRs       []types.PR
+	NextCursor string
+	HasMore    bool
+}
+
 type MergedPR struct {
 	Repo         string
 	Number       int

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/types"
@@ -111,10 +112,31 @@ func (s *Store) UpsertPR(pr types.PR) error {
 	return nil
 }
 
-func (s *Store) ListPRs(filter PRFilter) ([]types.PR, error) {
-	const pageSize = 1000
+const defaultPRPageSize = 1000
 
-	baseQuery := `
+func (s *Store) ListPRs(filter PRFilter) ([]types.PR, error) {
+	var all []types.PR
+	cursor := ""
+
+	for {
+		page, err := s.ListPRsPage(filter, cursor, defaultPRPageSize)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, page.PRs...)
+		if !page.HasMore {
+			return all, nil
+		}
+		cursor = page.NextCursor
+	}
+}
+
+func (s *Store) ListPRsPage(filter PRFilter, cursor string, limit int) (PRPage, error) {
+	if limit <= 0 {
+		return PRPage{}, fmt.Errorf("list pull requests page limit must be > 0")
+	}
+
+	query := `
 		SELECT
 			id, repo, number, title, body, url, author, labels_json, files_changed_json,
 			review_status, ci_status, mergeable, base_branch, head_branch, cluster_id,
@@ -122,84 +144,98 @@ func (s *Store) ListPRs(filter PRFilter) ([]types.PR, error) {
 		FROM pull_requests
 		WHERE repo = ?
 	`
-	baseArgs := []any{filter.Repo}
+	args := []any{filter.Repo}
 
 	if filter.BaseBranch != "" {
-		baseQuery += ` AND base_branch = ?`
-		baseArgs = append(baseArgs, filter.BaseBranch)
+		query += ` AND base_branch = ?`
+		args = append(args, filter.BaseBranch)
 	}
 	if filter.CIStatus != "" {
-		baseQuery += ` AND ci_status = ?`
-		baseArgs = append(baseArgs, filter.CIStatus)
+		query += ` AND ci_status = ?`
+		args = append(args, filter.CIStatus)
 	}
 	if !filter.UpdatedSince.IsZero() {
-		baseQuery += ` AND updated_at >= ?`
-		baseArgs = append(baseArgs, filter.UpdatedSince.UTC().Format(time.RFC3339))
+		query += ` AND updated_at >= ?`
+		args = append(args, filter.UpdatedSince.UTC().Format(time.RFC3339))
 	}
-
-	var prs []types.PR
-	lastNumber := 0
-	for {
-		query := baseQuery + ` AND number > ? ORDER BY number ASC LIMIT ?`
-		args := append(append([]any{}, baseArgs...), lastNumber, pageSize)
-
-		rows, err := s.db.Query(query, args...)
+	if cursor != "" {
+		cursorNumber, err := strconv.Atoi(cursor)
 		if err != nil {
-			return nil, fmt.Errorf("query pull requests: %w", err)
+			return PRPage{}, fmt.Errorf("parse cursor %q: %w", cursor, err)
 		}
-
-		page := make([]types.PR, 0, pageSize)
-		for rows.Next() {
-			var pr types.PR
-			var labelsJSON string
-			var filesJSON string
-			var provenanceJSON string
-
-			if err := rows.Scan(
-				&pr.ID, &pr.Repo, &pr.Number, &pr.Title, &pr.Body, &pr.URL, &pr.Author, &labelsJSON, &filesJSON,
-				&pr.ReviewStatus, &pr.CIStatus, &pr.Mergeable, &pr.BaseBranch, &pr.HeadBranch, &pr.ClusterID,
-				&pr.CreatedAt, &pr.UpdatedAt, &pr.IsDraft, &pr.IsBot, &pr.Additions, &pr.Deletions, &pr.ChangedFilesCount, &provenanceJSON,
-			); err != nil {
-				_ = rows.Close()
-				return nil, fmt.Errorf("scan pull request: %w", err)
-			}
-
-			if err := json.Unmarshal([]byte(labelsJSON), &pr.Labels); err != nil {
-				_ = rows.Close()
-				return nil, fmt.Errorf("unmarshal labels: %w", err)
-			}
-			if err := json.Unmarshal([]byte(filesJSON), &pr.FilesChanged); err != nil {
-				_ = rows.Close()
-				return nil, fmt.Errorf("unmarshal files changed: %w", err)
-			}
-			if provenanceJSON != "" {
-				if err := json.Unmarshal([]byte(provenanceJSON), &pr.Provenance); err != nil {
-					_ = rows.Close()
-					return nil, fmt.Errorf("unmarshal provenance: %w", err)
-				}
-			}
-
-			page = append(page, pr)
-		}
-		if err := rows.Err(); err != nil {
-			_ = rows.Close()
-			return nil, fmt.Errorf("iterate pull requests: %w", err)
-		}
-		if err := rows.Close(); err != nil {
-			return nil, fmt.Errorf("close pull request rows: %w", err)
-		}
-
-		if len(page) == 0 {
-			break
-		}
-		prs = append(prs, page...)
-		lastNumber = page[len(page)-1].Number
-		if len(page) < pageSize {
-			break
-		}
+		query += ` AND number > ?`
+		args = append(args, cursorNumber)
 	}
 
-	return prs, nil
+	query += ` ORDER BY number ASC LIMIT ?`
+	args = append(args, limit+1)
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return PRPage{}, fmt.Errorf("query pull requests page: %w", err)
+	}
+	defer rows.Close()
+
+	prs := make([]types.PR, 0, limit+1)
+	for rows.Next() {
+		var pr types.PR
+		var labelsJSON string
+		var filesJSON string
+		var provenanceJSON string
+
+		if err := rows.Scan(
+			&pr.ID, &pr.Repo, &pr.Number, &pr.Title, &pr.Body, &pr.URL, &pr.Author, &labelsJSON, &filesJSON,
+			&pr.ReviewStatus, &pr.CIStatus, &pr.Mergeable, &pr.BaseBranch, &pr.HeadBranch, &pr.ClusterID,
+			&pr.CreatedAt, &pr.UpdatedAt, &pr.IsDraft, &pr.IsBot, &pr.Additions, &pr.Deletions, &pr.ChangedFilesCount, &provenanceJSON,
+		); err != nil {
+			return PRPage{}, fmt.Errorf("scan pull request: %w", err)
+		}
+
+		if err := json.Unmarshal([]byte(labelsJSON), &pr.Labels); err != nil {
+			return PRPage{}, fmt.Errorf("unmarshal labels: %w", err)
+		}
+		if err := json.Unmarshal([]byte(filesJSON), &pr.FilesChanged); err != nil {
+			return PRPage{}, fmt.Errorf("unmarshal files changed: %w", err)
+		}
+		if provenanceJSON != "" {
+			if err := json.Unmarshal([]byte(provenanceJSON), &pr.Provenance); err != nil {
+				return PRPage{}, fmt.Errorf("unmarshal provenance: %w", err)
+			}
+		}
+
+		prs = append(prs, pr)
+	}
+
+	if err := rows.Err(); err != nil {
+		return PRPage{}, fmt.Errorf("iterate pull requests: %w", err)
+	}
+
+	page := PRPage{PRs: prs}
+	if len(prs) > limit {
+		page.HasMore = true
+		page.PRs = prs[:limit]
+		page.NextCursor = strconv.Itoa(page.PRs[len(page.PRs)-1].Number)
+	}
+	return page, nil
+}
+
+func (s *Store) ListPRsIter(filter PRFilter, fn func(types.PR) error) error {
+	cursor := ""
+	for {
+		page, err := s.ListPRsPage(filter, cursor, defaultPRPageSize)
+		if err != nil {
+			return err
+		}
+		for _, pr := range page.PRs {
+			if err := fn(pr); err != nil {
+				return err
+			}
+		}
+		if !page.HasMore {
+			return nil
+		}
+		cursor = page.NextCursor
+	}
 }
 
 func (s *Store) SetLastSync(repo string, syncedAt time.Time) error {

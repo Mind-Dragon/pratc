@@ -33,6 +33,7 @@ type DeltaDetector struct {
 
 type PRLister interface {
 	ListPRs(filter cache.PRFilter) ([]types.PR, error)
+	ListPRsIter(filter cache.PRFilter, fn func(types.PR) error) error
 }
 
 func NewDeltaDetector(cache PRLister) *DeltaDetector {
@@ -47,22 +48,20 @@ func (d *DeltaDetector) ComputeDelta(ctx context.Context, repo string, since tim
 		return nil, fmt.Errorf("fetch github pr list: %w", err)
 	}
 
-	cachedPRs, err := d.cacheStore.ListPRs(cache.PRFilter{
+	cacheMap := make(map[int]time.Time)
+	if err := d.cacheStore.ListPRsIter(cache.PRFilter{
 		Repo:         repo,
 		UpdatedSince: since,
-	})
-	if err != nil {
+	}, func(pr types.PR) error {
+		cacheMap[pr.Number] = parseUpdatedAt(pr.UpdatedAt)
+		return nil
+	}); err != nil {
 		return nil, fmt.Errorf("list cached prs: %w", err)
 	}
 
 	githubMap := make(map[int]time.Time, len(githubPRs))
 	for _, pr := range githubPRs {
 		githubMap[pr.Number] = pr.UpdatedAt
-	}
-
-	cacheMap := make(map[int]time.Time, len(cachedPRs))
-	for _, pr := range cachedPRs {
-		cacheMap[pr.Number] = parseUpdatedAt(pr.UpdatedAt)
 	}
 
 	var newPRs, updatedPRs, unchangedPRs, closedPRs []int

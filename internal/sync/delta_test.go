@@ -26,6 +26,23 @@ func (m *mockDeltaCacheStore) ListPRs(filter cache.PRFilter) ([]types.PR, error)
 	return result, nil
 }
 
+func (m *mockDeltaCacheStore) ListPRsIter(filter cache.PRFilter, fn func(types.PR) error) error {
+	if m.err != nil {
+		return m.err
+	}
+	keys := make([]int, 0, len(m.prs))
+	for number := range m.prs {
+		keys = append(keys, number)
+	}
+	sort.Ints(keys)
+	for _, number := range keys {
+		if err := fn(m.prs[number]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func TestComputeDelta_MixedNewUpdatedUnchangedClosed(t *testing.T) {
 	cacheStore := &mockDeltaCacheStore{
 		prs: map[int]types.PR{

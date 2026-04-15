@@ -104,6 +104,85 @@ func TestCacheUpdatedSinceFilter(t *testing.T) {
 	}
 }
 
+func TestCacheListPRsPageAdvancesCursor(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	for i := 1; i <= 7; i++ {
+		if err := store.UpsertPR(samplePR(i)); err != nil {
+			t.Fatalf("upsert pr %d: %v", i, err)
+		}
+	}
+
+	page1, err := store.ListPRsPage(PRFilter{Repo: "owner/repo"}, "", 3)
+	if err != nil {
+		t.Fatalf("list first page: %v", err)
+	}
+	if !page1.HasMore {
+		t.Fatal("expected first page to report more results")
+	}
+	if page1.NextCursor != "3" {
+		t.Fatalf("expected first next cursor 3, got %q", page1.NextCursor)
+	}
+	if got := numbersFromPRs(page1.PRs); !reflect.DeepEqual(got, []int{1, 2, 3}) {
+		t.Fatalf("expected first page numbers [1 2 3], got %v", got)
+	}
+
+	page2, err := store.ListPRsPage(PRFilter{Repo: "owner/repo"}, page1.NextCursor, 3)
+	if err != nil {
+		t.Fatalf("list second page: %v", err)
+	}
+	if !page2.HasMore {
+		t.Fatal("expected second page to report more results")
+	}
+	if page2.NextCursor != "6" {
+		t.Fatalf("expected second next cursor 6, got %q", page2.NextCursor)
+	}
+	if got := numbersFromPRs(page2.PRs); !reflect.DeepEqual(got, []int{4, 5, 6}) {
+		t.Fatalf("expected second page numbers [4 5 6], got %v", got)
+	}
+
+	page3, err := store.ListPRsPage(PRFilter{Repo: "owner/repo"}, page2.NextCursor, 3)
+	if err != nil {
+		t.Fatalf("list third page: %v", err)
+	}
+	if page3.HasMore {
+		t.Fatal("expected third page to be terminal")
+	}
+	if page3.NextCursor != "" {
+		t.Fatalf("expected terminal cursor to be empty, got %q", page3.NextCursor)
+	}
+	if got := numbersFromPRs(page3.PRs); !reflect.DeepEqual(got, []int{7}) {
+		t.Fatalf("expected third page numbers [7], got %v", got)
+	}
+}
+
+func TestCacheListPRsIterStopsOnError(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	for i := 1; i <= 5; i++ {
+		if err := store.UpsertPR(samplePR(i)); err != nil {
+			t.Fatalf("upsert pr %d: %v", i, err)
+		}
+	}
+
+	count := 0
+	err := store.ListPRsIter(PRFilter{Repo: "owner/repo"}, func(pr types.PR) error {
+		count++
+		if count == 3 {
+			return fmt.Errorf("stop at %d", pr.Number)
+		}
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected iterator to stop with an error")
+	}
+	if count != 3 {
+		t.Fatalf("expected iterator to stop after 3 items, got %d", count)
+	}
+}
+
 func TestCacheLastSyncRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -405,6 +484,14 @@ func mustParseTime(t *testing.T, value string) time.Time {
 		t.Fatalf("parse time %q: %v", value, err)
 	}
 	return parsed
+}
+
+func numbersFromPRs(prs []types.PR) []int {
+	numbers := make([]int, 0, len(prs))
+	for _, pr := range prs {
+		numbers = append(numbers, pr.Number)
+	}
+	return numbers
 }
 
 func TestMigrationFreshInstall(t *testing.T) {
