@@ -33,10 +33,10 @@ func TestParse(t *testing.T) {
 	}{
 		{
 			name:    "valid semver",
-			version: "1.3.1",
+			version: "1.4.2",
 			major:   1,
-			minor:   3,
-			patch:   1,
+			minor:   4,
+			patch:   2,
 			wantErr: false,
 		},
 		{
@@ -115,8 +115,8 @@ func TestParseString(t *testing.T) {
 	}{
 		{
 			name:    "standard version",
-			version: "1.3.1",
-			want:    "1.3.1",
+			version: "0.4.0",
+			want:    "0.4.0",
 		},
 		{
 			name:    "zero version",
@@ -206,8 +206,8 @@ func TestFormatVersion(t *testing.T) {
 	}{
 		{
 			name:    "standard",
-			version: VersionInfo{Major: 1, Minor: 3, Patch: 1},
-			want:    "v1.3.1",
+			version: VersionInfo{Major: 1, Minor: 4, Patch: 2},
+			want:    "v1.4.2",
 		},
 		{
 			name:    "zero",

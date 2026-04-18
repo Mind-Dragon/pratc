@@ -28,6 +28,47 @@ func calculateETA(done, total int, elapsed time.Duration) time.Duration {
 	return time.Duration(float64(remaining)/rate) * time.Second
 }
 
+type syncCommandSummary struct {
+	Started bool                       `json:"started"`
+	Repo    string                     `json:"repo"`
+	Status  string                     `json:"status"`
+	JobID   string                     `json:"job_id"`
+	Budget  string                     `json:"budget,omitempty"`
+	Metrics *ratelimit.MetricsSnapshot `json:"metrics,omitempty"`
+	Reused  bool                       `json:"reused,omitempty"`
+}
+
+func reuseCachedSyncSummary(store *cache.Store, repo string) (syncCommandSummary, bool, error) {
+	if store == nil {
+		return syncCommandSummary{}, false, nil
+	}
+
+	job, ok, err := store.GetLatestSyncJob(repo)
+	if err != nil {
+		return syncCommandSummary{}, false, fmt.Errorf("load latest sync job: %w", err)
+	}
+	if !ok || job.Status != cache.SyncJobStatusCompleted || job.LastSyncAt.IsZero() {
+		return syncCommandSummary{}, false, nil
+	}
+
+	prs, err := store.ListPRs(cache.PRFilter{Repo: repo})
+	if err != nil {
+		return syncCommandSummary{}, false, fmt.Errorf("list cached prs: %w", err)
+	}
+	if len(prs) == 0 {
+		return syncCommandSummary{}, false, nil
+	}
+
+	return syncCommandSummary{
+		Started: true,
+		Repo:    repo,
+		Status:  string(cache.SyncJobStatusCompleted),
+		JobID:   job.ID,
+		Budget:  "local-first cache reuse",
+		Reused:  true,
+	}, true, nil
+}
+
 func RegisterSyncCommand() {
 	var repo string
 	var watch bool
@@ -36,6 +77,8 @@ func RegisterSyncCommand() {
 	var reserveBuffer int
 	var resetBuffer int
 	var showProgress bool
+	var syncMaxPRs int
+	var refreshSync bool
 
 	command := &cobra.Command{
 		Use:   "sync",
@@ -73,12 +116,6 @@ Examples:
 				}
 			}()
 
-			budget := ratelimit.NewBudgetManager(
-				ratelimit.WithRateLimit(rateLimit),
-				ratelimit.WithReserveBuffer(reserveBuffer),
-				ratelimit.WithResetBuffer(resetBuffer),
-			)
-
 			dbPath := strings.TrimSpace(os.Getenv("PRATC_DB_PATH"))
 			if dbPath == "" {
 				home, _ := os.UserHomeDir()
@@ -90,11 +127,26 @@ Examples:
 			}
 			defer store.Close()
 
+			if !watch && !refreshSync {
+				if summary, reused, err := reuseCachedSyncSummary(store, repo); err != nil {
+					return err
+				} else if reused {
+					log.Info("reusing local sync snapshot", "repo", repo)
+					return writeJSON(cmd, summary)
+				}
+			}
+
+			budget := ratelimit.NewBudgetManager(
+				ratelimit.WithRateLimit(rateLimit),
+				ratelimit.WithReserveBuffer(reserveBuffer),
+				ratelimit.WithResetBuffer(resetBuffer),
+			)
+
 			if _, err := github.ResolveToken(ctx); err != nil {
 				return err
 			}
 			metrics := ratelimit.NewMetrics()
-			innerRunner := prsync.NewDefaultRunner(nil, "", store)
+			innerRunner := prsync.NewDefaultRunner(nil, "", store, syncMaxPRs)
 
 			log.Info("starting sync", "repo", repo, "budget", budget.String())
 
@@ -141,13 +193,12 @@ Examples:
 				if strings.Contains(syncErr.Error(), "rate limit budget exhausted") {
 					resumeAt := budget.ResetAt().Add(time.Duration(resetBuffer) * time.Second)
 					fmt.Fprintf(cmd.OutOrStdout(), "Sync paused due to rate limits. Will resume after %s\n", resumeAt.Format(time.RFC3339))
-					return writeJSON(cmd, map[string]any{
-						"started":   true,
-						"repo":      repo,
-						"status":    "paused",
-						"job_id":    job.ID,
-						"resume_at": resumeAt.Format(time.RFC3339),
-						"budget":    budget.String(),
+					return writeJSON(cmd, syncCommandSummary{
+						Started: true,
+						Repo:    repo,
+						Status:  "paused",
+						JobID:   job.ID,
+						Budget:  budget.String(),
 					})
 				}
 				_ = store.MarkSyncJobFailed(job.ID, syncErr.Error())
@@ -157,13 +208,14 @@ Examples:
 			_ = store.MarkSyncJobComplete(job.ID, time.Now().UTC())
 
 			if !watch {
-				return writeJSON(cmd, map[string]any{
-					"started": true,
-					"repo":    repo,
-					"status":  "completed",
-					"job_id":  job.ID,
-					"budget":  budget.String(),
-					"metrics": metrics.Snapshot(),
+				metricsSnapshot := metrics.Snapshot()
+				return writeJSON(cmd, syncCommandSummary{
+					Started: true,
+					Repo:    repo,
+					Status:  "completed",
+					JobID:   job.ID,
+					Budget:  budget.String(),
+					Metrics: &metricsSnapshot,
 				})
 			}
 
@@ -228,6 +280,8 @@ Examples:
 	command.Flags().IntVar(&reserveBuffer, "reserve-buffer", 200, "Minimum requests to keep in reserve")
 	command.Flags().IntVar(&resetBuffer, "reset-buffer", 15, "Seconds to wait after rate limit reset")
 	command.Flags().BoolVar(&showProgress, "progress", false, "Show progress with ETA")
+	command.Flags().IntVar(&syncMaxPRs, "sync-max-prs", 0, "Max PRs to sync on this pass (0=no cap)")
+	command.Flags().BoolVar(&refreshSync, "refresh-sync", false, "Force a fresh sync even when a local snapshot already exists")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }

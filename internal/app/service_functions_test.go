@@ -426,7 +426,8 @@ func TestOrderSelectionDeterministic(t *testing.T) {
 func TestClassifyDuplicatesEmptyInput(t *testing.T) {
 	t.Parallel()
 
-	dups, overlaps := classifyDuplicates([]types.PR{}, []review.MergedPRRecord{})
+	noop := func(string, int, int) {}
+	dups, overlaps := classifyDuplicates([]types.PR{}, []review.MergedPRRecord{}, noop)
 	if len(dups) != 0 {
 		t.Fatalf("classifyDuplicates empty prs: duplicates = %d, want 0", len(dups))
 	}
@@ -455,7 +456,7 @@ func TestClassifyDuplicatesNoMatches(t *testing.T) {
 		},
 	}
 
-	dups, overlaps := classifyDuplicates(prs, nil)
+	dups, overlaps := classifyDuplicates(prs, nil, func(string,int,int){})
 	if len(dups) != 0 {
 		t.Fatalf("classifyDuplicates no matches: duplicates = %d, want 0", len(dups))
 	}
@@ -485,7 +486,7 @@ func TestClassifyDuplicatesHighSimilarity(t *testing.T) {
 		},
 	}
 
-	dups, overlaps := classifyDuplicates(prs, nil)
+	dups, overlaps := classifyDuplicates(prs, nil, func(string,int,int){})
 	if len(dups) == 0 {
 		t.Fatalf("classifyDuplicates high similarity: expected at least one duplicate group, got none")
 	}
@@ -515,7 +516,7 @@ func TestClassifyDuplicatesMediumSimilarity(t *testing.T) {
 		},
 	}
 
-	dups, overlaps := classifyDuplicates(prs, nil)
+	dups, overlaps := classifyDuplicates(prs, nil, func(string,int,int){})
 	// Either may or may not have results depending on similarity score
 	// Just verify function doesn't crash and returns valid slice pointers
 	if dups == nil {
@@ -549,7 +550,7 @@ func TestClassifyDuplicatesWithMergedPRs(t *testing.T) {
 		},
 	}
 
-	dups, overlaps := classifyDuplicates(prs, merged)
+	dups, overlaps := classifyDuplicates(prs, merged, func(string,int,int){})
 	// Open PR #1 should be detected as duplicate/overlap of merged #100
 	foundCanonical := false
 	for _, dup := range dups {
@@ -592,7 +593,7 @@ func TestClassifyDuplicatesDuplicatePRNumsUnique(t *testing.T) {
 		},
 	}
 
-	dups, _ := classifyDuplicates(prs, nil)
+	dups, _ := classifyDuplicates(prs, nil, func(string,int,int){})
 	// PR1 should be canonical with PR2 and PR3 as duplicates
 	for _, dup := range dups {
 		if dup.CanonicalPRNumber == 1 {
@@ -636,7 +637,7 @@ func TestClassifyDuplicatesBelowOverlapThreshold(t *testing.T) {
 		},
 	}
 
-	dups, overlaps := classifyDuplicates(prs, nil)
+	dups, overlaps := classifyDuplicates(prs, nil, func(string,int,int){})
 	if len(dups) != 0 && len(overlaps) != 0 {
 		t.Fatalf("classifyDuplicates very different: expected no duplicates or overlaps, got dups=%d overlaps=%d", len(dups), len(overlaps))
 	}

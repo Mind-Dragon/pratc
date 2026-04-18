@@ -62,6 +62,13 @@ if BaseModel is not None:
         reason: str
 
 
+    class GarbagePR(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
+        pr_number: int
+        reason: str
+
+
     class ConflictPair(BaseModel):
         model_config = ConfigDict(populate_by_name=True)
 
@@ -133,6 +140,7 @@ if BaseModel is not None:
         overlap_groups: int
         conflict_pairs: int
         stale_prs: int
+        garbage_prs: int = 0
 
 
     class Thresholds(BaseModel):
@@ -223,6 +231,7 @@ if BaseModel is not None:
         overlaps: list[DuplicateGroup]
         conflicts: list[ConflictPair]
         stalenessSignals: list[StalenessReport]
+        garbagePRs: list[GarbagePR] | None = None
 
 
     class GraphResponse(BaseModel):
@@ -338,6 +347,12 @@ else:
 
 
     @dataclass
+    class GarbagePR(_BootstrapModel):
+        pr_number: int
+        reason: str = ""
+
+
+    @dataclass
     class ConflictPair(_BootstrapModel):
         source_pr: int
         target_pr: int
@@ -401,6 +416,7 @@ else:
         overlap_groups: int
         conflict_pairs: int
         stale_prs: int
+        garbage_prs: int = 0
 
 
     @dataclass
@@ -481,6 +497,7 @@ else:
         overlaps: list[DuplicateGroup] = field(default_factory=list)
         conflicts: list[ConflictPair] = field(default_factory=list)
         stalenessSignals: list[StalenessReport] = field(default_factory=list)
+        garbagePRs: list[GarbagePR] = field(default_factory=list)
 
 
     @dataclass

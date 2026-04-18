@@ -29,8 +29,8 @@ type dbJobRecorder struct {
 	dbPath string
 }
 
-func NewDefaultRunner(jobRecorder JobRecorder, jobID string, cacheStore *cache.Store) *DefaultRunner {
-	return NewRunner(defaultWorker(cacheStore), jobRecorder, jobID)
+func NewDefaultRunner(jobRecorder JobRecorder, jobID string, cacheStore *cache.Store, maxPRs int) *DefaultRunner {
+	return NewRunner(defaultWorker(cacheStore, maxPRs), jobRecorder, jobID)
 }
 
 func NewDBJobRecorder(dbPath string) JobRecorder {
@@ -77,7 +77,10 @@ func (r *DefaultRunner) Run(ctx context.Context, repo string, emit func(eventTyp
 		progress.LastBudgetCheck = time.Now().UTC()
 		switch stage {
 		case "metadata":
-			progress.TotalPRs = 0
+			if total > 0 {
+				progress.TotalPRs = total
+			}
+			progress.SnapshotCeiling = total
 		case "mirror_fetch":
 			if metadataTotal > 0 {
 				progress.TotalPRs = metadataTotal
@@ -128,7 +131,7 @@ func (r *DefaultRunner) Run(ctx context.Context, repo string, emit func(eventTyp
 	return nil
 }
 
-func defaultWorker(cacheStore *cache.Store) Worker {
+func defaultWorker(cacheStore *cache.Store, maxPRs int) Worker {
 	bootstrapPath := strings.TrimSpace(os.Getenv("PRATC_BOOTSTRAP_PATH"))
 	var bootstrap BootstrapSource
 	if bootstrapPath != "" {
@@ -144,11 +147,12 @@ func defaultWorker(cacheStore *cache.Store) Worker {
 			remoteURL := fmt.Sprintf(types.GitHubURLPrefix+"%s.git", repoID)
 			return repo.OpenOrCreate(ctx, baseDir, repoID, remoteURL)
 		},
-		Metadata:   githubMetadataSource{client: gh.NewClient(gh.Config{Token: os.Getenv("GITHUB_TOKEN"), ReserveRequests: 200, BudgetManager: budget}), cacheStore: cacheStore, budget: budget},
+		Metadata:   githubMetadataSource{client: gh.NewClient(gh.Config{Token: os.Getenv("GITHUB_TOKEN"), ReserveRequests: 200, BudgetManager: budget}), cacheStore: cacheStore, budget: budget, maxPRs: maxPRs},
 		Bootstrap:  bootstrap,
 		CacheStore: cacheStore,
 		Budget:     budget,
 		Now:        func() time.Time { return time.Now().UTC() },
+		MaxPRs:     maxPRs,
 	}
 }
 
@@ -180,6 +184,7 @@ type githubMetadataSource struct {
 	client     *gh.Client
 	cacheStore *cache.Store
 	budget     *ratelimit.BudgetManager
+	maxPRs     int
 }
 
 func (g githubMetadataSource) SyncRepo(ctx context.Context, repoID string, progress func(done, total int), onCursor func(cursor string, processed int)) (MetadataSnapshot, error) {
@@ -206,6 +211,13 @@ func (g githubMetadataSource) SyncRepo(ctx context.Context, repoID string, progr
 	if g.cacheStore != nil {
 		if progressState, ok, err := g.cacheStore.GetSyncProgress(repoID); err == nil && ok && progressState.Cursor != "" {
 			opts.Cursor = progressState.Cursor
+			ceiling := progressState.SnapshotCeiling
+			if ceiling <= 0 {
+				ceiling = progressState.TotalPRs
+			}
+			if ceiling > 0 {
+				opts.SnapshotCeiling = ceiling
+			}
 		} else if lastSync, err := g.cacheStore.LastSync(repoID); err == nil && !lastSync.IsZero() {
 			opts.UpdatedSince = lastSync
 		}
@@ -215,9 +227,14 @@ func (g githubMetadataSource) SyncRepo(ctx context.Context, repoID string, progr
 			return MetadataSnapshot{}, fmt.Errorf("rate limit budget exhausted")
 		}
 		chunkSize := CalculateChunkSize(g.budget)
-		if chunkSize > 0 {
-			opts.PerPage = chunkSize
-			opts.MaxPRs = chunkSize
+		effectiveMax := chunkSize
+		if g.maxPRs > 0 && (effectiveMax <= 0 || g.maxPRs < effectiveMax) {
+			effectiveMax = g.maxPRs
+		}
+		if effectiveMax > 0 {
+			opts.PerPage = effectiveMax
+			opts.MaxPRs = effectiveMax
+			opts.SnapshotCeiling = effectiveMax
 		}
 	}
 

@@ -55,14 +55,15 @@ type RateLimitStatus struct {
 }
 
 type PullRequestListOptions struct {
-	PerPage      int
-	Cursor       string
-	UpdatedSince time.Time
-	MaxPRs       int
-	Progress     func(processed int, total int)
-	OnCursor     func(cursor string, processed int)
-	OnPage       func(page []types.PR, cursor string) error
-	Concurrency  int
+	PerPage         int
+	Cursor          string
+	UpdatedSince    time.Time
+	MaxPRs          int
+	SnapshotCeiling int
+	Progress        func(processed int, total int)
+	OnCursor        func(cursor string, processed int)
+	OnPage          func(page []types.PR, cursor string) error
+	Concurrency     int
 }
 
 type Review struct {
@@ -189,6 +190,14 @@ func (c *Client) FetchPullRequests(ctx context.Context, repo string, opts PullRe
 		}
 
 		totalCount := response.Data.Repository.PullRequests.TotalCount
+		snapshotCeiling := opts.SnapshotCeiling
+		if snapshotCeiling <= 0 && totalCount > 0 {
+			snapshotCeiling = totalCount
+		}
+		effectiveMax := opts.MaxPRs
+		if snapshotCeiling > 0 && (effectiveMax <= 0 || snapshotCeiling < effectiveMax) {
+			effectiveMax = snapshotCeiling
+		}
 		pagePRs := make([]types.PR, 0, len(response.Data.Repository.PullRequests.Nodes))
 		for _, node := range response.Data.Repository.PullRequests.Nodes {
 			pr := node.toPR(repo)
@@ -201,9 +210,13 @@ func (c *Client) FetchPullRequests(ctx context.Context, repo string, opts PullRe
 			prs = append(prs, pr)
 			pagePRs = append(pagePRs, pr)
 			if opts.Progress != nil {
-				opts.Progress(len(prs), totalCount)
+				progressTotal := totalCount
+				if effectiveMax > 0 && effectiveMax < progressTotal {
+					progressTotal = effectiveMax
+				}
+				opts.Progress(len(prs), progressTotal)
 			}
-			if opts.MaxPRs > 0 && len(prs) >= opts.MaxPRs {
+			if effectiveMax > 0 && len(prs) >= effectiveMax {
 				break
 			}
 		}
@@ -217,7 +230,7 @@ func (c *Client) FetchPullRequests(ctx context.Context, repo string, opts PullRe
 			}
 		}
 
-		if (opts.MaxPRs > 0 && len(prs) >= opts.MaxPRs) || !response.Data.Repository.PullRequests.PageInfo.HasNextPage || response.Data.Repository.PullRequests.PageInfo.EndCursor == nil {
+		if (effectiveMax > 0 && len(prs) >= effectiveMax) || !response.Data.Repository.PullRequests.PageInfo.HasNextPage || response.Data.Repository.PullRequests.PageInfo.EndCursor == nil {
 			break
 		}
 		cursor = *response.Data.Repository.PullRequests.PageInfo.EndCursor

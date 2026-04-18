@@ -151,7 +151,7 @@ func TestIntegration_PauseResumeRestartLifecycle(t *testing.T) {
 	}
 }
 
-func TestIntegration_ResumeFailsWithMissingJobLinkage(t *testing.T) {
+func TestIntegration_ResumeRebindsMissingJobLinkage(t *testing.T) {
 	t.Parallel()
 
 	store, _ := openIntegrationStore(t)
@@ -183,18 +183,24 @@ func TestIntegration_ResumeFailsWithMissingJobLinkage(t *testing.T) {
 		t.Fatalf("expected paused progress to remain persisted, got %+v", missing)
 	}
 
-	_, err = ResumeJob(store, repo)
-	if err == nil {
-		t.Fatal("expected resume to fail when sync_progress linkage is missing, got nil")
+	resumed, err := ResumeJob(store, repo)
+	if err != nil {
+		t.Fatalf("expected resume to rebind the shared progress row, got error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "linkage") {
-		t.Fatalf("expected explicit linkage error, got: %v", err)
+	if resumed.ID != job.ID {
+		t.Fatalf("expected original job to resume, got %s", resumed.ID)
+	}
+	if resumed.Status != cache.SyncJobStatusResuming {
+		t.Fatalf("expected resuming state, got %s", resumed.Status)
+	}
+	if resumed.Progress.Cursor != "" {
+		t.Fatalf("expected pause-time cursor to remain intact, got %+v", resumed.Progress)
 	}
 
 	after := loadSyncJobSnapshot(t, store, job.ID)
-	assertSnapshot(t, after, string(cache.SyncJobStatusPausedRateLimit), "stale-job-linkage")
-	if after.PauseReason != "rate limit budget exhausted" {
-		t.Fatalf("expected paused state to remain unchanged, got %+v", after)
+	assertSnapshot(t, after, string(cache.SyncJobStatusResuming), job.ID)
+	if after.PauseReason != "" || after.ScheduledResumeAt != "" || after.NextScheduledAt != "" {
+		t.Fatalf("expected resume metadata to be cleared, got %+v", after)
 	}
 }
 

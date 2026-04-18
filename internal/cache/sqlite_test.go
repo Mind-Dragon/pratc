@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	supportedSchemaVersion = 4
+	supportedSchemaVersion = 5
 )
 
 func TestCacheUpsertAndQuery(t *testing.T) {
@@ -322,6 +322,7 @@ func TestCacheSyncJobLifecycle(t *testing.T) {
 		Cursor:          "cursor-2",
 		ProcessedPRs:    25,
 		TotalPRs:        100,
+		SnapshotCeiling: 100,
 		LastBudgetCheck: mustParseTime(t, "2026-03-12T14:03:30Z"),
 	}); err != nil {
 		t.Fatalf("update sync job progress: %v", err)
@@ -343,6 +344,9 @@ func TestCacheSyncJobLifecycle(t *testing.T) {
 	}
 	if got.Progress.LastBudgetCheck != mustParseTime(t, "2026-03-12T14:03:30Z") {
 		t.Fatalf("unexpected last budget check: %s", got.Progress.LastBudgetCheck)
+	}
+	if got.Progress.SnapshotCeiling != 100 {
+		t.Fatalf("unexpected snapshot ceiling: %d", got.Progress.SnapshotCeiling)
 	}
 }
 
@@ -518,8 +522,8 @@ func TestMigrationFreshInstall(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT version, name, applied_at FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &name, &appliedAt); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 4 || name != "field_provenance" {
-		t.Fatalf("expected version=4 name=field_provenance, got version=%d name=%s", version, name)
+	if version != 5 || name != "sync_snapshot_ceiling" {
+		t.Fatalf("expected version=5 name=sync_snapshot_ceiling, got version=%d name=%s", version, name)
 	}
 
 	requiredTables := []string{
@@ -617,8 +621,8 @@ func TestMigrationUpgradeFromNminus1(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations after upgrade: %v", err)
 	}
-	if version != supportedSchemaVersion || name != "field_provenance" {
-		t.Fatalf("expected migration version=%d name=field_provenance, got version=%d name=%s", supportedSchemaVersion, version, name)
+	if version != supportedSchemaVersion || name != "sync_snapshot_ceiling" {
+		t.Fatalf("expected migration version=%d name=sync_snapshot_ceiling, got version=%d name=%s", supportedSchemaVersion, version, name)
 	}
 
 	requiredTables := []string{
@@ -670,6 +674,7 @@ func TestMigrationUpgradeFromNminus2(t *testing.T) {
 			cursor TEXT NOT NULL DEFAULT '',
 			processed_prs INTEGER NOT NULL DEFAULT 0,
 			total_prs INTEGER NOT NULL DEFAULT 0,
+			snapshot_ceiling INTEGER NOT NULL DEFAULT 0,
 			last_sync_at TEXT NOT NULL DEFAULT '',
 			updated_at TEXT NOT NULL
 		)
@@ -969,8 +974,8 @@ func TestMigrationIdempotency(t *testing.T) {
 	if err := store2.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if count != 4 {
-		t.Fatalf("expected 4 migration records, got %d", count)
+	if count != 5 {
+		t.Fatalf("expected 5 migration records, got %d", count)
 	}
 
 	var userVersion int

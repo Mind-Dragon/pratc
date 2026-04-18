@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document describes the system shape for the v1.4 full-corpus triage engine.
+This document describes the system shape for the v1.4.2 full-corpus triage engine.
 
 The point is not to make the system clever in one shot. The point is to make it honest, layered, and complete: every PR enters, every decision is explainable, and the system keeps separating the obvious from the subtle until what remains is worth human attention.
 
@@ -17,6 +17,7 @@ The system has five broad parts:
    - normalize metadata
    - persist the full corpus in SQLite (internal/cache/)
    - keep the corpus available for repeated passes
+   - treat the first sync as the source-of-truth snapshot and reuse it locally for later phases
 
 2. Layered decision engine
    - run cheap outer layers first (garbage, duplicates, obvious badness)
@@ -231,9 +232,19 @@ Health() *HealthResponse
 
 ### Sync and rate limiting
 
-- Sync jobs track open PRs, closed PRs, and cursor position
+- Sync jobs track open PRs, closed PRs, cursor position, and snapshot ceiling
 - Bootstrap can stream directly into the cache store
+- Later phases should read from local SQLite and artifacts first, not refetch the same corpus from GitHub
 - GitHub rate limiting keeps a reserve budget and backs off on secondary limits
+- Rate-limit status checks should be throttled so they do not become a hidden per-request tax
+
+### Efficiency rules
+
+- Sync once, then reuse the local snapshot for repeated analysis passes
+- Treat unchanged PRs as cache hits, not fresh fetches
+- Keep downstream phases artifact-driven whenever possible
+- Prefer delta refreshes over full corpus re-downloads
+- Avoid overlapping workflow and analyze runs for the same repository
 
 ### Performance SLOs
 
@@ -260,5 +271,5 @@ The architecture exists to answer those questions without flattening them into o
 ## Relationship to other documents
 - **GUIDELINE.md** is the authority on bucket definitions, layer ordering, and non-negotiables.
 - **ROADMAP.md** defines what gets built and when.
-- **version1.4.md** is the milestone summary and working contract.
+- **version1.4.2.md** is the milestone summary and working contract.
 - **This document** defines the system shape, data flow, technical reference details, and design philosophy.

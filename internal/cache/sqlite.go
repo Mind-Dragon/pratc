@@ -450,13 +450,14 @@ func (s *Store) CreateSyncJob(repo string) (SyncJob, error) {
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO sync_progress (repo, job_id, cursor, processed_prs, total_prs, next_scheduled_at, estimated_requests, last_sync_at, updated_at)
-		VALUES (?, ?, '', 0, 0, '', 0, '', ?)
+		INSERT INTO sync_progress (repo, job_id, cursor, processed_prs, total_prs, snapshot_ceiling, next_scheduled_at, estimated_requests, last_sync_at, updated_at)
+		VALUES (?, ?, '', 0, 0, 0, '', 0, '', ?)
 		ON CONFLICT(repo) DO UPDATE SET
 			job_id = excluded.job_id,
 			cursor = excluded.cursor,
 			processed_prs = excluded.processed_prs,
 			total_prs = excluded.total_prs,
+			snapshot_ceiling = excluded.snapshot_ceiling,
 			next_scheduled_at = excluded.next_scheduled_at,
 			estimated_requests = excluded.estimated_requests,
 			updated_at = excluded.updated_at
@@ -493,16 +494,20 @@ func (s *Store) UpdateSyncJobProgress(jobID string, progress SyncProgress) error
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO sync_progress (repo, job_id, cursor, processed_prs, total_prs, last_sync_at, last_budget_check, updated_at)
-		VALUES (?, ?, ?, ?, ?, '', ?, ?)
+		INSERT INTO sync_progress (repo, job_id, cursor, processed_prs, total_prs, snapshot_ceiling, last_sync_at, last_budget_check, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, '', ?, ?)
 		ON CONFLICT(repo) DO UPDATE SET
 			job_id = excluded.job_id,
 			cursor = excluded.cursor,
 			processed_prs = excluded.processed_prs,
 			total_prs = excluded.total_prs,
+			snapshot_ceiling = CASE
+				WHEN excluded.snapshot_ceiling > 0 THEN excluded.snapshot_ceiling
+				ELSE snapshot_ceiling
+			END,
 			last_budget_check = excluded.last_budget_check,
 			updated_at = excluded.updated_at
-	`, repo, jobID, progress.Cursor, progress.ProcessedPRs, progress.TotalPRs, lastBudgetCheck, now)
+	`, repo, jobID, progress.Cursor, progress.ProcessedPRs, progress.TotalPRs, progress.SnapshotCeiling, lastBudgetCheck, now)
 	if err != nil {
 		return fmt.Errorf("update sync progress: %w", err)
 	}
@@ -517,15 +522,19 @@ func (s *Store) SaveCursor(repo string, cursor string, processedPRs int, totalPR
 		estimatedRequests = (totalPRs - processedPRs) * 3
 	}
 	_, err := s.db.Exec(`
-		INSERT INTO sync_progress (repo, job_id, cursor, processed_prs, total_prs, estimated_requests, last_sync_at, updated_at)
-		VALUES (?, '', ?, ?, ?, ?, '', ?)
+		INSERT INTO sync_progress (repo, job_id, cursor, processed_prs, total_prs, snapshot_ceiling, estimated_requests, last_sync_at, updated_at)
+		VALUES (?, '', ?, ?, ?, ?, ?, '', ?)
 		ON CONFLICT(repo) DO UPDATE SET
 			cursor = excluded.cursor,
 			processed_prs = excluded.processed_prs,
 			total_prs = excluded.total_prs,
+			snapshot_ceiling = CASE
+				WHEN excluded.snapshot_ceiling > 0 THEN excluded.snapshot_ceiling
+				ELSE snapshot_ceiling
+			END,
 			estimated_requests = excluded.estimated_requests,
 			updated_at = excluded.updated_at
-	`, repo, cursor, processedPRs, totalPRs, estimatedRequests, now)
+	`, repo, cursor, processedPRs, totalPRs, totalPRs, estimatedRequests, now)
 	if err != nil {
 		return fmt.Errorf("save cursor: %w", err)
 	}
@@ -534,7 +543,7 @@ func (s *Store) SaveCursor(repo string, cursor string, processedPRs int, totalPR
 
 func (s *Store) GetSyncProgress(repo string) (SyncProgress, bool, error) {
 	row := s.db.QueryRow(`
-		SELECT cursor, processed_prs, total_prs, COALESCE(next_scheduled_at, ''), COALESCE(estimated_requests, 0),
+		SELECT cursor, processed_prs, total_prs, COALESCE(snapshot_ceiling, 0), COALESCE(next_scheduled_at, ''), COALESCE(estimated_requests, 0),
 		       COALESCE(scheduled_resume_at, ''), COALESCE(pause_reason, ''), COALESCE(last_budget_check, '')
 		FROM sync_progress
 		WHERE repo = ?
@@ -546,7 +555,7 @@ func (s *Store) GetSyncProgress(repo string) (SyncProgress, bool, error) {
 	var scheduledResumeAt string
 	var pauseReason string
 	var lastBudgetCheck string
-	if err := row.Scan(&progress.Cursor, &progress.ProcessedPRs, &progress.TotalPRs, &nextScheduledAt, &estimatedRequests, &scheduledResumeAt, &pauseReason, &lastBudgetCheck); err != nil {
+	if err := row.Scan(&progress.Cursor, &progress.ProcessedPRs, &progress.TotalPRs, &progress.SnapshotCeiling, &nextScheduledAt, &estimatedRequests, &scheduledResumeAt, &pauseReason, &lastBudgetCheck); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return SyncProgress{}, false, nil
 		}
@@ -564,7 +573,7 @@ func (s *Store) GetSyncJob(jobID string) (SyncJob, error) {
 	row := s.db.QueryRow(`
 		SELECT
 			j.id, j.repo, j.status, j.error_message, COALESCE(j.last_sync_at, ''), j.created_at, j.updated_at,
-			COALESCE(p.cursor, ''), COALESCE(p.processed_prs, 0), COALESCE(p.total_prs, 0),
+			COALESCE(p.cursor, ''), COALESCE(p.processed_prs, 0), COALESCE(p.total_prs, 0), COALESCE(p.snapshot_ceiling, 0),
 			COALESCE(p.next_scheduled_at, ''), COALESCE(p.estimated_requests, 0),
 			COALESCE(p.scheduled_resume_at, ''), COALESCE(p.pause_reason, ''), COALESCE(p.last_budget_check, '')
 		FROM sync_jobs j
@@ -584,7 +593,7 @@ func (s *Store) GetSyncJob(jobID string) (SyncJob, error) {
 	var lastBudgetCheck string
 	if err := row.Scan(
 		&job.ID, &job.Repo, &status, &job.Error, &lastSync, &createdAt, &updatedAt,
-		&job.Progress.Cursor, &job.Progress.ProcessedPRs, &job.Progress.TotalPRs,
+		&job.Progress.Cursor, &job.Progress.ProcessedPRs, &job.Progress.TotalPRs, &job.Progress.SnapshotCeiling,
 		&nextScheduledAt, &estimatedRequests,
 		&scheduledResumeAt, &pauseReason, &lastBudgetCheck,
 	); err != nil {
@@ -761,9 +770,6 @@ func (s *Store) resumeSyncJob(jobID, repo string) error {
 	if linkedJobID == "" {
 		return fmt.Errorf("sync progress linkage missing for repo %q", repo)
 	}
-	if linkedJobID != jobID {
-		return fmt.Errorf("sync progress linkage mismatch for repo %q: linked job %q, expected %q", repo, linkedJobID, jobID)
-	}
 
 	result, err := tx.Exec(`
 		UPDATE sync_jobs
@@ -784,9 +790,9 @@ func (s *Store) resumeSyncJob(jobID, repo string) error {
 
 	if _, err = tx.Exec(`
 		UPDATE sync_progress
-		SET next_scheduled_at = '', scheduled_resume_at = '', pause_reason = '', last_budget_check = '', updated_at = ?
+		SET job_id = ?, next_scheduled_at = '', scheduled_resume_at = '', pause_reason = '', last_budget_check = '', updated_at = ?
 		WHERE repo = ?
-	`, now, repo); err != nil {
+	`, jobID, now, repo); err != nil {
 		return fmt.Errorf("clear paused sync fields: %w", err)
 	}
 
@@ -841,7 +847,7 @@ func (s *Store) ListPausedSyncJobs() ([]SyncJob, error) {
 	rows, err := s.db.Query(`
 		SELECT
 			j.id, j.repo, j.status, j.error_message, COALESCE(j.last_sync_at, ''), j.created_at, j.updated_at,
-			COALESCE(p.cursor, ''), COALESCE(p.processed_prs, 0), COALESCE(p.total_prs, 0),
+			COALESCE(p.cursor, ''), COALESCE(p.processed_prs, 0), COALESCE(p.total_prs, 0), COALESCE(p.snapshot_ceiling, 0),
 			COALESCE(p.next_scheduled_at, ''), COALESCE(p.scheduled_resume_at, ''), COALESCE(p.pause_reason, ''), COALESCE(p.last_budget_check, '')
 		FROM sync_jobs j
 		LEFT JOIN sync_progress p ON p.repo = j.repo
@@ -866,7 +872,7 @@ func (s *Store) ListPausedSyncJobs() ([]SyncJob, error) {
 		var lastBudgetCheckStr string
 		if err := rows.Scan(
 			&job.ID, &job.Repo, &status, &job.Error, &lastSync, &createdAt, &updatedAt,
-			&job.Progress.Cursor, &job.Progress.ProcessedPRs, &job.Progress.TotalPRs,
+			&job.Progress.Cursor, &job.Progress.ProcessedPRs, &job.Progress.TotalPRs, &job.Progress.SnapshotCeiling,
 			&nextScheduledStr, &scheduledResumeStr, &pauseReason, &lastBudgetCheckStr,
 		); err != nil {
 			return nil, fmt.Errorf("scan paused sync job: %w", err)
@@ -895,7 +901,7 @@ func (s *Store) ListSyncJobs() ([]SyncJob, error) {
 	rows, err := s.db.Query(`
 		SELECT
 			j.id, j.repo, j.status, j.error_message, COALESCE(j.last_sync_at, ''), j.created_at, j.updated_at,
-			COALESCE(p.cursor, ''), COALESCE(p.processed_prs, 0), COALESCE(p.total_prs, 0),
+			COALESCE(p.cursor, ''), COALESCE(p.processed_prs, 0), COALESCE(p.total_prs, 0), COALESCE(p.snapshot_ceiling, 0),
 			COALESCE(p.next_scheduled_at, ''), COALESCE(p.estimated_requests, 0),
 			COALESCE(p.scheduled_resume_at, ''), COALESCE(p.pause_reason, ''), COALESCE(p.last_budget_check, '')
 		FROM sync_jobs j
@@ -921,7 +927,7 @@ func (s *Store) ListSyncJobs() ([]SyncJob, error) {
 		var lastBudgetCheckStr string
 		if err := rows.Scan(
 			&job.ID, &job.Repo, &status, &job.Error, &lastSync, &createdAt, &updatedAt,
-			&job.Progress.Cursor, &job.Progress.ProcessedPRs, &job.Progress.TotalPRs,
+			&job.Progress.Cursor, &job.Progress.ProcessedPRs, &job.Progress.TotalPRs, &job.Progress.SnapshotCeiling,
 			&nextScheduledStr, &estimatedRequests,
 			&scheduledResumeStr, &pauseReason, &lastBudgetCheckStr,
 		); err != nil {
@@ -951,7 +957,7 @@ func (s *Store) ListSyncJobs() ([]SyncJob, error) {
 func (s *Store) GetPausedSyncJobByRepo(repo string) (SyncJob, error) {
 	rows, err := s.db.Query(`
 		SELECT j.id, j.repo, j.status, j.error_message, COALESCE(j.last_sync_at, ''), j.created_at, j.updated_at,
-		       COALESCE(p.cursor, ''), COALESCE(p.processed_prs, 0), COALESCE(p.total_prs, 0),
+		       COALESCE(p.cursor, ''), COALESCE(p.processed_prs, 0), COALESCE(p.total_prs, 0), COALESCE(p.snapshot_ceiling, 0),
 		       COALESCE(p.next_scheduled_at, ''), COALESCE(p.estimated_requests, 0),
 		       COALESCE(p.scheduled_resume_at, ''), COALESCE(p.pause_reason, ''), COALESCE(p.last_budget_check, '')
 		FROM sync_jobs j
@@ -982,7 +988,7 @@ func (s *Store) GetPausedSyncJobByRepo(repo string) (SyncJob, error) {
 
 	if err := rows.Scan(
 		&job.ID, &job.Repo, &status, &job.Error, &lastSync, &createdAt, &updatedAt,
-		&job.Progress.Cursor, &job.Progress.ProcessedPRs, &job.Progress.TotalPRs,
+		&job.Progress.Cursor, &job.Progress.ProcessedPRs, &job.Progress.TotalPRs, &job.Progress.SnapshotCeiling,
 		&nextScheduledAtStr, &estimatedRequests,
 		&scheduledResumeAtStr, &pauseReason, &lastBudgetCheckStr,
 	); err != nil {
@@ -1007,7 +1013,7 @@ func (s *Store) GetPausedSyncJobByRepo(repo string) (SyncJob, error) {
 }
 
 func (s *Store) init(ctx context.Context) error {
-	const supportedSchemaVersion = 4
+	const supportedSchemaVersion = 5
 
 	var currentVersion int
 	if err := s.db.QueryRowContext(ctx, `PRAGMA user_version;`).Scan(&currentVersion); err != nil {
@@ -1047,6 +1053,9 @@ func (s *Store) init(ctx context.Context) error {
 		`INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
 		 VALUES (4, 'field_provenance', '2026-04-12T00:00:00Z');`,
 		`PRAGMA user_version = 4;`,
+		`INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
+		 VALUES (5, 'sync_snapshot_ceiling', '2026-04-16T00:00:00Z');`,
+		`PRAGMA user_version = 5;`,
 		`CREATE TABLE IF NOT EXISTS audit_log (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			timestamp TEXT NOT NULL,
@@ -1116,6 +1125,7 @@ func (s *Store) init(ctx context.Context) error {
 			cursor TEXT NOT NULL DEFAULT '',
 			processed_prs INTEGER NOT NULL DEFAULT 0,
 			total_prs INTEGER NOT NULL DEFAULT 0,
+			snapshot_ceiling INTEGER NOT NULL DEFAULT 0,
 			last_sync_at TEXT NOT NULL DEFAULT '',
 			updated_at TEXT NOT NULL
 		);`,
@@ -1150,6 +1160,9 @@ func (s *Store) init(ctx context.Context) error {
 		return err
 	}
 	if err := s.addColumnIfNotExists("sync_progress", "last_budget_check", "TEXT"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfNotExists("sync_progress", "snapshot_ceiling", "INTEGER"); err != nil {
 		return err
 	}
 	if err := s.addColumnIfNotExists("pull_requests", "provenance_json", "TEXT NOT NULL DEFAULT '{}' "); err != nil {

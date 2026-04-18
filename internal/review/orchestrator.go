@@ -372,6 +372,7 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 	problemResult := ClassifyProblematicPR(prData.PR)
 
 	decisionLayers := buildDecisionLayers(prData, safetyResult, problemResult, finalCategory, finalConfidence)
+	substanceScore := computeSubstanceScore(prData.PR, allFindings, prData.Staleness)
 	reviewResult := types.ReviewResult{
 		PRNumber:           prData.PR.Number,
 		Title:              prData.PR.Title,
@@ -387,6 +388,7 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 		Blockers:           mergeUniqueStrings(safetyResult.Blockers),
 		EvidenceReferences: []string{},
 		NextAction:         "review",
+		SubstanceScore:     substanceScore,
 	}
 
 	// Populate blockers based on PR data and category
@@ -435,6 +437,19 @@ func (o *Orchestrator) Review(ctx context.Context, prData PRData) (AnalyzerResul
 		reviewResult.NextAction = "review"
 		reviewResult.PriorityTier = DeterminePriorityTier(safetyResult, problemResult)
 	}
+
+	// Temporal routing (Layer 5): now/future/blocked based on substance score and readiness
+	reviewResult.TemporalBucket = computeTemporalBucket(reviewResult, prData, substanceScore)
+
+	// Deep judgment layers (6-16)
+	reviewResult.Mergeable = prData.PR.Mergeable
+	reviewResult.HasOwner = computeHasOwner(prData.PR)
+	reviewResult.BlastRadius = computeBlastRadius(prData.PR, prData.ConflictPairs)
+	reviewResult.AttentionCost = bucketForAttentionCost(len(prData.PR.Title), len(prData.PR.Body), len(reviewResult.Reasons))
+	reviewResult.Reversible = computeReversible(prData.PR)
+	reviewResult.SignalQuality = bucketForSignalQuality(problemResult, finalConfidence)
+	reviewResult.Leverage = computeLeverage(prData)
+	reviewResult.StrategicWeight = computeStrategicWeight(prData.PR, substanceScore)
 
 	isPartial := len(skippedReasons) > 0
 
@@ -815,4 +830,199 @@ func mergeUniqueStrings(parts ...[]string) []string {
 		}
 	}
 	return merged
+}
+
+// computeSubstanceScore produces a 0-100 composite score for a PR's substance.
+// Higher = more substance. Components:
+//   - File depth (0-25): more source files = more substance
+//   - Test presence (0-25): PRs that add/update tests score higher
+//   - Freshness (0-25): recent PRs score higher than stale ones
+//   - Clean findings (0-25): fewer negative analyzer findings = higher score
+func computeSubstanceScore(pr types.PR, findings []types.AnalyzerFinding, staleness *types.StalenessReport) int {
+	score := 0
+
+	// File depth: 0-25 points
+	fileCount := len(pr.FilesChanged)
+	if fileCount == 0 {
+		fileCount = pr.ChangedFilesCount
+	}
+	switch {
+	case fileCount >= 20:
+		score += 25
+	case fileCount >= 10:
+		score += 20
+	case fileCount >= 5:
+		score += 15
+	case fileCount >= 2:
+		score += 10
+	case fileCount >= 1:
+		score += 5
+	}
+
+	// Test presence: 0-25 points
+	hasTests := false
+	for _, f := range pr.FilesChanged {
+		if strings.Contains(f, "_test.") || strings.Contains(f, ".test.") ||
+			strings.Contains(f, "_spec.") || strings.Contains(f, ".spec.") ||
+			strings.Contains(f, "test/") || strings.Contains(f, "tests/") {
+			hasTests = true
+			break
+		}
+	}
+	if hasTests {
+		score += 25
+	}
+
+	// Freshness: 0-25 points (recent = higher)
+	if pr.UpdatedAt != "" {
+		if t, err := time.Parse(time.RFC3339, pr.UpdatedAt); err == nil {
+			daysSince := time.Since(t).Hours() / 24
+			switch {
+			case daysSince <= 7:
+				score += 25
+			case daysSince <= 30:
+				score += 20
+			case daysSince <= 90:
+				score += 15
+			case daysSince <= 180:
+				score += 10
+			default:
+				score += 5
+			}
+		}
+	}
+
+	// Clean findings: 0-25 points (fewer negative findings = better)
+	if staleness != nil && staleness.Score > 50 {
+		score += 0 // stale PRs get no points
+	} else {
+		negativeFindings := 0
+		for _, f := range findings {
+			if f.Confidence > 0.7 {
+				negativeFindings++
+			}
+		}
+		switch {
+		case negativeFindings == 0:
+			score += 25
+		case negativeFindings <= 2:
+			score += 15
+		case negativeFindings <= 5:
+			score += 5
+		default:
+			score += 0
+		}
+	}
+
+	return score
+}
+
+// computeTemporalBucket assigns a PR to now/future/blocked based on substance score and readiness.
+// Rules:
+//   - blocked: duplicate, problematic, or has blockers
+//   - now: high substance (>=70), merge_now category, not stale
+//   - future: all others (valid but not current priority)
+func computeTemporalBucket(result types.ReviewResult, prData PRData, substance int) string {
+	// Blocked: duplicates and problematic PRs don't go anywhere
+	if result.Category == types.ReviewCategoryDuplicateSuperseded ||
+		result.Category == types.ReviewCategoryProblematicQuarantine {
+		return "blocked"
+	}
+	if len(result.Blockers) > 0 {
+		return "blocked"
+	}
+
+	// Now: high substance, merge-ready, not stale
+	if result.Category == types.ReviewCategoryMergeNow && substance >= 70 {
+		if prData.Staleness == nil || prData.Staleness.Score <= 50 {
+			return "now"
+		}
+	}
+
+	// Future: everything else is valid but belongs later
+	return "future"
+}
+
+// computeHasOwner (Layer 10): true if the author is active and the PR is not abandoned.
+func computeHasOwner(pr types.PR) bool {
+	if pr.Author == "" {
+		return false
+	}
+	if pr.IsBot {
+		return true // bots are "owned" by their automation
+	}
+	// If the PR was updated recently (within 90 days), consider it owned
+	if pr.UpdatedAt != "" {
+		if t, err := time.Parse(time.RFC3339, pr.UpdatedAt); err == nil {
+			return time.Since(t).Hours()/24 <= 90
+		}
+	}
+	return true // if we can't parse, assume owned
+}
+
+// computeBlastRadius (Layer 8): how much damage if this goes wrong.
+func computeBlastRadius(pr types.PR, conflicts []types.ConflictPair) string {
+	fileCount := len(pr.FilesChanged)
+	if fileCount == 0 {
+		fileCount = pr.ChangedFilesCount
+	}
+	conflictCount := len(conflicts)
+	switch {
+	case fileCount >= 20 || conflictCount >= 10:
+		return "high"
+	case fileCount >= 5 || conflictCount >= 3:
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
+// computeReversible (Layer 15): true if the PR only touches low-risk files.
+func computeReversible(pr types.PR) bool {
+	if len(pr.FilesChanged) == 0 {
+		return true // no file data, can't assess
+	}
+	sourceExts := []string{".go", ".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".java", ".rb", ".cpp", ".c", ".h"}
+	for _, f := range pr.FilesChanged {
+		lower := strings.ToLower(f)
+		// Non-reversible: source code
+		for _, ext := range sourceExts {
+			if strings.HasSuffix(lower, ext) {
+				return false
+			}
+		}
+		// Non-reversible: security-sensitive paths
+		if strings.Contains(lower, "auth") || strings.Contains(lower, "security") || strings.Contains(lower, "payment") {
+			return false
+		}
+	}
+	return true
+}
+
+// computeLeverage (Layer 9): 0-1 score of how much other work this unblocks.
+func computeLeverage(prData PRData) float64 {
+	// High leverage: conflicts with many other PRs (other work is waiting on this)
+	conflictCount := float64(len(prData.ConflictPairs))
+	if conflictCount >= 5 {
+		return 0.8
+	}
+	if conflictCount >= 2 {
+		return 0.5
+	}
+	return 0.2
+}
+
+// computeStrategicWeight (Layer 13): 0-1 score of how much this moves the project forward.
+func computeStrategicWeight(pr types.PR, substanceScore int) float64 {
+	// High substance PRs are more strategically important
+	if substanceScore >= 80 {
+		return 0.9
+	}
+	if substanceScore >= 60 {
+		return 0.6
+	}
+	if substanceScore >= 40 {
+		return 0.3
+	}
+	return 0.1
 }

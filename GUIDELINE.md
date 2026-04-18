@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document sets the operating rules for the v1.4 full-corpus triage engine.
+This document sets the operating rules for the v1.4.2 full-corpus triage engine.
 
 The system does not get to ignore PRs. It does not get to hide uncertainty. It does not get to collapse the world into a single score and pretend that is enough.
 

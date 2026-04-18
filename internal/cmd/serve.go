@@ -57,7 +57,7 @@ var newRepoSyncManager = func(jobDBPath, jobID string) *prsync.Manager {
 		dbPath = filepath.Join(home, ".pratc", "pratc.db")
 	}
 	cacheStore, _ := cache.Open(dbPath)
-	return prsync.NewManager(prsync.NewDefaultRunner(jobRecorder, jobID, cacheStore))
+	return prsync.NewManager(prsync.NewDefaultRunner(jobRecorder, jobID, cacheStore, 0))
 }
 
 func RegisterServeCommand() {

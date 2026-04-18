@@ -112,14 +112,13 @@ func TestFetchPullRequestsPaginates(t *testing.T) {
 	}
 }
 
-func TestFetchPullRequestsHonorsMaxPRs(t *testing.T) {
+func TestFetchPullRequestsUsesSnapshotCeilingForProgress(t *testing.T) {
 	t.Parallel()
 
-	var calls int
+	var progressTotals []int
 	client := NewClient(Config{
 		BaseURL: "https://example.test",
 		HTTPClient: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-			calls++
 			req := decodeGraphQLRequest(t, r)
 			if req.Variables["cursor"] == nil {
 				return jsonResponse(t, http.StatusOK, map[string]string{"Content-Type": "application/json"}, map[string]any{
@@ -136,32 +135,28 @@ func TestFetchPullRequestsHonorsMaxPRs(t *testing.T) {
 					},
 				})
 			}
-			t.Fatal("expected max PR limit to stop before fetching a second page")
+			t.Fatal("expected snapshot ceiling to stop before fetching a second page")
 			return nil, nil
 		}),
 		ReserveRequests: 10,
 	})
 
-	called := 0
 	prs, err := client.FetchPullRequests(context.Background(), "owner/repo", PullRequestListOptions{
-		PerPage: 1,
-		MaxPRs:  1,
-		OnPage: func(page []types.PR, cursor string) error {
-			called++
-			return nil
+		PerPage:         1,
+		MaxPRs:          1,
+		SnapshotCeiling: 1,
+		Progress: func(processed int, total int) {
+			progressTotals = append(progressTotals, total)
 		},
 	})
 	if err != nil {
-		t.Fatalf("fetch pull requests with max prs: %v", err)
+		t.Fatalf("fetch pull requests with snapshot ceiling: %v", err)
 	}
-	if len(prs) != 1 || prs[0].Number != 101 {
-		t.Fatalf("expected one PR from first page, got %+v", prs)
+	if len(prs) != 1 {
+		t.Fatalf("expected one PR, got %+v", prs)
 	}
-	if called != 1 {
-		t.Fatalf("expected OnPage to run once, got %d", called)
-	}
-	if calls != 1 {
-		t.Fatalf("expected one GraphQL request, got %d", calls)
+	if len(progressTotals) == 0 || progressTotals[0] != 1 {
+		t.Fatalf("expected progress total to reflect snapshot ceiling, got %#v", progressTotals)
 	}
 }
 

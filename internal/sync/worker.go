@@ -54,6 +54,7 @@ type Worker struct {
 	CacheStore    *cache.Store
 	Budget        *ratelimit.BudgetManager
 	Now           func() time.Time
+	MaxPRs        int
 }
 
 func (w Worker) SyncJob(ctx context.Context, repo string, progress func(stage string, done, total int), onCursor func(cursor string, processed int)) (*SyncResult, error) {

@@ -1,166 +1,69 @@
-# prATC v1.4 Active Work Backlog
+# prATC v1.4.2.x Active Operations Backlog
 
 ## Goal
 
-Finish the v1.4 full-corpus triage engine so every PR is accounted for, the decision path is layered and explainable, and the report tells a human what matters now versus later.
+Keep the production triage service honest: every open PR is eventually captured, rate-limit pauses resume from the last checkpoint, and the operator can tell what is happening without guessing.
 
 ## Source of truth
 
-- `ROADMAP.md` defines the remaining v1.4 phases.
+- `ROADMAP.md` defines the milestone sequence and release-line intent.
 - `GUIDELINE.md` defines the allowed bucket vocabulary and non-negotiables.
 - `ARCHITECTURE.md` defines the system shape and data flow.
-- `version1.4.md` is the short milestone summary.
+- `version1.4.2.md` defines the shipped v1.4.2 operating model.
+- `version1.4.2.md` defines the managed-service follow-on for resumable sync and explicit states.
 
-## What is already shipped
+## Already shipped
 
-- Planning integration is in the codebase.
 - Full-corpus analysis no longer depends on a hidden `maxPRs=1000` default.
-- The review/report path already carries reasons, confidence, duplicates, and staleness.
-- The 16-layer ladder exists in code and tests.
-- The 6,000+ PR proof test/benchmark exists.
+- Cache listing supports caller-visible paging/streaming access.
+- The 16-layer decision ladder exists in code, tests, and report output.
+- Review payloads, operator buckets, risk buckets, and priority tiers are wired through API, web, and PDF surfaces.
+- The rate-limit budget manager and resumable sync state exist for long-running runs.
+- Persistent project run artifacts live under `projects/<repo>/runs/<timestamp>/`.
 
-These are foundations. They stay out of the active backlog.
+These are foundations. They do not belong in the active backlog.
 
-## Remaining v1.4 work
+## Remaining work
 
-### 1. Corpus coverage and baseline repair
+### 0. Efficiency pass (COMPLETED)
 
-**Goal:** Make the corpus path honest under large repos and keep all coverage limits explicit.
+The local-first sync workflow is now shipped:
+- the workflow reuses a completed local snapshot after the first sync unless `--refresh-sync` is set
+- downstream phases consume the SQLite snapshot and run artifacts instead of re-downloading the same corpus
+- initial syncs can be capped with `--sync-max-prs` so the first pass only fetches the requested PR ceiling
+- the sync path stores and honors the captured snapshot ceiling so resumed work stays bounded
 
-**Work items:**
-- Verify there is no remaining hidden corpus cap in the primary analysis path.
-- Make any remaining candidate-pool limit explicit and configurable, or remove it as a hard gate.
-- Keep every PR visible through storage, analysis, and reporting.
-- Keep the 6,000+ corpus proof as a first-class regression test or benchmark.
+### 1. Managed-service hardening
 
-**Files to inspect:**
-- `internal/app/service.go`
-- `internal/cmd/analyze.go`
-- `internal/filter/pool.go`
-- `internal/github/client.go`
-- `internal/app/v1_4_scale_benchmark_test.go`
-- `internal/app/service_test.go`
-
-**Verification:**
-- `go test ./internal/app ./internal/cmd -run 'Analyze|MaxPRs|Corpus|6000' -v`
-- `go test ./internal/app -bench 'Benchmark.*6000' -run '^$'`
-
-**Done when:**
-- No hidden cap can silently shrink the corpus.
-- A 6,000+ PR run completes without truncation unless explicitly requested.
-
-### 2. Outer peel layers
-
-**Goal:** Keep garbage, duplicates, and obvious badness as visible first-class outcomes.
+**Goal:** make background runs restartable and observable enough to survive session crashes.
 
 **Work items:**
-- Preserve layer 1–3 ordering and reason trails.
-- Make peeled/rejected items visible in the report rather than disappearing from view.
-- Keep duplicate canonicals and chains readable.
-- Keep junk and stale classifications auditable.
+- Keep the workflow/service path explicit about current sync state and resume metadata.
+- Confirm sync resumes cleanly after rate-limit pauses and other transient interruptions.
+- Keep health, status, and run-manifest output aligned so a background run can be supervised without opening the process manually.
+- Preserve the last checkpoint when the session dies and the worker restarts.
 
-**Files to inspect:**
-- `internal/review/orchestrator.go`
-- `internal/app/service.go`
-- `internal/report/analyst_sections.go`
-- `internal/report/review_section.go`
-- `internal/review/layers_test.go`
+### 2. Corpus-coverage regression guardrails
 
-**Verification:**
-- `go test ./internal/analysis ./internal/filter ./internal/review ./internal/report -run 'Peel|Reason|Duplicate|Junk|Stale' -v`
-
-**Done when:**
-- Every peeled PR keeps a reason trail.
-- Nothing falls out of the corpus without an explanation.
-
-### 3. Substance scoring and now/future routing
-
-**Goal:** Make layer 4 and layer 5 route real work, not just label it.
+**Goal:** keep the corpus path honest on large repositories.
 
 **Work items:**
-- Keep substance scoring aligned with security, reliability, performance, and roadmap fit.
-- Keep now/future routing explicit in both the API and report surfaces.
-- Keep low-value work from crowding out active queue items.
-- Preserve bucket mappings in the types, CLI, and web surfaces.
+- Keep a 6,000+ PR smoke/benchmark in place.
+- Keep corpus caps explicit and configurable only where they are intentionally part of the contract.
+- Guard against hidden truncation reappearing in CLI or planning paths.
 
-**Files to inspect:**
-- `internal/review/orchestrator.go`
-- `internal/review/analyzer_security.go`
-- `internal/review/analyzer_reliability.go`
-- `internal/review/analyzer_quality.go`
-- `internal/types/models.go`
-- `internal/cmd/analyze.go`
-- `web/src/types/api.ts`
-- `web/src/components/TriageView.tsx`
+### 3. Doc synchronization
 
-**Verification:**
-- `go test ./internal/app ./internal/cmd ./internal/report -run 'Review|Bucket|Vocabulary|Priority' -v`
-- `bun run test`
-
-**Done when:**
-- `now`, `future`, and `blocked` are consistent across code and output.
-- The review payload and UI/report surfaces tell the same story.
-
-### 4. Deep judgment layers
-
-**Goal:** Finish layers 6–16 as a readable, stable decision ladder.
+**Goal:** keep the milestone docs aligned with the live codebase.
 
 **Work items:**
-- Keep confidence, dependency, blast radius, leverage, ownership, stability, mergeability, strategic weight, attention cost, reversibility, and signal quality wired into final review output.
-- Keep each layer’s reasons visible in the decision trail.
-- Keep bucket routing stable as the layer order evolves.
+- Keep `README.md`, `ROADMAP.md`, `version1.4.2.md`, and `CHANGELOG.md` aligned with the current release line.
+- Keep the active backlog free of shipped v1.4.2 items.
+- Move any new implementation debt into the appropriate minor-release or ops doc instead of re-opening v1.4.2.
 
-**Files to inspect:**
-- `internal/review/orchestrator.go`
-- `internal/review/layers_test.go`
-- `internal/app/service.go`
-- `internal/types/models.go`
-- `internal/report/analyst_sections.go`
+## Done when
 
-**Verification:**
-- `go test ./internal/review ./internal/planning ./internal/app -run 'Confidence|Dependency|Blast|Leverage|Ownership|Stability|Mergeability|Strategic|Attention|Reversibility|Signal' -v`
-
-**Done when:**
-- Layers 6–16 show up in payloads and report output with reason trails.
-- The layer order matches `GUIDELINE.md` and `ARCHITECTURE.md`.
-
-### 5. Report and output composition
-
-**Goal:** Make the report read like a decision map for the full corpus.
-
-**Work items:**
-- Keep the analyst section aligned with the current review vocabulary.
-- Keep the PDF composer and validator in sync with the decision ladder.
-- Keep duplicates, junk, blocked, and risk items visible in dedicated sections.
-- Keep the appendix covering the full corpus.
-
-**Files to inspect:**
-- `internal/report/pdf.go`
-- `internal/report/analyst_sections.go`
-- `internal/report/review_section.go`
-- `internal/report/validator.go`
-- `internal/cmd/report.go`
-
-**Verification:**
-- `go test ./internal/report ./internal/cmd -run 'Report|Validator|Analyst|ReviewSection' -v`
-- Generate a sample report and inspect the sections.
-
-**Done when:**
-- The report exposes reasons, confidence, and bucket placement without hiding corpus coverage.
-- No PR vanishes from the final artifact.
-
-## Non-goals for v1.4
-
-- No auto-merge or auto-approve behavior.
-- No GitHub App or webhook expansion.
-- No ML feedback loop.
-- No gRPC control plane.
-- No silent corpus truncation.
-
-## Suggested execution order
-
-1. Corpus coverage and baseline repair.
-2. Outer peel layers.
-3. Substance scoring and now/future routing.
-4. Deep judgment layers.
-5. Report and output composition.
+- No hidden cap silently shrinks the corpus.
+- A large-repo run either captures every open PR or reports the exact blocking reason.
+- Rate-limit pauses resume from the last checkpoint.
+- The service can be supervised as a managed background process without losing visibility.

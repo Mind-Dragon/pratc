@@ -33,24 +33,17 @@ type AnalystDuplicateEntry struct {
 	DuplicatePRs      []AnalystRow
 }
 
-type DecisionTrailRow struct {
-	PRNumber int
-	Title    string
-	Action   string
-	Layers   []string
-}
-
 type analystDataset struct {
-	Repo         string
-	GeneratedAt  time.Time
-	Rows         []AnalystRow
-	JunkRows      []AnalystRow
-	TopUsefulRows []AnalystRow
-	Duplicates   []AnalystDuplicateEntry
-	CategoryCounts map[string]int
+	Repo             string
+	GeneratedAt      time.Time
+	Rows             []AnalystRow
+	JunkRows         []AnalystRow
+	TopUsefulRows    []AnalystRow
+	Duplicates       []AnalystDuplicateEntry
+	CategoryCounts   map[string]int
 	CategoryExamples map[string][]AnalystRow
-	PlanSelected []AnalystRow
-	PlanRejected []AnalystRow
+	PlanSelected     []AnalystRow
+	PlanRejected     []AnalystRow
 }
 
 func LoadAnalystDataset(inputDir, repo string) (*analystDataset, error) {
@@ -126,6 +119,21 @@ func loadAnalystDataset(inputDir, repo string) (*analystDataset, error) {
 		if classification == "junk" || result.ProblemType == "spam" || result.ProblemType == "junk" {
 			dataset.JunkRows = append(dataset.JunkRows, row)
 		}
+	}
+
+	// Include PRs from the outer peel garbage classifier
+	for _, g := range analyze.GarbagePRs {
+		dataset.JunkRows = append(dataset.JunkRows, AnalystRow{
+			PRNumber:       g.PRNumber,
+			Title:          fmt.Sprintf("(PR #%d — outer peel)", g.PRNumber),
+			Age:            "",
+			Cluster:        "",
+			Classification: "junk",
+			Action:         "close",
+			Score:          0,
+			Reasons:        []string{g.Reason},
+		})
+		dataset.CategoryCounts["junk"]++
 	}
 
 	sort.Slice(dataset.Rows, func(i, j int) bool {
@@ -237,6 +245,40 @@ func relativeAge(updatedAt, createdAt string, now time.Time) string {
 }
 
 func classifyAnalystRow(result types.ReviewResult, stale types.StalenessReport) string {
+	// Trust the review engine's temporal bucket when available.
+	if result.TemporalBucket != "" {
+		switch result.TemporalBucket {
+		case "now":
+			if result.Category == types.ReviewCategoryMergeNow {
+				return "merge_candidate"
+			}
+			if result.Category == types.ReviewCategoryMergeAfterFocusedReview {
+				if stale.Score >= 75 {
+					return "high_value"
+				}
+				return "needs_review"
+			}
+			return "needs_review"
+		case "future":
+			if stale.Score >= 75 {
+				return "re_engage"
+			}
+			return "low_value"
+		case "blocked":
+			if result.Category == types.ReviewCategoryProblematicQuarantine {
+				if result.ProblemType == "spam" || result.ProblemType == "junk" {
+					return "junk"
+				}
+				if stale.Score >= 75 {
+					return "stale"
+				}
+				return "junk"
+			}
+			return "blocked"
+		}
+	}
+
+	// Fallback: classify from review category.
 	switch result.Category {
 	case types.ReviewCategoryMergeNow:
 		return "merge_candidate"
@@ -254,7 +296,7 @@ func classifyAnalystRow(result types.ReviewResult, stale types.StalenessReport) 
 		if stale.Score >= 75 {
 			return "stale"
 		}
-		return "blocked"
+		return "junk"
 	case types.ReviewCategoryUnknownEscalate:
 		if stale.Score >= 75 {
 			return "re_engage"
@@ -274,11 +316,23 @@ func decisionLayerSummaries(layers []types.DecisionLayer) []string {
 	}
 	summaries := make([]string, 0, len(layers))
 	for _, layer := range layers {
-		if len(layer.Reasons) == 0 {
-			summaries = append(summaries, fmt.Sprintf("L%d %s", layer.Layer, layer.Name))
+		// Skip layers with empty status (no observation).
+		if layer.Status == "" || layer.Status == "skip" {
 			continue
 		}
-		summaries = append(summaries, fmt.Sprintf("L%d %s: %s", layer.Layer, layer.Name, strings.Join(layer.Reasons, "; ")))
+		// Show layers that peeled, flagged, or have non-trivial reasons.
+		if layer.Status == "peeled" || layer.Status == "flagged" || len(layer.Reasons) > 0 {
+			if len(layer.Reasons) == 0 {
+				summaries = append(summaries, fmt.Sprintf("L%d %s (%s)", layer.Layer, layer.Name, layer.Status))
+				continue
+			}
+			// Trim verbose reasons to keep the trail readable.
+			trimmed := layer.Reasons
+			if len(trimmed) > 3 {
+				trimmed = trimmed[:3]
+			}
+			summaries = append(summaries, fmt.Sprintf("L%d %s: %s", layer.Layer, layer.Name, strings.Join(trimmed, "; ")))
+		}
 	}
 	return summaries
 }
@@ -419,10 +473,10 @@ func ensureReviewResultDefaults(result types.ReviewResult, prNumber int) types.R
 }
 
 type AnalystSummarySection struct {
-	Repo        string
-	GeneratedAt time.Time
+	Repo           string
+	GeneratedAt    time.Time
 	CategoryCounts map[string]int
-	Examples map[string][]AnalystRow
+	Examples       map[string][]AnalystRow
 }
 
 func LoadAnalystSummarySection(inputDir, repo string) (*AnalystSummarySection, error) {
@@ -446,13 +500,51 @@ func (s *AnalystSummarySection) Render(pdf *fpdf.Fpdf) {
 	pdf.SetXY(15, 40)
 	pdf.Cell(180, 6, fmt.Sprintf("Repository: %s | Generated: %s", s.Repo, s.GeneratedAt.Format(time.RFC1123)))
 
+	// Compute total for percentages.
+	total := 0
+	for _, count := range s.CategoryCounts {
+		total += count
+	}
+
 	cats := sortedCategoryKeys(s.CategoryCounts)
 	y := 55.0
 	for _, cat := range cats {
+		count := s.CategoryCounts[cat]
+		pct := float64(0)
+		if total > 0 {
+			pct = float64(count) / float64(total) * 100
+		}
+
+		r, g, b := classificationColor(cat)
+
+		// Color badge.
+		pdf.SetFillColor(r, g, b)
+		pdf.SetTextColor(255, 255, 255)
 		pdf.SetFont("Arial", "B", 11)
+		badgeW := 55.0
+		pdf.Rect(15, y, badgeW, 7, "F")
 		pdf.SetXY(15, y)
-		pdf.Cell(180, 6, fmt.Sprintf("%s: %d", cat, s.CategoryCounts[cat]))
-		y += 7
+		pdf.CellFormat(badgeW, 7, cat, "", 0, "C", false, 0, "")
+
+		// Count + percentage.
+		pdf.SetTextColor(0, 0, 0)
+		pdf.SetFont("Arial", "", 10)
+		pdf.SetXY(75, y)
+		pdf.Cell(40, 7, fmt.Sprintf("%d (%.1f%%)", count, pct))
+		y += 9
+
+		// Progress bar.
+		barMaxW := 180.0
+		barW := barMaxW * pct / 100
+		pdf.SetFillColor(236, 240, 241)
+		pdf.Rect(15, y, barMaxW, 3, "F")
+		pdf.SetFillColor(r, g, b)
+		if barW > 0 {
+			pdf.Rect(15, y, barW, 3, "F")
+		}
+		y += 6
+
+		// Examples.
 		pdf.SetFont("Arial", "", 9)
 		examples := s.Examples[cat]
 		for _, ex := range examples {
@@ -468,10 +560,21 @@ func (s *AnalystSummarySection) Render(pdf *fpdf.Fpdf) {
 	}
 }
 
+type DecisionTrailRow struct {
+	PRNumber       int
+	Title          string
+	Classification string
+	Action         string
+	Confidence     float64
+	Layers         []string
+}
+
 type DecisionTrailSection struct {
 	Repo        string
 	GeneratedAt time.Time
 	Rows        []DecisionTrailRow
+	TotalRows   int
+	Grouped     map[string][]DecisionTrailRow // classification → rows
 }
 
 func LoadDecisionTrailSection(inputDir, repo string) (*DecisionTrailSection, error) {
@@ -479,16 +582,57 @@ func LoadDecisionTrailSection(inputDir, repo string) (*DecisionTrailSection, err
 	if err != nil {
 		return nil, err
 	}
-	rows := make([]DecisionTrailRow, 0, len(data.Rows))
+	// Build grouped rows by classification.
+	grouped := make(map[string][]DecisionTrailRow)
+	allRows := make([]DecisionTrailRow, 0, len(data.Rows))
 	for _, row := range data.Rows {
-		rows = append(rows, DecisionTrailRow{
-			PRNumber: row.PRNumber,
-			Title:    row.Title,
-			Action:   row.Action,
-			Layers:   row.Reasons,
-		})
+		trailRow := DecisionTrailRow{
+			PRNumber:       row.PRNumber,
+			Title:          row.Title,
+			Classification: row.Classification,
+			Action:         row.Action,
+			Confidence:     row.Score,
+			Layers:         row.Reasons,
+		}
+		allRows = append(allRows, trailRow)
+		grouped[row.Classification] = append(grouped[row.Classification], trailRow)
 	}
-	return &DecisionTrailSection{Repo: repo, GeneratedAt: data.GeneratedAt, Rows: rows}, nil
+	return &DecisionTrailSection{
+		Repo:        repo,
+		GeneratedAt: data.GeneratedAt,
+		Rows:        allRows,
+		TotalRows:   len(allRows),
+		Grouped:     grouped,
+	}, nil
+}
+
+// renderOrder defines the display order for classification groups.
+var renderOrder = []string{"merge_candidate", "high_value", "needs_review", "duplicate", "blocked", "re_engage", "stale", "low_value", "junk"}
+
+// classificationColor returns (r,g,b) for a classification badge.
+func classificationColor(class string) (int, int, int) {
+	switch class {
+	case "merge_candidate":
+		return 39, 174, 96  // green
+	case "high_value":
+		return 41, 128, 185 // blue
+	case "needs_review":
+		return 243, 156, 18 // amber
+	case "duplicate":
+		return 149, 165, 166 // grey
+	case "blocked":
+		return 231, 76, 60  // red
+	case "re_engage":
+		return 155, 89, 182 // purple
+	case "stale":
+		return 127, 140, 141 // dark grey
+	case "low_value":
+		return 189, 195, 199 // light grey
+	case "junk":
+		return 192, 57, 43  // dark red
+	default:
+		return 52, 73, 94   // dark blue
+	}
 }
 
 func (s *DecisionTrailSection) Render(pdf *fpdf.Fpdf) {
@@ -502,40 +646,117 @@ func (s *DecisionTrailSection) Render(pdf *fpdf.Fpdf) {
 	pdf.SetTextColor(0, 0, 0)
 	pdf.SetFont("Arial", "", 10)
 	pdf.SetXY(15, 40)
-	pdf.Cell(180, 6, fmt.Sprintf("Repository: %s | Generated: %s | Rows: %d", s.Repo, s.GeneratedAt.Format(time.RFC1123), len(s.Rows)))
+	pdf.Cell(180, 6, fmt.Sprintf("Repository: %s | Generated: %s | %d PRs", s.Repo, s.GeneratedAt.Format(time.RFC1123), s.TotalRows))
 
-	pdf.SetFont("Arial", "B", 7)
-	pdf.SetFillColor(52, 73, 94)
-	pdf.SetTextColor(255, 255, 255)
-	pdf.SetXY(10, 50)
-	pdf.CellFormat(14, 8, "PR", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(52, 8, "Title", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(20, 8, "Action", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(104, 8, "Decision trail", "1", 1, "L", true, 0, "")
-	pdf.SetTextColor(0, 0, 0)
+	// Render grouped summary cards first.
+	y := 55.0
+	pdf.SetFont("Arial", "B", 13)
+	pdf.SetXY(15, y)
+	pdf.Cell(180, 8, "Classification Summary")
+	y += 12
 
-	y := 58.0
-	for _, row := range s.Rows {
-		if y > 270 {
-			pdf.AddPage()
-			pdf.SetFont("Arial", "B", 7)
-			pdf.SetFillColor(52, 73, 94)
-			pdf.SetTextColor(255, 255, 255)
-			pdf.SetXY(10, 20)
-			pdf.CellFormat(14, 8, "PR", "1", 0, "L", true, 0, "")
-			pdf.CellFormat(52, 8, "Title", "1", 0, "L", true, 0, "")
-			pdf.CellFormat(20, 8, "Action", "1", 0, "L", true, 0, "")
-			pdf.CellFormat(104, 8, "Decision trail", "1", 1, "L", true, 0, "")
-			pdf.SetTextColor(0, 0, 0)
-			y = 28
+	for _, class := range renderOrder {
+		rows := s.Grouped[class]
+		if len(rows) == 0 {
+			continue
 		}
-		pdf.SetFont("Arial", "", 7)
-		pdf.SetXY(10, y)
-		pdf.CellFormat(14, 8, fmt.Sprintf("#%d", row.PRNumber), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(52, 8, truncate(row.Title, 34), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(20, 8, truncate(row.Action, 12), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(104, 8, truncate(strings.Join(row.Layers, " | "), 95), "1", 1, "L", false, 0, "")
-		y += 8
+		r, g, b := classificationColor(class)
+		// Category badge.
+		pdf.SetFillColor(r, g, b)
+		pdf.SetTextColor(255, 255, 255)
+		pdf.SetFont("Arial", "B", 9)
+		badgeW := 55.0
+		pdf.Rect(15, y, badgeW, 7, "F")
+		pdf.SetXY(15, y)
+		pdf.CellFormat(badgeW, 7, fmt.Sprintf("%s: %d", class, len(rows)), "", 0, "C", false, 0, "")
+		pdf.SetTextColor(0, 0, 0)
+		pdf.SetFont("Arial", "", 8)
+		pdf.SetXY(75, y)
+		pdf.Cell(120, 7, truncate(rows[0].Title, 70))
+		y += 9
+
+		if y > 250 {
+			pdf.AddPage()
+			y = 20
+		}
+	}
+
+	// Render top-N detailed rows per group (cap total at ~50).
+	y += 8
+	pdf.SetFont("Arial", "B", 13)
+	pdf.SetXY(15, y)
+	pdf.Cell(180, 8, "Detailed Trail (Top Actions)")
+	y += 12
+
+	rendered := 0
+	maxDetailed := 50
+	for _, class := range renderOrder {
+		rows := s.Grouped[class]
+		if len(rows) == 0 {
+			continue
+		}
+		if rendered >= maxDetailed {
+			break
+		}
+		// Section header.
+		if y > 260 {
+			pdf.AddPage()
+			y = 20
+		}
+		r, g, b := classificationColor(class)
+		pdf.SetFillColor(r, g, b)
+		pdf.Rect(15, y, 180, 7, "F")
+		pdf.SetTextColor(255, 255, 255)
+		pdf.SetFont("Arial", "B", 9)
+		pdf.SetXY(17, y)
+		pdf.Cell(176, 7, fmt.Sprintf("%s (%d PRs)", class, len(rows)))
+		pdf.SetTextColor(0, 0, 0)
+		y += 9
+
+		// Table header.
+		pdf.SetFont("Arial", "B", 7)
+		pdf.SetFillColor(236, 240, 241)
+		pdf.SetXY(15, y)
+		pdf.CellFormat(14, 6, "PR", "1", 0, "L", true, 0, "")
+		pdf.CellFormat(52, 6, "Title", "1", 0, "L", true, 0, "")
+		pdf.CellFormat(16, 6, "Action", "1", 0, "L", true, 0, "")
+		pdf.CellFormat(12, 6, "Conf", "1", 0, "C", true, 0, "")
+		pdf.CellFormat(86, 6, "Decision Trail", "1", 1, "L", true, 0, "")
+		y += 6
+
+		limit := 5
+		if rendered+limit > maxDetailed {
+			limit = maxDetailed - rendered
+		}
+		for i, row := range rows {
+			if i >= limit || rendered >= maxDetailed {
+				break
+			}
+			if y > 270 {
+				pdf.AddPage()
+				y = 20
+			}
+			pdf.SetFont("Arial", "", 7)
+			pdf.SetXY(15, y)
+			pdf.CellFormat(14, 6, fmt.Sprintf("#%d", row.PRNumber), "1", 0, "L", false, 0, "")
+			pdf.CellFormat(52, 6, truncate(row.Title, 34), "1", 0, "L", false, 0, "")
+			pdf.CellFormat(16, 6, truncate(row.Action, 10), "1", 0, "L", false, 0, "")
+			pdf.CellFormat(12, 6, fmt.Sprintf("%.2f", row.Confidence), "1", 0, "C", false, 0, "")
+			pdf.CellFormat(86, 6, truncate(strings.Join(row.Layers, " | "), 75), "1", 1, "L", false, 0, "")
+			y += 6
+			rendered++
+		}
+		y += 4
+	}
+
+	if s.TotalRows > maxDetailed {
+		if y > 260 {
+			pdf.AddPage()
+			y = 20
+		}
+		pdf.SetFont("Arial", "I", 9)
+		pdf.SetXY(15, y)
+		pdf.Cell(180, 6, fmt.Sprintf("Showing %d of %d PRs. Full table in appendix.", maxDetailed, s.TotalRows))
 	}
 }
 
@@ -554,7 +775,70 @@ func LoadFullPRTableSection(inputDir, repo string) (*FullPRTableSection, error) 
 }
 
 func (s *FullPRTableSection) Render(pdf *fpdf.Fpdf) {
-	renderAnalystRows(pdf, "Full PR Analysis", s.Repo, s.GeneratedAt, s.Rows)
+	pdf.AddPage()
+	pdf.SetFillColor(26, 82, 118)
+	pdf.Rect(0, 0, 210, 35, "F")
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetFont("Arial", "B", 18)
+	pdf.SetXY(15, 12)
+	pdf.Cell(180, 10, "Appendix: Full PR Analysis")
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFont("Arial", "", 10)
+	pdf.SetXY(15, 40)
+	pdf.Cell(180, 6, fmt.Sprintf("Repository: %s | Generated: %s | %d PRs total", s.Repo, s.GeneratedAt.Format(time.RFC1123), len(s.Rows)))
+
+	// Group by classification and render summary table.
+	grouped := make(map[string][]AnalystRow)
+	for _, row := range s.Rows {
+		grouped[row.Classification] = append(grouped[row.Classification], row)
+	}
+
+	y := 55.0
+	pdf.SetFont("Arial", "B", 12)
+	pdf.SetXY(15, y)
+	pdf.Cell(180, 8, "Classification Distribution")
+	y += 12
+
+	// Summary bar.
+	pdf.SetFont("Arial", "B", 7)
+	pdf.SetFillColor(236, 240, 241)
+	pdf.SetXY(15, y)
+	pdf.CellFormat(40, 7, "Classification", "1", 0, "L", true, 0, "")
+	pdf.CellFormat(20, 7, "Count", "1", 0, "C", true, 0, "")
+	pdf.CellFormat(25, 7, "Pct", "1", 0, "C", true, 0, "")
+	pdf.CellFormat(95, 7, "Top Example", "1", 1, "L", true, 0, "")
+	y += 7
+
+	renderOrder := []string{"merge_candidate", "high_value", "needs_review", "duplicate", "blocked", "re_engage", "stale", "low_value", "junk"}
+	total := float64(len(s.Rows))
+	for _, class := range renderOrder {
+		rows := grouped[class]
+		if len(rows) == 0 {
+			continue
+		}
+		r, g, b := classificationColor(class)
+		pdf.SetFillColor(r, g, b)
+		pdf.Rect(15, y, 2, 6, "F")
+
+		pdf.SetFont("Arial", "", 7)
+		pdf.SetXY(18, y)
+		pdf.CellFormat(37, 6, class, "1", 0, "L", false, 0, "")
+		pdf.CellFormat(20, 6, fmt.Sprintf("%d", len(rows)), "1", 0, "C", false, 0, "")
+		pdf.CellFormat(25, 6, fmt.Sprintf("%.1f%%", float64(len(rows))/total*100), "1", 0, "C", false, 0, "")
+		pdf.CellFormat(95, 6, truncate(rows[0].Title, 70), "1", 1, "L", false, 0, "")
+		y += 6
+
+		if y > 260 {
+			pdf.AddPage()
+			y = 20
+		}
+	}
+
+	// Note about full data.
+	y += 4
+	pdf.SetFont("Arial", "I", 8)
+	pdf.SetXY(15, y)
+	pdf.Cell(180, 5, fmt.Sprintf("Full data (%d PRs) available in analyze.json. See Decision Trail section for detailed examples.", len(s.Rows)))
 }
 
 type SpamJunkSection struct {
@@ -572,7 +856,56 @@ func LoadSpamJunkSection(inputDir, repo string) (*SpamJunkSection, error) {
 }
 
 func (s *SpamJunkSection) Render(pdf *fpdf.Fpdf) {
-	renderAnalystRows(pdf, "Junk PRs", s.Repo, s.GeneratedAt, s.Rows)
+	pdf.AddPage()
+	pdf.SetFillColor(192, 57, 43) // dark red header for junk
+	pdf.Rect(0, 0, 210, 35, "F")
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetFont("Arial", "B", 18)
+	pdf.SetXY(15, 12)
+	pdf.Cell(180, 10, "Junk PRs")
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFont("Arial", "", 10)
+	pdf.SetXY(15, 40)
+	pdf.Cell(180, 6, fmt.Sprintf("Repository: %s | Generated: %s | %d junk PRs", s.Repo, s.GeneratedAt.Format(time.RFC1123), len(s.Rows)))
+
+	// Cap at 50 with note.
+	maxRows := 50
+	rows := s.Rows
+	if len(rows) > maxRows {
+		rows = rows[:maxRows]
+	}
+
+	startY := 50.0
+	renderAnalystRowHeader(pdf, startY)
+	y := startY + 8
+	for _, row := range rows {
+		if y > 270 {
+			pdf.AddPage()
+			renderAnalystRowHeader(pdf, 20)
+			y = 28
+		}
+		pdf.SetFont("Arial", "", 7)
+		pdf.SetXY(10, y)
+		pdf.CellFormat(14, 8, fmt.Sprintf("#%d", row.PRNumber), "1", 0, "L", false, 0, "")
+		pdf.CellFormat(52, 8, truncate(row.Title, 34), "1", 0, "L", false, 0, "")
+		pdf.CellFormat(24, 8, truncate(row.Author, 14), "1", 0, "L", false, 0, "")
+		pdf.CellFormat(14, 8, row.Age, "1", 0, "C", false, 0, "")
+		pdf.CellFormat(16, 8, truncate(row.Cluster, 9), "1", 0, "L", false, 0, "")
+		pdf.CellFormat(22, 8, truncate(row.Classification, 13), "1", 0, "L", false, 0, "")
+		pdf.CellFormat(22, 8, truncate(row.Action, 13), "1", 0, "L", false, 0, "")
+		pdf.CellFormat(66, 8, truncate(strings.Join(row.Reasons, "; "), 50), "1", 1, "L", false, 0, "")
+		y += 8
+	}
+
+	if len(s.Rows) > maxRows {
+		if y > 260 {
+			pdf.AddPage()
+			y = 20
+		}
+		pdf.SetFont("Arial", "I", 9)
+		pdf.SetXY(15, y)
+		pdf.Cell(180, 6, fmt.Sprintf("Showing %d of %d junk PRs. Full list in analyze.json.", maxRows, len(s.Rows)))
+	}
 }
 
 type DuplicateDetailSection struct {
@@ -646,6 +979,28 @@ func (s *AnalystRecommendationsSection) Render(pdf *fpdf.Fpdf) {
 	pdf.SetXY(15, 20)
 	pdf.Cell(180, 10, "Recommendations")
 	y := 35.0
+
+	// Summary recommendations based on counts
+	pdf.SetFont("Arial", "", 10)
+	pdf.SetXY(15, y)
+	summaryLines := []string{}
+	if len(s.Junk) > 0 {
+		summaryLines = append(summaryLines, fmt.Sprintf("• Close %d garbage/junk PRs (see details below)", len(s.Junk)))
+	}
+	if len(s.Useful) > 0 {
+		summaryLines = append(summaryLines, fmt.Sprintf("• Inspect %d high-value PRs for merge readiness", len(s.Useful)))
+	}
+	if len(s.Rejected) > 0 {
+		summaryLines = append(summaryLines, fmt.Sprintf("• Review %d plan-rejected PRs for blockers", len(s.Rejected)))
+	}
+	if len(summaryLines) == 0 {
+		summaryLines = append(summaryLines, "No actionable recommendations at this time.")
+	}
+	for _, line := range summaryLines {
+		pdf.MultiCell(180, 6, line, "", "L", false)
+	}
+	y = pdf.GetY() + 4
+
 	y = renderRecommendationList(pdf, y, "Top PRs to inspect now", s.Useful, 10)
 	y = renderRecommendationList(pdf, y+4, "PRs to close as junk", s.Junk, 10)
 	_ = renderRecommendationList(pdf, y+4, "PRs rejected from current plan", s.Rejected, 10)

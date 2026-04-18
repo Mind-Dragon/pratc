@@ -56,10 +56,11 @@ func (c *PDFComposer) Compose() ([]byte, error) {
 
 // CoverSection renders the report cover page.
 type CoverSection struct {
-	Repo        string
-	Title       string
-	GeneratedAt time.Time
-	Summary     string
+	Repo         string
+	Title        string
+	GeneratedAt  time.Time
+	Summary      string
+	CacheNote    string // optional note about data scope/staleness
 }
 
 // Render draws the cover page.
@@ -91,6 +92,19 @@ func (s *CoverSection) Render(pdf *fpdf.Fpdf) {
 	pdf.SetFont("Arial", "", 11)
 	pdf.SetXY(15, 112)
 	pdf.MultiCell(180, 6, s.Summary, "", "L", false)
+
+	if s.CacheNote != "" {
+		y := pdf.GetY() + 8
+		pdf.SetFillColor(241, 196, 15) // amber warning
+		pdf.Rect(15, y, 180, 14, "F")
+		pdf.SetTextColor(0, 0, 0)
+		pdf.SetFont("Arial", "B", 9)
+		pdf.SetXY(18, y+2)
+		pdf.Cell(174, 5, "DATA SCOPE")
+		pdf.SetFont("Arial", "", 8)
+		pdf.SetXY(18, y+8)
+		pdf.MultiCell(174, 4, s.CacheNote, "", "L", false)
+	}
 }
 
 // MetricsDashboard holds all metrics from analyze, graph, and plan artifacts.
@@ -102,6 +116,7 @@ type MetricsDashboard struct {
 	OverlapCount   int
 	ConflictCount  int
 	StalePRCount   int
+	GarbagePRCount int
 
 	// From graph.json
 	GraphNodes int
@@ -185,7 +200,7 @@ func (s *MetricsSection) renderMainMetrics(pdf *fpdf.Fpdf) {
 
 	y += boxHeight + 10
 
-	// Row 2: Duplicates, Overlaps, Stale
+	// Row 2: Duplicates, Overlaps, Stale, Garbage
 	metrics2 := []struct {
 		label string
 		value int
@@ -194,11 +209,13 @@ func (s *MetricsSection) renderMainMetrics(pdf *fpdf.Fpdf) {
 		{"Duplicate Groups", s.Dashboard.DuplicateCount, struct{ r, g, b int }{241, 196, 15}},
 		{"Overlap Groups", s.Dashboard.OverlapCount, struct{ r, g, b int }{230, 126, 34}},
 		{"Stale PRs", s.Dashboard.StalePRCount, struct{ r, g, b int }{127, 140, 141}},
+		{"Garbage PRs", s.Dashboard.GarbagePRCount, struct{ r, g, b int }{192, 57, 43}},
 	}
 
+	metrics2BoxWidth := boxWidth - 20 // slightly smaller to fit 4 boxes
 	for i, m := range metrics2 {
-		x := startX + float64(i)*(boxWidth+gap)
-		s.renderMetricBox(pdf, x, y, boxWidth, boxHeight, m.label, m.value, m.color.r, m.color.g, m.color.b)
+		x := startX + float64(i)*(metrics2BoxWidth+gap)
+		s.renderMetricBox(pdf, x, y, metrics2BoxWidth, boxHeight, m.label, m.value, m.color.r, m.color.g, m.color.b)
 	}
 }
 
@@ -586,6 +603,7 @@ func LoadMetricsSection(inputDir, repo string) (*MetricsSection, error) {
 			OverlapGroups   int `json:"overlap_groups"`
 			ConflictPairs   int `json:"conflict_pairs"`
 			StalePRs        int `json:"stale_prs"`
+			GarbagePRs      int `json:"garbage_prs"`
 		} `json:"counts"`
 		GeneratedAt string `json:"generatedAt"`
 	}
@@ -600,6 +618,7 @@ func LoadMetricsSection(inputDir, repo string) (*MetricsSection, error) {
 	section.Dashboard.OverlapCount = analyzeResult.Counts.OverlapGroups
 	section.Dashboard.ConflictCount = analyzeResult.Counts.ConflictPairs
 	section.Dashboard.StalePRCount = analyzeResult.Counts.StalePRs
+	section.Dashboard.GarbagePRCount = analyzeResult.Counts.GarbagePRs
 
 	// Parse generatedAt timestamp
 	if analyzeResult.GeneratedAt != "" {

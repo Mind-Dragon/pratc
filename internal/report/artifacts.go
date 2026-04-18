@@ -5,6 +5,11 @@ import (
 	"os"
 )
 
+// ReadAnalyzeArtifact is the exported entrypoint for reading analyze.json.
+func ReadAnalyzeArtifact(inputDir string) ([]byte, error) {
+	return readAnalyzeArtifact(inputDir)
+}
+
 func readAnalyzeArtifact(inputDir string) ([]byte, error) {
 	for _, name := range []string{"step-2-analyze.json", "analyze.json"} {
 		path := inputDir + "/" + name

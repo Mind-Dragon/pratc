@@ -201,6 +201,13 @@ func RegisterAnalyzeCommand() {
 			log.Info("analyze budget initialized", "budget", budget.String())
 
 			cfg := buildAnalyzeConfig(useCacheFirst, forceLive, forceCache, maxPRs)
+			cfg.OnAnalyzeProgress = func(phase string, done, total int) {
+				log.Info("analyze progress", "phase", phase, "done", done, "total", total)
+				fmt.Fprintf(cmd.ErrOrStderr(), "\r[analyze %s] %d/%d ", phase, done, total)
+				if phase == "done" {
+					fmt.Fprintln(cmd.ErrOrStderr())
+				}
+			}
 			service := app.NewService(cfg)
 
 			if shouldWarnAnalyzeSync(useCacheFirst, force, forceLive, forceCache) {

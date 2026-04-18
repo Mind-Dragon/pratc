@@ -33,6 +33,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
@@ -52,10 +53,15 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/version"
 )
 
+// AnalyzeProgress is called during analysis to report phase-level progress.
+// phase is one of: "loading", "clusters", "duplicates", "conflicts", "staleness", "review", "review_pr", "done".
+// done/total are meaningful only for "review_pr" (iterating per-PR review).
+type AnalyzeProgress func(phase string, done, total int)
+
 type Config struct {
 	Now                     func() time.Time
 	AllowLive               bool
-	AllowForceCache        bool
+	AllowForceCache         bool
 	UseCacheFirst           bool
 	IncludeReview           bool
 	Token                   string
@@ -66,17 +72,19 @@ type Config struct {
 	DeepCandidateSubsetSize int
 	CacheStore              *cache.Store
 	PriorityWeights         planning.PriorityWeights
-	TimeDecayConfig        planning.TimeDecayConfig
+	TimeDecayConfig         planning.TimeDecayConfig
 	// PlanningStrategy selects the planning algorithm:
 	// "formula" (default) uses combinatorial formula engine after PoolSelector scoring.
 	// "hierarchical" uses HierarchicalPlanner for 3-level cluster-based planning.
 	PlanningStrategy string
+	// OnAnalyzeProgress is an optional callback for per-phase progress reporting.
+	OnAnalyzeProgress AnalyzeProgress
 }
 
 type Service struct {
 	now                     func() time.Time
 	allowLive               bool
-	allowForceCache        bool
+	allowForceCache         bool
 	useCacheFirst           bool
 	includeReview           bool
 	token                   string
@@ -91,10 +99,11 @@ type Service struct {
 	mirrorBaseDir           string
 	mirrorAvailable         bool
 	poolSelector            *planning.PoolSelector
-	timeDecayConfig        planning.TimeDecayConfig
-	hierarchicalPlanner    *planning.HierarchicalPlanner
-	pairwiseExecutor       *planning.PairwiseExecutor
-	planningStrategy       string // "formula" (default) or "hierarchical"
+	timeDecayConfig         planning.TimeDecayConfig
+	hierarchicalPlanner     *planning.HierarchicalPlanner
+	pairwiseExecutor        *planning.PairwiseExecutor
+	planningStrategy        string // "formula" (default) or "hierarchical"
+	onAnalyzeProgress       AnalyzeProgress
 }
 
 const (
@@ -157,7 +166,7 @@ func NewService(cfg Config) Service {
 	return Service{
 		now:                     now,
 		allowLive:               allowLive,
-		allowForceCache:        cfg.AllowForceCache,
+		allowForceCache:         cfg.AllowForceCache,
 		useCacheFirst:           useCacheFirst,
 		includeReview:           includeReview,
 		token:                   token,
@@ -173,9 +182,10 @@ func NewService(cfg Config) Service {
 		mirrorAvailable:         mirrorAvailable,
 		poolSelector:            mustNewPoolSelector(cfg.PriorityWeights),
 		timeDecayConfig:         resolveTimeDecayConfig(cfg.TimeDecayConfig),
-		hierarchicalPlanner:    mustNewHierarchicalPlanner(mustNewPoolSelector(cfg.PriorityWeights)),
-		pairwiseExecutor:       mustNewPairwiseExecutor(),
-		planningStrategy:       resolvePlanningStrategy(cfg.PlanningStrategy),
+		hierarchicalPlanner:     mustNewHierarchicalPlanner(mustNewPoolSelector(cfg.PriorityWeights)),
+		pairwiseExecutor:        mustNewPairwiseExecutor(),
+		planningStrategy:        resolvePlanningStrategy(cfg.PlanningStrategy),
+		onAnalyzeProgress:       cfg.OnAnalyzeProgress,
 	}
 }
 
@@ -325,6 +335,12 @@ func (s Service) GetActiveSyncJob(repo string) (bool, string, error) {
 	return true, job.ID, nil
 }
 
+func (s Service) emit(phase string, done, total int) {
+	if s.onAnalyzeProgress != nil {
+		s.onAnalyzeProgress(phase, done, total)
+	}
+}
+
 func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisResponse, error) {
 	log := logger.New("app")
 	if ctx != nil {
@@ -349,25 +365,50 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 		return types.AnalysisResponse{}, err
 	}
 
+	s.emit("loading", 0, len(prs))
 	log.Info("analysis started", "pr_count", len(prs))
 
+	// Layer 1: Garbage detection (outer peel). Remove obviously bad PRs before deeper analysis.
+	garbageStart := time.Now()
+	garbage := classifyGarbage(prs)
+	garbageElapsed := int(time.Since(garbageStart).Milliseconds())
+	s.emit("garbage", len(garbage), len(prs))
+	log.Info("garbage classification complete", "total", len(prs), "garbage", len(garbage))
+
+	// Filter garbage PRs from further analysis
+	garbageSet := make(map[int]bool, len(garbage))
+	for _, g := range garbage {
+		garbageSet[g.PRNumber] = true
+	}
+	analysisPRs := make([]types.PR, 0, len(prs)-len(garbage))
+	for _, pr := range prs {
+		if !garbageSet[pr.Number] {
+			analysisPRs = append(analysisPRs, pr)
+		}
+	}
+	prs = analysisPRs
+
 	telemetry := types.OperationTelemetry{
-		PoolStrategy:     "heuristic_analysis_pipeline",
-		PoolSizeBefore:   len(prs),
-		PoolSizeAfter:    len(prs),
-		GraphDeltaEdges:  0,
-		DecayPolicy:      "none",
-		PairwiseShards:   estimatePairwiseShards(len(prs)),
-		StageLatenciesMS: map[string]int{},
-		StageDropCounts:  map[string]int{},
+		PoolStrategy:    "heuristic_analysis_pipeline",
+		PoolSizeBefore:  len(prs),
+		PoolSizeAfter:   len(prs),
+		GraphDeltaEdges: 0,
+		DecayPolicy:     "none",
+		PairwiseShards:  estimatePairwiseShards(len(prs)),
+		StageLatenciesMS: map[string]int{
+			"garbage_ms": garbageElapsed,
+		},
+		StageDropCounts: map[string]int{},
 	}
 
 	clusterStart := time.Now()
 	clusters := planner.New().BuildClusters(prs)
 	telemetry.StageLatenciesMS["clusters_ms"] = int(time.Since(clusterStart).Milliseconds())
+	s.emit("clusters", len(clusters), len(prs))
 
 	// Attempt ML-backed clustering via Voyage if configured.
-	if s.mlBridge != nil && s.mlBridge.Available() {
+	// Skip ML bridge in force-cache mode to avoid subprocess overhead.
+	if !s.allowForceCache && s.mlBridge != nil && s.mlBridge.Available() {
 		if mlClusters, _, err := s.mlBridge.Cluster(ctx, repoName, prs, logger.RequestIDFromContext(ctx)); err == nil && len(mlClusters) > 0 {
 			clusters = mlClusters
 		}
@@ -382,11 +423,13 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 			log.Warn("failed to fetch merged PRs", "error", err)
 		}
 	}
-	duplicates, overlaps := classifyDuplicates(prs, mergedPRs)
+	duplicates, overlaps := classifyDuplicates(prs, mergedPRs, s.emit)
 	telemetry.StageLatenciesMS["duplicates_ms"] = int(time.Since(dupStart).Milliseconds())
+	s.emit("duplicates", len(duplicates), len(prs))
 
 	// Attempt ML-backed duplicate detection via Voyage if configured.
-	if s.mlBridge != nil && s.mlBridge.Available() {
+	// Skip ML bridge in force-cache mode to avoid subprocess overhead.
+	if !s.allowForceCache && s.mlBridge != nil && s.mlBridge.Available() {
 		if mlDups, mlOverlaps, err := s.mlBridge.Duplicates(ctx, repoName, prs, types.DuplicateThreshold, types.OverlapThreshold, logger.RequestIDFromContext(ctx)); err == nil {
 			if len(mlDups) > 0 {
 				duplicates = mlDups
@@ -405,6 +448,7 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 	conflicts := buildConflicts(repoName, prs, conflictProgress)
 	telemetry.StageLatenciesMS["conflicts_ms"] = int(time.Since(conflictStart).Milliseconds())
 	telemetry.GraphDeltaEdges = len(conflicts)
+	s.emit("conflicts", len(conflicts), len(prs))
 	deepSubsetSize := 0
 	if s.precisionMode == precisionModeDeep {
 		deepSubsetSize = min(len(prs), s.deepCandidateSubsetSize)
@@ -418,6 +462,7 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 	staleStart := time.Now()
 	staleness := buildStaleness(prs, duplicates, nowFn())
 	telemetry.StageLatenciesMS["staleness_ms"] = int(time.Since(staleStart).Milliseconds())
+	s.emit("staleness", len(staleness), len(prs))
 
 	response := types.AnalysisResponse{
 		Repo:                    repoName,
@@ -435,6 +480,7 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 			OverlapGroups:   len(overlaps),
 			ConflictPairs:   len(conflicts),
 			StalePRs:        len(staleness),
+			GarbagePRs:      len(garbage),
 		},
 		PRs:              prs,
 		Clusters:         clusters,
@@ -442,9 +488,11 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 		Overlaps:         overlaps,
 		Conflicts:        conflicts,
 		StalenessSignals: staleness,
+		GarbagePRs:       garbage,
 		Telemetry:        &telemetry,
 	}
 
+	s.emit("review", 0, len(response.PRs))
 	reviewPayload, err := s.buildReviewPayload(ctx, repoName, response)
 	if err != nil {
 		log.Warn("review analysis failed", "error", err)
@@ -458,6 +506,7 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 			Results:       []types.ReviewResult{},
 		}
 	}
+	s.emit("done", len(response.PRs), len(response.PRs))
 
 	response.ReviewPayload = reviewPayload
 
@@ -532,7 +581,12 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 	}
 
 	var allResults []types.ReviewResult
-	for _, pr := range response.PRs {
+	totalPRs := len(response.PRs)
+	for i, pr := range response.PRs {
+		// Emit per-PR progress every 50 PRs to avoid flooding.
+		if (i+1)%50 == 0 || i+1 == totalPRs {
+			s.emit("review_pr", i+1, totalPRs)
+		}
 		clusterLabel := ""
 		if cluster, ok := clusterMap[pr.ClusterID]; ok {
 			clusterLabel = cluster.ClusterLabel
@@ -1187,7 +1241,8 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 			filtered, meta := s.applyIntakeControls(cachedPRs)
 			meta.LiveSource = false
 			writeLivePhaseStatus(log, "cache loaded, starting analysis", len(filtered))
-			if s.mirrorAvailable || s.token != "" {
+			// Skip enrichment in force-cache mode; use whatever file data is already cached
+			if !s.allowForceCache && (s.mirrorAvailable || s.token != "") {
 				s.enrichPRsWithFilesFromMirrorOrGraphQL(ctx, targetRepo, filtered)
 			}
 			return filtered, targetRepo, meta, nil
@@ -1195,16 +1250,12 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 	}
 
 	if s.useCacheFirst && !s.allowLive {
-		// Fallback: if allowForceCache is set, try loading from cache even if stale
-		// This bypasses the cache TTL check to allow analysis of old-but-valid cached data
+		// force-cache path: load from stale cache, skip enrichment to avoid API calls
 		if s.allowForceCache && s.cacheStore != nil {
 			if cachedPRs, err := s.cacheStore.ListPRs(cache.PRFilter{Repo: targetRepo}); err == nil && len(cachedPRs) > 0 {
 				filtered, meta := s.applyIntakeControls(cachedPRs)
 				meta.LiveSource = false
 				writeLivePhaseStatus(log, "stale cache loaded, starting analysis", len(filtered))
-				if s.mirrorAvailable || s.token != "" {
-					s.enrichPRsWithFilesFromMirrorOrGraphQL(ctx, targetRepo, filtered)
-				}
 				return filtered, targetRepo, meta, nil
 			}
 		}
@@ -1293,6 +1344,11 @@ func (s Service) fetchLivePRs(ctx context.Context, repo string) ([]types.PR, err
 }
 
 func (s Service) enrichPRsWithFilesFromMirrorOrGraphQL(ctx context.Context, repo string, prs []types.PR) {
+	// In force-cache mode, enrichment is disabled — PRs use whatever data is in cache
+	if s.allowForceCache {
+		return
+	}
+
 	if s.mirrorAvailable {
 		s.enrichFromMirror(ctx, repo, prs)
 	} else {
@@ -1350,6 +1406,7 @@ func (s Service) enrichFromGraphQL(ctx context.Context, repoID string, prs []typ
 		Token:           s.token,
 		ReserveRequests: 200,
 	})
+	total := len(prs)
 	for i := range prs {
 		if len(prs[i].FilesChanged) == 0 {
 			files, fileErr := client.FetchPullRequestFiles(ctx, repoID, prs[i].Number)
@@ -1357,7 +1414,11 @@ func (s Service) enrichFromGraphQL(ctx context.Context, repoID string, prs []typ
 				prs[i].FilesChanged = files
 			}
 		}
+		if (i+1)%100 == 0 || i+1 == total {
+			s.emit("enrich_files", i+1, total)
+		}
 	}
+	s.emit("enrich_files_done", total, total)
 }
 
 func newLiveProgressReporter(log *logger.Logger, step int) func(processed int, total int) {
@@ -1437,39 +1498,179 @@ func (s Service) applyIntakeControls(input []types.PR) ([]types.PR, truncationMe
 	return output, meta
 }
 
-func classifyDuplicates(prs []types.PR, mergedPRs []review.MergedPRRecord) ([]types.DuplicateGroup, []types.DuplicateGroup) {
+// classifyGarbage implements Layer 1 of the outer peel: identify PRs that are
+// obviously bad and should not consume further analysis resources.
+func classifyGarbage(prs []types.PR) []types.GarbagePR {
+	var garbage []types.GarbagePR
+
+	for _, pr := range prs {
+		reasons := make([]string, 0, 3)
+
+		// Check 1: Empty PR — no additions, no deletions, no files
+		if pr.Additions == 0 && pr.Deletions == 0 && pr.ChangedFilesCount == 0 {
+			reasons = append(reasons, "empty PR (no additions, deletions, or changed files)")
+		}
+
+		// Check 2: Bot PR
+		if pr.IsBot {
+			reasons = append(reasons, "bot-generated PR")
+		}
+
+		// Check 3: Spam patterns — very short or empty title
+		title := strings.TrimSpace(pr.Title)
+		if title == "" {
+			reasons = append(reasons, "empty title")
+		} else if len(title) <= 3 && title != "WIP" && title != "wip" {
+			reasons = append(reasons, fmt.Sprintf("suspiciously short title (%q)", title))
+		}
+
+		// Check 4: Draft PR
+		if pr.IsDraft && pr.Additions <= 1 && pr.Deletions <= 1 {
+			reasons = append(reasons, "draft with minimal changes")
+		}
+
+		if len(reasons) > 0 {
+			garbage = append(garbage, types.GarbagePR{
+				PRNumber: pr.Number,
+				Reason:   strings.Join(reasons, "; "),
+			})
+		}
+	}
+
+	return garbage
+}
+
+// classifyDuplicates compares PRs pairwise for similarity. Parallelized with
+// goroutine workers to handle large corpora within the 300s SLO.
+func classifyDuplicates(prs []types.PR, mergedPRs []review.MergedPRRecord, emit func(phase string, done, total int)) ([]types.DuplicateGroup, []types.DuplicateGroup) {
+	// Pre-tokenize all titles to avoid re-tokenizing in the inner loop.
+	// Skip body pre-tokenization — bodies can be huge and only contribute 10% to score.
+	titleTokens := make([][]string, len(prs))
+	for i := range prs {
+		titleTokens[i] = util.Tokenize(prs[i].Title)
+	}
+
+	// Parallel workers for the outer loop
+	numWorkers := 8
+	total := len(prs)
+	chunkSize := (total + numWorkers - 1) / numWorkers
+
+	type workerResult struct {
+		duplicates map[int]*types.DuplicateGroup
+		overlaps   map[int]*types.DuplicateGroup
+	}
+
+	results := make([]workerResult, numWorkers)
+	var wg sync.WaitGroup
+
+	for w := 0; w < numWorkers; w++ {
+		start := w * chunkSize
+		end := start + chunkSize
+		if end > total {
+			end = total
+		}
+		if start >= total {
+			break
+		}
+
+		results[w] = workerResult{
+			duplicates: make(map[int]*types.DuplicateGroup),
+			overlaps:   make(map[int]*types.DuplicateGroup),
+		}
+		wg.Add(1)
+		go func(workerID, startI, endI int) {
+			defer wg.Done()
+			dupes := results[workerID].duplicates
+			ovs := results[workerID].overlaps
+
+			for i := startI; i < endI; i++ {
+				for j := i + 1; j < total; j++ {
+					titleScore := util.Jaccard(titleTokens[i], titleTokens[j])
+					if titleScore < 0.03 {
+						continue
+					}
+					// Substring containment: if one title contains the other
+					shortTitle := strings.ToLower(strings.TrimSpace(prs[i].Title))
+					longTitle := strings.ToLower(strings.TrimSpace(prs[j].Title))
+					if len(shortTitle) > len(longTitle) {
+						shortTitle, longTitle = longTitle, shortTitle
+					}
+					if len(shortTitle) >= 10 && strings.Contains(longTitle, shortTitle) {
+						titleScore = maxFloat(titleScore, 0.80)
+					}
+					bodyScore := 0.0
+					if prs[i].Body != "" && prs[j].Body != "" {
+						bodyScore = util.Jaccard(util.Tokenize(prs[i].Body), util.Tokenize(prs[j].Body))
+					}
+					fileScore := util.Jaccard(prs[i].FilesChanged, prs[j].FilesChanged)
+					if len(prs[i].FilesChanged) == 0 && len(prs[j].FilesChanged) == 0 {
+						fileScore = 0.5
+					}
+					score := round((0.4*titleScore)+(0.4*fileScore)+(0.2*bodyScore), 4)
+					if fileScore > 0.8 && titleScore > 0.05 {
+						score = maxFloat(score, 0.85)
+					}
+					if titleScore > 0.75 && fileScore == 0.5 {
+						score = maxFloat(score, 0.80)
+					}
+					if score < types.OverlapThreshold {
+						continue
+					}
+
+					canonical := min(prs[i].Number, prs[j].Number)
+					other := max(prs[i].Number, prs[j].Number)
+
+					if score > types.DuplicateThreshold {
+						group := dupes[canonical]
+						if group == nil {
+							group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity above duplicate threshold"}
+							dupes[canonical] = group
+						}
+						group.Similarity = maxFloat(group.Similarity, score)
+						group.DuplicatePRNums = appendUniqueInt(group.DuplicatePRNums, other)
+						continue
+					}
+
+					group := ovs[canonical]
+					if group == nil {
+						group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity in overlap range"}
+						ovs[canonical] = group
+					}
+					group.Similarity = maxFloat(group.Similarity, score)
+					group.DuplicatePRNums = appendUniqueInt(group.DuplicatePRNums, other)
+				}
+			}
+		}(w, start, end)
+	}
+
+	wg.Wait()
+	emit("duplicates_inner", total, total)
+
+	// Merge worker results
 	duplicatesByCanonical := make(map[int]*types.DuplicateGroup)
 	overlapsByCanonical := make(map[int]*types.DuplicateGroup)
-
-	// Compare open PRs against each other
-	for i := 0; i < len(prs); i++ {
-		for j := i + 1; j < len(prs); j++ {
-			score := similarity(prs[i], prs[j])
-			if score < types.OverlapThreshold {
-				continue
-			}
-
-			canonical := min(prs[i].Number, prs[j].Number)
-			other := max(prs[i].Number, prs[j].Number)
-
-			if score > types.DuplicateThreshold {
-				group := duplicatesByCanonical[canonical]
-				if group == nil {
-					group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity above duplicate threshold"}
-					duplicatesByCanonical[canonical] = group
+	for _, r := range results {
+		for canonical, group := range r.duplicates {
+			existing := duplicatesByCanonical[canonical]
+			if existing == nil {
+				duplicatesByCanonical[canonical] = group
+			} else {
+				existing.Similarity = maxFloat(existing.Similarity, group.Similarity)
+				for _, n := range group.DuplicatePRNums {
+					existing.DuplicatePRNums = appendUniqueInt(existing.DuplicatePRNums, n)
 				}
-				group.Similarity = maxFloat(group.Similarity, score)
-				group.DuplicatePRNums = appendUniqueInt(group.DuplicatePRNums, other)
-				continue
 			}
-
-			group := overlapsByCanonical[canonical]
-			if group == nil {
-				group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity in overlap range"}
+		}
+		for canonical, group := range r.overlaps {
+			existing := overlapsByCanonical[canonical]
+			if existing == nil {
 				overlapsByCanonical[canonical] = group
+			} else {
+				existing.Similarity = maxFloat(existing.Similarity, group.Similarity)
+				for _, n := range group.DuplicatePRNums {
+					existing.DuplicatePRNums = appendUniqueInt(existing.DuplicatePRNums, n)
+				}
 			}
-			group.Similarity = maxFloat(group.Similarity, score)
-			group.DuplicatePRNums = appendUniqueInt(group.DuplicatePRNums, other)
 		}
 	}
 
@@ -1527,6 +1728,71 @@ func flattenGroups(input map[int]*types.DuplicateGroup) []types.DuplicateGroup {
 	return groups
 }
 
+// noiseFiles are files that every PR in a monorepo touches, producing useless conflict noise.
+var noiseFiles = map[string]bool{
+	"package.json":        true,
+	"pnpm-lock.yaml":      true,
+	"yarn.lock":           true,
+	"package-lock.json":   true,
+	"bun.lockb":           true,
+	".gitignore":          true,
+	".eslintrc":           true,
+	".eslintrc.json":      true,
+	".prettierrc":         true,
+	".prettierrc.json":    true,
+	"tsconfig.json":       true,
+	"tsconfig.base.json":  true,
+	"vitest.config.ts":    true,
+	"jest.config.ts":      true,
+	".editorconfig":       true,
+	"CHANGELOG.md":        true,
+}
+
+// noiseExtensions are file extensions that are always noise in conflict detection.
+var noiseExtensions = []string{
+	".lock", ".lockb", ".lock.json",
+}
+
+func filterNoiseFiles(files []string) []string {
+	var signal []string
+	for _, f := range files {
+		base := f
+		if idx := strings.LastIndex(f, "/"); idx >= 0 {
+			base = f[idx+1:]
+		}
+		if noiseFiles[base] || noiseFiles[f] {
+			continue
+		}
+		isNoise := false
+		for _, ext := range noiseExtensions {
+			if strings.HasSuffix(f, ext) {
+				isNoise = true
+				break
+			}
+		}
+		if isNoise {
+			continue
+		}
+		// Skip files in .github/ configs
+		if strings.HasPrefix(f, ".github/") && !strings.Contains(f, "/src/") && !strings.Contains(f, "/actions/") {
+			continue
+		}
+		signal = append(signal, f)
+	}
+	return signal
+}
+
+// isSourceFile returns true if the file looks like source code (not config, docs, or CI).
+func isSourceFile(path string) bool {
+	sourceExts := []string{".go", ".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".java", ".rb", ".cpp", ".c", ".h"}
+	for _, ext := range sourceExts {
+		if strings.HasSuffix(path, ext) {
+			return true
+		}
+	}
+	return false
+}
+
 func buildConflicts(repo string, prs []types.PR, progress func(processed int, total int)) []types.ConflictPair {
 	g := graph.BuildWithProgress(repo, prs, progress)
 	conflicts := make([]types.ConflictPair, 0)
@@ -1535,20 +1801,39 @@ func buildConflicts(repo string, prs []types.PR, progress func(processed int, to
 			continue
 		}
 		files := parseSharedFiles(edge.Reason)
-		severity := "medium"
-		if len(files) >= 3 {
+		// Filter noise files: lock files, CI configs, dependency files that every PR touches
+		signalFiles := filterNoiseFiles(files)
+		if len(signalFiles) == 0 {
+			continue // no signal files shared, skip this conflict
+		}
+		conflictType := "attention_needed"
+		severity := "low"
+		if len(signalFiles) >= 5 {
 			severity = "high"
-		} else if len(files) == 0 {
-			severity = "low"
+			conflictType = "merge_blocking"
+		} else if len(signalFiles) >= 2 {
+			severity = "medium"
+		}
+		// Source code conflicts are more serious than config conflicts
+		hasSourceCode := false
+		for _, f := range signalFiles {
+			if isSourceFile(f) {
+				hasSourceCode = true
+				break
+			}
+		}
+		if hasSourceCode && len(signalFiles) >= 3 {
+			severity = "high"
+			conflictType = "merge_blocking"
 		}
 
 		conflicts = append(conflicts, types.ConflictPair{
 			SourcePR:     edge.FromPR,
 			TargetPR:     edge.ToPR,
-			ConflictType: "file_overlap",
-			FilesTouched: files,
+			ConflictType: conflictType,
+			FilesTouched: signalFiles,
 			Severity:     severity,
-			Reason:       edge.Reason,
+			Reason:       fmt.Sprintf("%d shared files: %s", len(signalFiles), strings.Join(signalFiles, ", ")),
 		})
 	}
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/jeffersonnunn/pratc/internal/app"
 	"github.com/jeffersonnunn/pratc/internal/cache"
+	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
 // TestSyncStateMachineExplicitStates verifies that the sync/status endpoint
@@ -252,6 +253,67 @@ func TestSyncStatusCompleted(t *testing.T) {
 	}
 }
 
+func TestReuseCachedSyncSummary(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "pratc.db")
+	t.Setenv("PRATC_DB_PATH", dbPath)
+
+	store, err := cache.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open cache: %v", err)
+	}
+	defer store.Close()
+
+	repo := "owner/repo"
+	job, err := store.CreateSyncJob(repo)
+	if err != nil {
+		t.Fatalf("create sync job: %v", err)
+	}
+
+	now := time.Now().UTC()
+	pr := types.PR{
+		ID:           "pr-1",
+		Repo:         repo,
+		Number:       1,
+		Title:        "cached PR",
+		URL:          "https://example.com/owner/repo/pull/1",
+		Author:       "alice",
+		CreatedAt:    now.Format(time.RFC3339),
+		UpdatedAt:    now.Format(time.RFC3339),
+		Labels:       []string{},
+		FilesChanged: []string{},
+	}
+	if err := store.UpsertPR(pr); err != nil {
+		t.Fatalf("upsert PR: %v", err)
+	}
+	if err := store.MarkSyncJobComplete(job.ID, now); err != nil {
+		t.Fatalf("mark sync job complete: %v", err)
+	}
+
+	summary, reused, err := reuseCachedSyncSummary(store, repo)
+	if err != nil {
+		t.Fatalf("reuse cached sync summary: %v", err)
+	}
+	if !reused {
+		t.Fatalf("expected completed sync snapshot to be reused")
+	}
+	if summary.Repo != repo {
+		t.Fatalf("expected repo %q, got %q", repo, summary.Repo)
+	}
+	if summary.Status != "completed" {
+		t.Fatalf("expected completed status, got %q", summary.Status)
+	}
+	if summary.JobID != job.ID {
+		t.Fatalf("expected job ID %q, got %q", job.ID, summary.JobID)
+	}
+	if summary.Budget != "local-first cache reuse" {
+		t.Fatalf("expected cache reuse budget marker, got %q", summary.Budget)
+	}
+	if !summary.Started || !summary.Reused {
+		t.Fatalf("expected summary to mark started and reused")
+	}
+}
+
 // TestSyncStatusFailed verifies that failed jobs are properly reported.
 func TestSyncStatusFailed(t *testing.T) {
 	tempDir := t.TempDir()
@@ -402,13 +464,13 @@ func TestSyncStateTransitions(t *testing.T) {
 	defer store.Close()
 
 	validTransitions := map[string][]string{
-		"queued":           {"running", "canceled"},
-		"running":          {"paused_rate_limit", "completed", "failed", "canceled"},
+		"queued":            {"running", "canceled"},
+		"running":           {"paused_rate_limit", "completed", "failed", "canceled"},
 		"paused_rate_limit": {"resuming", "canceled"},
-		"resuming":         {"running", "canceled"},
-		"completed":        {}, // terminal state
-		"failed":           {}, // terminal state
-		"canceled":         {}, // terminal state
+		"resuming":          {"running", "canceled"},
+		"completed":         {}, // terminal state
+		"failed":            {}, // terminal state
+		"canceled":          {}, // terminal state
 	}
 
 	for fromState, toStates := range validTransitions {
@@ -522,9 +584,9 @@ func TestSyncStatusResponseFormat(t *testing.T) {
 	defer store.Close()
 
 	testCases := []struct {
-		name           string
-		setup          func() (string, error)
-		expectedFields []string
+		name            string
+		setup           func() (string, error)
+		expectedFields  []string
 		forbiddenFields []string
 	}{
 		{
@@ -536,7 +598,7 @@ func TestSyncStatusResponseFormat(t *testing.T) {
 				}
 				return job.ID, nil
 			},
-			expectedFields: []string{"status", "job_id", "repo"},
+			expectedFields:  []string{"status", "job_id", "repo"},
 			forbiddenFields: []string{"in_progress"},
 		},
 		{
@@ -555,7 +617,7 @@ func TestSyncStatusResponseFormat(t *testing.T) {
 				}
 				return job.ID, nil
 			},
-			expectedFields: []string{"status", "job_id", "progress_percent"},
+			expectedFields:  []string{"status", "job_id", "progress_percent"},
 			forbiddenFields: []string{"in_progress"},
 		},
 		{
@@ -570,7 +632,7 @@ func TestSyncStatusResponseFormat(t *testing.T) {
 				}
 				return job.ID, nil
 			},
-			expectedFields: []string{"status", "job_id"},
+			expectedFields:  []string{"status", "job_id"},
 			forbiddenFields: []string{"in_progress"},
 		},
 		{
@@ -585,7 +647,7 @@ func TestSyncStatusResponseFormat(t *testing.T) {
 				}
 				return job.ID, nil
 			},
-			expectedFields: []string{"status", "job_id", "progress_percent"},
+			expectedFields:  []string{"status", "job_id", "progress_percent"},
 			forbiddenFields: []string{"in_progress"},
 		},
 		{
@@ -600,7 +662,7 @@ func TestSyncStatusResponseFormat(t *testing.T) {
 				}
 				return job.ID, nil
 			},
-			expectedFields: []string{"status", "job_id"},
+			expectedFields:  []string{"status", "job_id"},
 			forbiddenFields: []string{"in_progress"},
 		},
 	}

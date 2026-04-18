@@ -4,8 +4,8 @@ prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull re
 
 ## Project Status
 
-- **Current release line:** `1.4.x`
-- **Current direction:** full-corpus PR triage with layered decision reasoning, analyst-packet reporting, and safer operator-facing output
+- **Current release line:** `1.4.2.x`
+- **Current direction:** full-corpus PR triage with layered decision reasoning, analyst-packet reporting, and managed background sync/restartability
 - **Default API port:** `7400` (reserved prATC range: `7400-7500`)
 
 ## Documentation
@@ -13,8 +13,8 @@ prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull re
 - [INSTALL.md](INSTALL.md) — Installation guide with quick start and troubleshooting
 - [RATELIMITS.md](RATELIMITS.md) — GitHub API rate limits and prATC budget management
 - [CHANGELOG.md](CHANGELOG.md) — Release history
-- [ROADMAP.md](ROADMAP.md) — Upcoming priorities (v1.4-v1.6)
-- [version1.4.md](version1.4.md) — v1.4 operating model and locked vocabulary
+- [ROADMAP.md](ROADMAP.md) — Current release line and upcoming priorities (v1.4.2-v1.6)
+- [version1.4.2.md](version1.4.2.md) — Shipped v1.4.2 operating model, resumable sync, and explicit states
 - [projects/](projects/) — persistent workflow runs and document-style artifacts
 - [docs/plans/2026-04-09-pratc-v1-3-review-engine-design.md](docs/plans/2026-04-09-pratc-v1-3-review-engine-design.md) — v1.3 review engine design
 
@@ -27,7 +27,7 @@ prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull re
 - **Omni Batch Planning**: Select PRs by ID ranges and boolean expressions via selector syntax
 - **Rate-Limit Aware**: Built-in retry and budget management
 - **Review Pipeline**: Advisory analyzers for security, reliability, performance, and quality review output
-- **v1.4 Decision Map**: Risk buckets, decision trails, analyst summaries, and PDF packet generation
+- **v1.4.2 Decision Map**: Risk buckets, decision trails, analyst summaries, and PDF packet generation
 - **Persistent project runs**: Workflow artifacts live under `projects/<repo>/runs/<timestamp>/` with a README manifest so runs behave like document sets, not scratch output.
 
 ## Quick Start

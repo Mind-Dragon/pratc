@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var Version = "1.3.1"
+var Version = "1.4.2"
 
 var BuildDate = time.Now().Format(time.RFC3339)
 

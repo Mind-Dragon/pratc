@@ -5,18 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **Version shift note (2026-04-15):** v1.4 is now the full-corpus triage engine. Dashboard polish remains slated for v1.5.
+> **Version shift note (2026-04-16):** v1.4.2 is the shipped managed-service triage release. `version1.4.2.md` covers resumable sync, explicit states, and crash-safe background operation.
+> Dashboard polish remains slated for v1.5.
 > Evidence enrichment remains v1.6 work.
-> Analyst PDF reporting and decision-trail output are now part of the v1.4 operator packet.
+> Analyst PDF reporting and decision-trail output are part of the v1.4.2 operator packet.
 
-> **Phase renaming (2026-04-15):** v1.4 restructured as full-corpus triage engine.
+> **Phase renaming (2026-04-15):** v1.4.2 restructured as full-corpus triage engine.
 > Previous Phase A (Planning Integration) and Phase B (Analyst PDF) are now Phase 0 (Foundation).
 > New Phases A–F cover corpus coverage, outer peel, substance scoring, routing, deep judgment, and report.
 > See ROADMAP.md for the current phase definitions.
 
 ## [Unreleased]
 
-### v1.4 — Full-Corpus Triage Engine (COMPLETED)
+### v1.4.2 — Full-Corpus Triage Engine (COMPLETED)
 
 #### Added
 
@@ -26,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Analyst loader compatibility wrapper** — Public `LoadAnalystDataset(...)` entrypoint keeps tests and report sections aligned on the same assembly path.
 - **Web type sync for review payloads** — The frontend types now match the enriched review payload contract.
 
-### v1.4 Phase 0 — Foundation (COMPLETED)
+### v1.4.2 Phase 0 — Foundation (COMPLETED)
 
 _Previously labeled Phase A (Planning Integration) and Phase B (Analyst PDF Report)._
 
@@ -50,7 +51,7 @@ _Previously labeled Phase A (Planning Integration) and Phase B (Analyst PDF Repo
 - **PoolSelector benchmarks** — `BenchmarkPoolSelector_SelectCandidates`: ~16ms / 1.8MB / 4,080 allocs for fixture corpus. `BenchmarkPoolSelector_SelectCandidatesWithClusterCoherence`: ~22ms / 776KB / 3,437 allocs.
 - **End-to-end Plan() benchmarks (fixture corpus)** — formula strategy: ~319ms/op; hierarchical strategy: ~325ms/op. Both well under 90s SLO.
 
-### v1.4 Phase 0 — Analyst PDF Report (IN PROGRESS → absorbed into Phase 0)
+### v1.4.2 Phase 0 — Analyst PDF Report (IN PROGRESS → absorbed into Phase 0)
 
 #### Added
 

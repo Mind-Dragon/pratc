@@ -135,6 +135,56 @@ func TestResumeSyncJobClearsPauseFields(t *testing.T) {
 	}
 }
 
+func TestResumeSyncJobRebindsSharedProgressRow(t *testing.T) {
+	store, err := Open(":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory store: %v", err)
+	}
+	defer store.Close()
+
+	repo := "test/repo"
+	pausedJob, err := store.CreateSyncJob(repo)
+	if err != nil {
+		t.Fatalf("failed to create paused job: %v", err)
+	}
+	if err := store.UpdateSyncJobProgress(pausedJob.ID, SyncProgress{
+		Cursor:       "cursor-paused",
+		ProcessedPRs: 10,
+		TotalPRs:     40,
+	}); err != nil {
+		t.Fatalf("failed to seed paused job progress: %v", err)
+	}
+	if err := store.PauseSyncJob(pausedJob.ID, time.Now().Add(-time.Hour), "rate limited"); err != nil {
+		t.Fatalf("failed to pause job: %v", err)
+	}
+
+	activeJob, err := store.CreateSyncJob(repo)
+	if err != nil {
+		t.Fatalf("failed to create active job: %v", err)
+	}
+	if err := store.UpdateSyncJobProgress(activeJob.ID, SyncProgress{
+		Cursor:       "cursor-active",
+		ProcessedPRs: 12,
+		TotalPRs:     50,
+	}); err != nil {
+		t.Fatalf("failed to seed active job progress: %v", err)
+	}
+
+	resumed, err := ResumeSyncJob(store, repo)
+	if err != nil {
+		t.Fatalf("failed to resume paused job with shared progress row: %v", err)
+	}
+	if resumed.ID != pausedJob.ID {
+		t.Fatalf("expected paused job %s to resume, got %s", pausedJob.ID, resumed.ID)
+	}
+	if resumed.Progress.Cursor != "cursor-active" {
+		t.Fatalf("expected shared progress row to be rebound, got %+v", resumed.Progress)
+	}
+	if resumed.Status != SyncJobStatusResuming {
+		t.Fatalf("expected resuming status, got %s", resumed.Status)
+	}
+}
+
 // Test 1: Invalid jobID in PauseSyncJob
 // Verifies that PauseSyncJob returns an error when called with a non-existent job ID
 func TestPauseSyncJobInvalidJobID(t *testing.T) {

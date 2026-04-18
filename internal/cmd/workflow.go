@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,6 +43,8 @@ func RegisterWorkflowCommand() {
 	var rateLimit int
 	var reserveBuffer int
 	var resetBuffer int
+	var syncMaxPRs int
+	var refreshSync bool
 
 	command := &cobra.Command{
 		Use:   "workflow",
@@ -99,9 +102,22 @@ Examples:
 				fmt.Fprintf(cmd.ErrOrStderr(), "Use 'pratc monitor --repo=%s' in another terminal to watch live updates.\n", repo)
 			}
 
-			syncSummary, err := runWorkflowSync(ctx, cmd, store, repo, progress, rateLimit, reserveBuffer, resetBuffer)
-			if err != nil {
-				return err
+			var syncSummary workflowSyncSummary
+			var reused bool
+			if !refreshSync {
+				syncSummary, reused, err = reuseCachedWorkflowSyncSummary(store, repo)
+				if err != nil {
+					return err
+				}
+			}
+			if reused {
+				log.Info("reusing local sync snapshot", "repo", repo)
+			}
+			if !reused {
+				syncSummary, err = runWorkflowSync(ctx, cmd, store, repo, progress, rateLimit, reserveBuffer, resetBuffer, syncMaxPRs)
+				if err != nil {
+					return err
+				}
 			}
 			if err := writeWorkflowJSON(filepath.Join(resolvedOutDir, "sync.json"), syncSummary); err != nil {
 				return err
@@ -112,6 +128,12 @@ Examples:
 				UseCacheFirst: useCacheFirst,
 				MaxPRs:        maxPRs,
 				IncludeReview: true,
+				OnAnalyzeProgress: func(phase string, done, total int) {
+					fmt.Fprintf(cmd.ErrOrStderr(), "\r[analyze %s] %d/%d ", phase, done, total)
+					if phase == "done" {
+						fmt.Fprintln(cmd.ErrOrStderr())
+					}
+				},
 			})
 			analyzeCtx := logger.ContextWithRequestID(ctx, requestID)
 			analyzeLog := logger.FromContext(analyzeCtx)
@@ -169,6 +191,8 @@ Examples:
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch during analyze")
 	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch during analyze")
 	command.Flags().IntVar(&maxPRs, "max-prs", 0, "Max PRs to analyze (0=no cap)")
+	command.Flags().IntVar(&syncMaxPRs, "sync-max-prs", 0, "Max PRs to sync on the initial pass (0=no cap)")
+	command.Flags().BoolVar(&refreshSync, "refresh-sync", false, "Force a fresh sync even when a local snapshot already exists")
 	command.Flags().IntVar(&rateLimit, "rate-limit", 5000, "GitHub API rate limit per hour")
 	command.Flags().IntVar(&reserveBuffer, "reserve-buffer", 200, "Minimum requests to keep in reserve")
 	command.Flags().IntVar(&resetBuffer, "reset-buffer", 15, "Seconds to wait after rate limit reset")
@@ -193,7 +217,7 @@ func openWorkflowCacheStore() (*cache.Store, error) {
 	return store, nil
 }
 
-func runWorkflowSync(ctx context.Context, cmd *cobra.Command, store *cache.Store, repo string, progress bool, rateLimit, reserveBuffer, resetBuffer int) (workflowSyncSummary, error) {
+func runWorkflowSync(ctx context.Context, cmd *cobra.Command, store *cache.Store, repo string, progress bool, rateLimit, reserveBuffer, resetBuffer, syncMaxPRs int) (workflowSyncSummary, error) {
 	job, err := loadWorkflowJob(store, repo)
 	if err != nil {
 		return workflowSyncSummary{}, err
@@ -206,7 +230,7 @@ func runWorkflowSync(ctx context.Context, cmd *cobra.Command, store *cache.Store
 			ratelimit.WithResetBuffer(resetBuffer),
 		)
 		metrics := ratelimit.NewMetrics()
-		innerRunner := prsync.NewDefaultRunner(nil, job.ID, store)
+		innerRunner := prsync.NewDefaultRunner(nil, job.ID, store, syncMaxPRs)
 		guard := prsync.NewRateLimitGuard(budget, metrics, store, job.ID)
 		runner := prsync.NewRateLimitRunner(innerRunner, guard, store, repo)
 
@@ -223,6 +247,7 @@ func runWorkflowSync(ctx context.Context, cmd *cobra.Command, store *cache.Store
 			}
 			lastProgress.ProcessedPRs = done
 			lastProgress.TotalPRs = total
+			lastProgress.SnapshotCeiling = total
 			_ = store.UpdateSyncJobProgress(job.ID, lastProgress)
 
 			if !progress {
@@ -264,8 +289,15 @@ func runWorkflowSync(ctx context.Context, cmd *cobra.Command, store *cache.Store
 			if resumeAt.IsZero() {
 				resumeAt = budget.ResetAt().Add(time.Duration(resetBuffer) * time.Second)
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "Sync paused due to rate limits. Waiting until %s\n", resumeAt.Format(time.RFC3339))
+			pauseNotice, noticeErr := buildWorkflowRateLimitPauseNotice(store, repo, job)
+			if noticeErr != nil {
+				return workflowSyncSummary{}, noticeErr
+			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "%s. Waiting until %s\n", pauseNotice, resumeAt.Format(time.RFC3339))
 			if err := sleepUntil(ctx, resumeAt); err != nil {
+				if errors.Is(err, context.Canceled) {
+					return workflowSyncSummary{}, fmt.Errorf("%s; analyze will continue on the cached snapshot now: %w", pauseNotice, err)
+				}
 				return workflowSyncSummary{}, err
 			}
 			job, err = cache.ResumeSyncJob(store, repo)
@@ -303,8 +335,83 @@ func loadWorkflowJob(store *cache.Store, repo string) (cache.SyncJob, error) {
 	return job, nil
 }
 
+func reuseCachedWorkflowSyncSummary(store *cache.Store, repo string) (workflowSyncSummary, bool, error) {
+	if store == nil {
+		return workflowSyncSummary{}, false, nil
+	}
+	if job, ok, err := store.ResumeSyncJob(repo); err != nil {
+		return workflowSyncSummary{}, false, fmt.Errorf("check active sync job: %w", err)
+	} else if ok && job.ID != "" {
+		return workflowSyncSummary{}, false, nil
+	}
+
+	lastSync, err := store.LastSync(repo)
+	if err != nil {
+		return workflowSyncSummary{}, false, fmt.Errorf("load last sync: %w", err)
+	}
+	if lastSync.IsZero() {
+		return workflowSyncSummary{}, false, nil
+	}
+
+	prs, err := store.ListPRs(cache.PRFilter{Repo: repo})
+	if err != nil {
+		return workflowSyncSummary{}, false, fmt.Errorf("list cached prs: %w", err)
+	}
+	if len(prs) == 0 {
+		return workflowSyncSummary{}, false, nil
+	}
+
+	progress, ok, err := store.GetSyncProgress(repo)
+	if err != nil {
+		return workflowSyncSummary{}, false, fmt.Errorf("load sync progress: %w", err)
+	}
+	if ok && progress.ProcessedPRs > 0 {
+		lastSync = lastSync.UTC()
+	}
+
+	return workflowSyncSummary{
+		Repo:        repo,
+		GeneratedAt: lastSync.UTC().Format(time.RFC3339),
+		Status:      string(cache.SyncJobStatusCompleted),
+		JobID:       "",
+		Budget:      "local-first cache reuse",
+	}, true, nil
+}
+
 func isWorkflowRateLimitPause(err error) bool {
 	return err != nil && strings.Contains(err.Error(), workflowRateLimitPauseReason)
+}
+
+func buildWorkflowRateLimitPauseNotice(store *cache.Store, repo string, job cache.SyncJob) (string, error) {
+	cachedPRCount := 0
+	if store != nil {
+		prs, err := store.ListPRs(cache.PRFilter{Repo: repo})
+		if err != nil {
+			return "", fmt.Errorf("list cached prs: %w", err)
+		}
+		cachedPRCount = len(prs)
+	}
+
+	processed := job.Progress.ProcessedPRs
+	if processed <= 0 && cachedPRCount > 0 {
+		processed = cachedPRCount
+	}
+
+	total := job.Progress.TotalPRs
+	if total > 0 && processed > 0 {
+		remaining := total - processed
+		if remaining < 0 {
+			remaining = 0
+		}
+		return fmt.Sprintf("Sync paused due to rate limits after pulling %d/%d PRs (%d remain). Analyze will continue on the cached %d-PR snapshot now.", processed, total, remaining, cachedPRCount), nil
+	}
+	if processed > 0 {
+		return fmt.Sprintf("Sync paused due to rate limits after pulling %d PRs. Analyze will continue on the cached %d-PR snapshot now.", processed, cachedPRCount), nil
+	}
+	if cachedPRCount > 0 {
+		return fmt.Sprintf("Sync paused due to rate limits. Analyze will continue on the cached %d-PR snapshot now.", cachedPRCount), nil
+	}
+	return "Sync paused due to rate limits. Analyze will continue on the cached snapshot now.", nil
 }
 
 func sleepUntil(ctx context.Context, resumeAt time.Time) error {

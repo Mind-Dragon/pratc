@@ -1,15 +1,18 @@
 # Roadmap
 
-prATC development roadmap for versions 1.4 through 1.7.
+prATC development roadmap for versions 1.4.2 through 1.7.
 
-## Version 1.4 — Full-Corpus Triage Engine (Q2 2026)
+## Version 1.4.2 — Full-Corpus Triage Engine (Q2 2026)
 
 ### Goal
 Turn prATC into a full-corpus decision engine that can account for every open PR in a large repository, peel away noise in layers, and produce an explainable now/future map for human attention.
 
+### Current state
+v1.4.2 is implemented in the live codebase. The phase breakdown below remains as the release contract and historical definition of done for the shipped v1.4.2 line. The managed-service follow-on lives in `version1.4.2.md`.
+
 ### Phase 0 — Foundation (COMPLETED)
 
-Work already shipped that v1.4 builds on top of.
+Work already shipped that v1.4.2 builds on top of.
 
 #### Planning Integration (shipped)
 - PoolSelector: weighted multi-component priority scoring (staleness, CI, security, cluster coherence, time decay)
@@ -36,7 +39,7 @@ Work already shipped that v1.4 builds on top of.
 - `maxPRs` default of 1000 in analyze command has been removed; visible-corpus truncation now has to be explicit
 - Legacy pool-cap constants still exist, but the active pipeline does not enforce a hard cap by default
 - The technical reference now lives in ARCHITECTURE.md; docs/techref.md has been removed
-- `pratc14a.md` remediation plan archived to `docs/archive/pratc14a-remediation.md`; relevant items absorbed into v1.4 workstreams
+- `pratc14a.md` remediation plan archived to `docs/archive/pratc14a-remediation.md`; relevant items absorbed into v1.4.2 workstreams
 
 ### Phase A — Corpus Coverage + Baseline Repair
 

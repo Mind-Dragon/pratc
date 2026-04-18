@@ -44,6 +44,12 @@ type DuplicateGroup struct {
 	Reason            string  `json:"reason"`
 }
 
+// GarbagePR represents a PR classified as junk by the outer peel (Layer 1).
+type GarbagePR struct {
+	PRNumber int    `json:"pr_number"`
+	Reason   string `json:"reason"`
+}
+
 type ConflictPair struct {
 	SourcePR     int      `json:"source_pr"`
 	TargetPR     int      `json:"target_pr"`
@@ -119,6 +125,7 @@ type Counts struct {
 	OverlapGroups   int `json:"overlap_groups"`
 	ConflictPairs   int `json:"conflict_pairs"`
 	StalePRs        int `json:"stale_prs"`
+	GarbagePRs      int `json:"garbage_prs"`
 }
 
 type Thresholds struct {
@@ -188,6 +195,7 @@ type SemanticConflictResponse struct {
 type PRWindow struct {
 	BeginningPRNumber int `json:"beginning_pr_number,omitempty"`
 	EndingPRNumber    int `json:"ending_pr_number,omitempty"`
+	SnapshotCeiling   int `json:"snapshot_ceiling,omitempty"`
 }
 
 type OperationTelemetry struct {
@@ -201,27 +209,30 @@ type OperationTelemetry struct {
 	PairwiseEarlyExits              int            `json:"pairwise_early_exits,omitempty"`
 	PairwiseWorkersActive           int            `json:"pairwise_workers_active,omitempty"`
 	HierarchicalComplexityReduction float64        `json:"hierarchical_complexity_reduction,omitempty"`
-	StageLatenciesMS               map[string]int `json:"stage_latencies_ms,omitempty"`
+	StageLatenciesMS                map[string]int `json:"stage_latencies_ms,omitempty"`
 	StageDropCounts                 map[string]int `json:"stage_drop_counts,omitempty"`
 }
 
 type AnalysisResponse struct {
-	Repo                    string              `json:"repo"`
-	GeneratedAt             string              `json:"generatedAt"`
-	AnalysisTruncated       bool                `json:"analysis_truncated,omitempty"`
-	TruncationReason        string              `json:"truncation_reason,omitempty"`
-	MaxPRsApplied           int                 `json:"max_prs_applied,omitempty"`
-	PRWindow                *PRWindow           `json:"pr_window,omitempty"`
-	PrecisionMode           string              `json:"precision_mode,omitempty"`
-	DeepCandidateSubsetSize int                 `json:"deep_candidate_subset_size,omitempty"`
-	Counts                  Counts              `json:"counts"`
-	PRs                     []PR                `json:"prs"`
-	Clusters                []PRCluster         `json:"clusters"`
-	Duplicates              []DuplicateGroup    `json:"duplicates"`
-	Overlaps                []DuplicateGroup    `json:"overlaps"`
-	Conflicts               []ConflictPair      `json:"conflicts"`
-	StalenessSignals        []StalenessReport   `json:"stalenessSignals"`
-	Telemetry               *OperationTelemetry `json:"telemetry,omitempty"`
+	Repo                    string            `json:"repo"`
+	GeneratedAt             string            `json:"generatedAt"`
+	AnalysisTruncated       bool              `json:"analysis_truncated,omitempty"`
+	TruncationReason        string            `json:"truncation_reason,omitempty"`
+	MaxPRsApplied           int               `json:"max_prs_applied,omitempty"`
+	PRWindow                *PRWindow         `json:"pr_window,omitempty"`
+	PrecisionMode           string            `json:"precision_mode,omitempty"`
+	DeepCandidateSubsetSize int               `json:"deep_candidate_subset_size,omitempty"`
+	Counts                  Counts            `json:"counts"`
+	PRs                     []PR              `json:"prs"`
+	Clusters                []PRCluster       `json:"clusters"`
+	Duplicates              []DuplicateGroup  `json:"duplicates"`
+	Overlaps                []DuplicateGroup  `json:"overlaps"`
+	Conflicts               []ConflictPair    `json:"conflicts"`
+	StalenessSignals        []StalenessReport `json:"stalenessSignals"`
+	// GarbagePRs contains PRs classified as junk by the outer peel (Layer 1).
+	// These PRs should be closed and do not enter the duplicate, conflict, or review pipeline.
+	GarbagePRs []GarbagePR `json:"garbagePRs,omitempty"`
+	Telemetry  *OperationTelemetry `json:"telemetry,omitempty"`
 	// ReviewPayload contains agentic review results for the analysis snapshot.
 	// v1.3 pipelines populate this field by default so review buckets are first-class
 	// output in the primary API, dashboard, and report surfaces.
@@ -470,6 +481,28 @@ type ReviewResult struct {
 	EvidenceReferences []string `json:"evidence_references"`
 	// NextAction describes the next human action recommended for this PR.
 	NextAction string `json:"next_action"`
+	// SubstanceScore is a 0-100 composite score indicating the PR's overall substance.
+	// Higher scores indicate more substance (file depth, test coverage, freshness, clean findings).
+	SubstanceScore int `json:"substance_score"`
+	// TemporalBucket assigns the PR to now/future/blocked based on substance score and readiness.
+	TemporalBucket string `json:"temporal_bucket"`
+	// Deep judgment layers (6-16)
+	// BlastRadius: how much damage if this goes wrong (low/medium/high)
+	BlastRadius string `json:"blast_radius,omitempty"`
+	// Leverage: 0-1 score of how much other work this unblocks
+	Leverage float64 `json:"leverage,omitempty"`
+	// HasOwner: true if the author is active and the PR is not abandoned
+	HasOwner bool `json:"has_owner"`
+	// Mergeable: from GitHub API mergeable field
+	Mergeable string `json:"mergeable,omitempty"`
+	// StrategicWeight: 0-1 score of how much this moves the project forward
+	StrategicWeight float64 `json:"strategic_weight,omitempty"`
+	// AttentionCost: how expensive this PR is to review (low/medium/high)
+	AttentionCost string `json:"attention_cost,omitempty"`
+	// Reversible: true if the PR only touches tests, docs, or config
+	Reversible bool `json:"reversible"`
+	// SignalQuality: noise or signal based on composite of other layers
+	SignalQuality string `json:"signal_quality,omitempty"`
 	// AnalyzerFindings contains detailed output from each analyzer that contributed to this result.
 	AnalyzerFindings []AnalyzerFinding `json:"analyzer_findings"`
 }

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/report"
+	"github.com/jeffersonnunn/pratc/internal/types"
 	"github.com/spf13/cobra"
 )
 
@@ -52,52 +54,70 @@ Example:
 			fmt.Fprintf(cmd.ErrOrStderr(), "Loading artifacts from: %s\n", resolvedInputDir)
 
 			// Build the PDF exporter
+			// Section order per GUIDELINE.md:
+			// 1. Executive summary (cover + summary + metrics)
+			// 2. Junk/noise (garbage + spam)
+			// 3. Duplicates (canonicals + chains)
+			// 4. Do this now (merge candidates + high value)
+			// 5. Needs review (with risk flags)
+			// 6. Future/blocked (low value, deferred)
+			// 7. Full appendix (all PRs)
+
 			exporter := report.NewPDFExporter(repo, fmt.Sprintf("PR Analysis Report: %s", repo))
 
-			// Add cover section
+			// Load analyze timestamp for cover page.
+			analyzeTimestamp := time.Now()
+			if analyzeData, err := report.ReadAnalyzeArtifact(resolvedInputDir); err == nil {
+				var analyze types.AnalysisResponse
+				if err := json.Unmarshal(analyzeData, &analyze); err == nil && analyze.GeneratedAt != "" {
+					if t, err := time.Parse(time.RFC3339, analyze.GeneratedAt); err == nil {
+						analyzeTimestamp = t
+					}
+				}
+			}
+
+			// 1. Executive summary
 			exporter.AddSection(&report.CoverSection{
 				Repo:        repo,
 				Title:       fmt.Sprintf("PR Analysis Report: %s", repo),
-				GeneratedAt: time.Now(),
+				GeneratedAt: analyzeTimestamp,
 				Summary:     fmt.Sprintf("Automated PR analysis and merge planning report for %s", repo),
+				CacheNote:   "Cluster, graph, and plan steps used --force-cache and may reflect a subset of the full corpus. Analyze step covers all PRs in the snapshot.",
 			})
 
-			// Load summary section
 			if summary, err := report.LoadSummarySection(resolvedInputDir, repo); err == nil {
 				exporter.AddSection(summary)
 			} else {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load summary section: %v\n", err)
 			}
 
-			// Load metrics section
 			if metrics, err := report.LoadMetricsSection(resolvedInputDir, repo); err == nil {
 				exporter.AddSection(metrics)
 			} else {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load metrics section: %v\n", err)
 			}
 
-			// Load cluster section
-			if cluster, err := report.LoadClusterSection(resolvedInputDir, repo); err == nil {
-				exporter.AddSection(cluster)
+			if analystSummary, err := report.LoadAnalystSummarySection(resolvedInputDir, repo); err == nil {
+				exporter.AddSection(analystSummary)
 			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load cluster section: %v\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load analyst summary section: %v\n", err)
 			}
 
-			// Load graph section
-			if graph, err := report.LoadGraphSection(resolvedInputDir, repo); err == nil {
-				exporter.AddSection(graph)
+			// 2. Junk/noise section (garbage + spam)
+			if junk, err := report.LoadSpamJunkSection(resolvedInputDir, repo); err == nil {
+				exporter.AddSection(junk)
 			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load graph section: %v\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load junk section: %v\n", err)
 			}
 
-			// Load plan section
-			if plan, err := report.LoadPlanSection(resolvedInputDir, repo); err == nil {
-				exporter.AddSection(plan)
+			// 3. Duplicates section
+			if duplicates, err := report.LoadDuplicateDetailSection(resolvedInputDir, repo); err == nil {
+				exporter.AddSection(duplicates)
 			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load plan section: %v\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load duplicate detail section: %v\n", err)
 			}
 
-			// Review + analyst packet sections.
+			// 4. Review + analyst sections (do this now, needs review, future/blocked)
 			if !skipReview {
 				if review, err := report.LoadReviewSection(resolvedInputDir, repo); err == nil {
 					exporter.AddSection(review)
@@ -105,38 +125,47 @@ Example:
 					fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load review section: %v\n", err)
 				}
 			}
-			if analystSummary, err := report.LoadAnalystSummarySection(resolvedInputDir, repo); err == nil {
-				exporter.AddSection(analystSummary)
-			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load analyst summary section: %v\n", err)
-			}
+
 			if decisionTrail, err := report.LoadDecisionTrailSection(resolvedInputDir, repo); err == nil {
 				exporter.AddSection(decisionTrail)
 			} else {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load decision trail section: %v\n", err)
 			}
-			if fullTable, err := report.LoadFullPRTableSection(resolvedInputDir, repo); err == nil {
-				exporter.AddSection(fullTable)
-			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load full PR table section: %v\n", err)
-			}
-			if duplicates, err := report.LoadDuplicateDetailSection(resolvedInputDir, repo); err == nil {
-				exporter.AddSection(duplicates)
-			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load duplicate detail section: %v\n", err)
-			}
-			if junk, err := report.LoadSpamJunkSection(resolvedInputDir, repo); err == nil {
-				exporter.AddSection(junk)
-			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load junk section: %v\n", err)
-			}
+
+			// 5. Recommendations
 			if recs, err := report.LoadAnalystRecommendationsSection(resolvedInputDir, repo); err == nil {
 				exporter.AddSection(recs)
 			} else {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load recommendations section: %v\n", err)
 			}
 
-			// Legacy charts remain optional and disabled by default via --skip-charts.
+			// 6. Supporting detail (cluster, graph, plan)
+			if cluster, err := report.LoadClusterSection(resolvedInputDir, repo); err == nil {
+				exporter.AddSection(cluster)
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load cluster section: %v\n", err)
+			}
+
+			if graph, err := report.LoadGraphSection(resolvedInputDir, repo); err == nil {
+				exporter.AddSection(graph)
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load graph section: %v\n", err)
+			}
+
+			if plan, err := report.LoadPlanSection(resolvedInputDir, repo); err == nil {
+				exporter.AddSection(plan)
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load plan section: %v\n", err)
+			}
+
+			// 7. Full appendix (all PRs — the complete list)
+			if fullTable, err := report.LoadFullPRTableSection(resolvedInputDir, repo); err == nil {
+				exporter.AddSection(fullTable)
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load full PR table section: %v\n", err)
+			}
+
+			// Legacy charts remain optional
 			if !skipCharts {
 				exporter.AddSection(&report.ChartsSection{
 					Charts: []report.ChartPlaceholder{

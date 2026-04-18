@@ -14,7 +14,7 @@ type PRFilter struct {
 }
 
 type PRPage struct {
-	PRs       []types.PR
+	PRs        []types.PR
 	NextCursor string
 	HasMore    bool
 }
@@ -30,6 +30,7 @@ type SyncProgress struct {
 	Cursor            string    `json:"cursor"`
 	ProcessedPRs      int       `json:"processed_prs"`
 	TotalPRs          int       `json:"total_prs"`
+	SnapshotCeiling   int       `json:"snapshot_ceiling"`
 	NextScheduledAt   time.Time `json:"next_scheduled_at"`
 	EstimatedRequests int       `json:"estimated_requests"`
 	ScheduledResumeAt time.Time `json:"scheduled_resume_at"`
@@ -41,13 +42,13 @@ type SyncJobStatus string
 
 const (
 	// Explicit job states for v1.4.1+ state machine
-	SyncJobStatusQueued          SyncJobStatus = "queued"           // Job created, not yet started
+	SyncJobStatusQueued          SyncJobStatus = "queued"            // Job created, not yet started
 	SyncJobStatusRunning         SyncJobStatus = "running"           // Job actively processing
 	SyncJobStatusPausedRateLimit SyncJobStatus = "paused_rate_limit" // Paused due to rate limit
-	SyncJobStatusResuming        SyncJobStatus = "resuming"         // Transitioning from paused to running
+	SyncJobStatusResuming        SyncJobStatus = "resuming"          // Transitioning from paused to running
 	SyncJobStatusCompleted       SyncJobStatus = "completed"         // Terminal state
-	SyncJobStatusFailed          SyncJobStatus = "failed"           // Terminal state
-	SyncJobStatusCanceled        SyncJobStatus = "canceled"         // Terminal state
+	SyncJobStatusFailed          SyncJobStatus = "failed"            // Terminal state
+	SyncJobStatusCanceled        SyncJobStatus = "canceled"          // Terminal state
 
 	// Legacy states (deprecated, kept for backward compatibility with existing code)
 	SyncJobStatusInProgress SyncJobStatus = "in_progress" // Deprecated: use Running or Resuming

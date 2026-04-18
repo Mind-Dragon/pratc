@@ -21,7 +21,7 @@ var rootCmd = &cobra.Command{
 
 // ExecuteContext runs the root command with the given context
 func ExecuteContext(ctx context.Context) {
-	fmt.Fprintf(os.Stderr, "Github Pull Request Air Traffic Control v%s %s by Jefferson Nunn\n", version.Version, version.BuildDate)
+	fmt.Fprintf(os.Stderr, "Harness Optimizer v%s built on %s\n", version.Version, version.BuildDate)
 
 	// Show config locations
 	settingsDB := os.Getenv("PRATC_SETTINGS_DB")
