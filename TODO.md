@@ -17,10 +17,17 @@ Most v1.5 features were already implemented in the codebase. This execution sess
 - [x] All tests pass: `go test ./...` + `go vet ./...` clean (27 packages, 0 failures).
 
 **Deferred (requires production run verification):**
-- [ ] Garbage classifier catches > 80% of bad PRs (needs live corpus run)
-- [ ] Duplicate detection finds > 10 groups (needs live corpus run)
-- [ ] Conflict count < 5,000 (needs live corpus run)
-- [ ] Full analysis < 15 minutes (needs live corpus run)
+- [x] Garbage classifier catches > 80% of bad PRs — verified: 14/14 empty/spam/draft PRs caught (100%)
+- [!] Duplicate detection finds > 10 groups — FAILED (see BUG-4 below)
+- [!] Conflict count < 5,000 — FAILED (see BUG-5 below)
+- [!] Full analysis < 15 minutes — FAILED (see BUG-6 below)
+
+**Full corpus run results (openclaw/openclaw, 6,632 PRs, 28.5 min):**
+- 14 garbage (11 empty, 2 short titles, 1 draft) 
+- 0 duplicate groups, 127 overlap groups (all at 0.800 similarity)
+- 92,715 low-severity conflict pairs
+- 81 clusters, 117 stale
+- 5,130 now, 664 future, 838 junk, 0 blocked
 
 ## Critical bugs found during live run (2026-04-18)
 
@@ -31,10 +38,10 @@ Most v1.5 features were already implemented in the codebase. This execution sess
 **Impact:** When `GITHUB_TOKEN` env var is not set, prATC uses unauthenticated GitHub API rate limit (60 req/hr) even though `gh auth token` returns a valid token. This makes any sync of >60 PRs impossible without manually exporting `GITHUB_TOKEN`.
 
 **Fix:**
-- [ ] Change `defaultWorker()` to call `github.ResolveToken(context.Background())` instead of `os.Getenv("GITHUB_TOKEN")`
-- [ ] Pass the resolved token (or error) into the worker constructor
-- [ ] Add test: `TestDefaultWorker_UsesResolvedToken` — verify worker gets token from `gh auth token` fallback
-- [ ] Audit all other `os.Getenv("GITHUB_TOKEN")` usages to ensure they also use `ResolveToken`
+- [x] Change `defaultWorker()` to call `github.ResolveToken(context.Background())` instead of `os.Getenv("GITHUB_TOKEN")`
+- [x] Pass the resolved token (or error) into the worker constructor
+- [x] Add test: `TestDefaultWorker_UsesResolvedToken` — verify worker gets token from `gh auth token` fallback
+- [x] Audit all other `os.Getenv("GITHUB_TOKEN")` usages to ensure they also use `ResolveToken`
 
 ### BUG-2: Repo name case sensitivity causes cache fragmentation
 
@@ -43,12 +50,12 @@ Most v1.5 features were already implemented in the codebase. This execution sess
 **Impact:** Wasted sync time, duplicate data, confusing behavior. User may think the tool is broken when they just used different casing.
 
 **Fix:**
-- [ ] Add `NormalizeRepoName(repo string) string` function that lowercases the owner/repo
-- [ ] Apply normalization at every entry point: sync, analyze, workflow, serve, cluster, graph, plan, report
-- [ ] Migrate existing cache entries: add a migration that lowercases all `repo` columns in: pull_requests, sync_progress, sync_jobs, audit_log, duplicate_groups, conflict_cache, substance_cache
-- [ ] Add test: `TestNormalizeRepoName` — "OpenClaw/OpenClaw", "openclaw/openclaw", "oPeNcLaW/oPeNcLaW" all → "openclaw/openclaw"
-- [ ] Add test: `TestCacheRepoNormalization` — same PR stored under different casings resolves to one entry
-- [ ] Update CLI help text to note repo names are case-insensitive
+- [x] Add `NormalizeRepoName(repo string) string` function that lowercases the owner/repo
+- [x] Apply normalization at every entry point: sync, analyze, workflow, serve, cluster, graph, plan, report
+- [x] Migrate existing cache entries: add a migration that lowercases all `repo` columns in: pull_requests, sync_progress, sync_jobs, audit_log, duplicate_groups, conflict_cache, substance_cache
+- [x] Add test: `TestNormalizeRepoName` — "OpenClaw/OpenClaw", "openclaw/openclaw", "oPeNcLaW/oPeNcLaW" all → "openclaw/openclaw"
+- [x] Add test: `TestCacheRepoNormalization` — same PR stored under different casings resolves to one entry
+- [x] Update CLI help text to note repo names are case-insensitive
 
 ### BUG-3: No pre-flight check or singleton lock for long-running operations
 
@@ -57,26 +64,79 @@ Most v1.5 features were already implemented in the codebase. This execution sess
 2. Detect if another prATC instance is already running against the same repo (causing duplicate API calls, rate limit waste, and timeouts)
 
 **Fix — Pre-flight check:**
-- [ ] Add `preflight` subcommand or `--preflight` flag to sync/workflow
+- [x] Add `preflight` subcommand to sync/workflow
 - [ ] Pre-flight checks:
   - Cached PR count vs live open PR count (shows delta)
   - Estimated API calls needed (based on delta + rate limit remaining)
   - Estimated time (based on API calls / rate limit)
   - Rate limit status (remaining requests, reset time)
   - Whether a fresh sync is even needed (cache is recent enough)
-- [ ] Output: human-readable summary like "60 new PRs to fetch, ~120 API calls, ~2 minutes at current rate. Proceed? [Y/n]"
-- [ ] Add test: `TestPreflight_DeltaEstimate` — cached 1000 PRs, live 1060 PRs → estimate 60 PRs to fetch
+- [x] Output: human-readable summary like "60 new PRs to fetch, ~120 API calls, ~2 minutes at current rate. Proceed? [Y/n]"
+- [x] Add test: `TestPreflight_DeltaEstimate` — cached 1000 PRs, live 1060 PRs → estimate 60 PRs to fetch
 
 **Fix — Singleton lock:**
 - [ ] Add a file-based lock (`~/.pratc/locks/<repo-hash>.lock`) acquired before any sync/workflow/analyze
-- [ ] Lock file contains: PID, start time, command
-- [ ] If lock exists and process is still running → error "another prATC instance is running for this repo (PID X, started Y)"
-- [ ] If lock exists but process is dead → stale lock, auto-clean and proceed
-- [ ] Lock released on exit (defer) or on signal (SIGTERM/SIGINT)
-- [ ] Add `--force` flag to override lock (with warning)
-- [ ] Add test: `TestSingletonLock_AcquireAndRelease` — acquire, verify lock, release, verify clean
-- [ ] Add test: `TestSingletonLock_BlockedByActive` — second acquire fails while first holds lock
-- [ ] Add test: `TestSingletonLock_StaleLockCleanup` — dead PID lock is auto-cleaned
+- [x] Lock file contains: PID, start time, command
+- [x] If lock exists and process is still running → error "another prATC instance is running for this repo (PID X, started Y)"
+- [x] If lock exists but process is dead → stale lock, auto-clean and proceed
+- [x] Lock released on exit (defer) or on signal (SIGTERM/SIGINT)
+- [x] Add `--force` flag to override lock (with warning)
+- [x] Add test: `TestSingletonLock_AcquireAndRelease` — acquire, verify lock, release, verify clean
+- [x] Add test: `TestSingletonLock_BlockedByActive` — second acquire fails while first holds lock
+- [x] Add test: `TestSingletonLock_StaleLockCleanup` — dead PID lock is auto-cleaned
+
+### BUG-4: Duplicate detection returns 0 groups (threshold too high)
+
+**Found:** Full corpus run on openclaw/openclaw (6,632 PRs) — 0 duplicate groups detected.
+
+**Root cause:** The duplicate threshold is 0.90 (in `types.DuplicateThreshold`). The pairwise scoring formula `(0.4*titleScore)+(0.4*fileScore)+(0.2*bodyScore)` produces scores that max at 0.800 due to the title substring containment boost (line 1599 in service.go: `titleScore = maxFloat(titleScore, 0.80)`). The 127 overlap groups all land at exactly 0.800 similarity — they never reach 0.90.
+
+The title containment boost intentionally caps at 0.80, but the duplicate threshold is 0.90. These two values are incompatible — the boost can never produce a duplicate.
+
+**Fix:**
+- [ ] Lower `DuplicateThreshold` from 0.90 to 0.80, OR
+- [ ] Add file-overlap as a primary duplicate signal: if two PRs share > 70% of changed files AND have any title similarity (Jaccard > 0), classify as duplicate regardless of composite score
+- [ ] Add test: `TestDuplicateDetection_FindsKnownDuplicates` — create PR pairs with known duplicate characteristics, verify they are grouped
+- [ ] Add test: `TestDuplicateDetection_ThresholdReached` — verify the scoring formula can actually produce scores above the duplicate threshold
+- [ ] Run against openclaw/openclaw and verify > 10 duplicate groups found
+
+### BUG-5: Conflict count still 92,715 despite noise filtering
+
+**Found:** Full corpus run on openclaw/openclaw — 92,715 conflict pairs (all low severity). Previous goal was < 5,000.
+
+**Root cause:** Noise file filtering works (all conflicts are "low" severity now, not unclassified noise), but the conflict graph still counts ANY file overlap as a conflict. In a monorepo, many PRs touch 1-2 common files (e.g., `go.mod`, `README.md`, `.gitignore`) that aren't in the noise list. These create thousands of low-value conflict pairs.
+
+The current logic: `buildConflicts()` iterates all edges from the graph, filters noise files, and creates a ConflictPair for each edge with remaining signal files. But it doesn't filter by minimum shared-file count — a single shared config file still creates a conflict.
+
+**Fix:**
+- [ ] Add minimum shared-file threshold: require at least 2 shared signal files to create a conflict pair
+- [ ] OR: require at least 1 source code file (not just config/docs) in the shared set
+- [ ] Add `noiseFiles` entries for common monorepo files: `go.mod`, `go.sum`, `README.md`, `.gitignore`, `Makefile`, `Dockerfile`, `LICENSE`
+- [ ] Add test: `TestBuildConflicts_MinimumFileThreshold` — PRs sharing only 1 file should not produce a conflict
+- [ ] Run against openclaw/openclaw and verify conflict count < 5,000
+
+### BUG-6: Analysis takes 28.5 minutes for 6,632 PRs (exceeds 15-min goal)
+
+**Found:** Full corpus run on openclaw/openclaw — 1,708,836ms (28.5 min). SLO is 300s (5 min), goal is 900s (15 min).
+
+**Root cause:** The O(n^2) pairwise duplicate detection is the bottleneck. For 6,632 PRs, that's ~22 million comparisons. Each comparison tokenizes titles, computes Jaccard similarity, and checks file overlap. With goroutine workers, the wall-clock time is still dominated by the total computation.
+
+**Fix — parallelization:**
+- [ ] The duplicate detection is already parallelized with goroutine workers, but the inner loop is still single-threaded per worker. Consider SIMD or batch Jaccard computation.
+- [ ] Profile with `go tool pprof` to find the actual hot path (likely `util.Jaccard` or `util.Tokenize`)
+- [ ] Add early exit: if `titleScore < 0.03` and `fileScore == 0`, skip body tokenization entirely
+
+**Fix — algorithmic:**
+- [ ] Use MinHash or LSH (Locality-Sensitive Hashing) to reduce O(n^2) to O(n) approximate nearest-neighbor
+- [ ] Or: skip duplicate detection for PRs that are already classified as garbage (they're already filtered, but the tokens are still pre-computed)
+- [ ] Cache tokenized titles in SQLite to avoid re-tokenizing on every run
+
+**Fix — intermediate caching:**
+- [ ] After first run, cache duplicate groups with corpus fingerprint
+- [ ] On subsequent runs with same corpus, load from cache instead of recomputing
+- [ ] The intermediate caching (schema v7) infrastructure exists but isn't wired into the analysis pipeline yet
+
+**Target:** < 15 minutes for 6,632 PRs
 
 ## Source of truth hierarchy
 
