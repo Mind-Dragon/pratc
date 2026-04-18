@@ -4,57 +4,105 @@ prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull re
 
 ## Project Status
 
-- **Current release line:** `1.4.2.x`
-- **Current direction:** full-corpus PR triage with layered decision reasoning, analyst-packet reporting, and managed background sync/restartability
+- **Current release line:** `1.5.x`
+- **Current direction:** v1.5 triage engine — duplicate detection, conflict filtering, intermediate caching, and performance optimization
 - **Default API port:** `7400` (reserved prATC range: `7400-7500`)
+- **Last full corpus run:** openclaw/openclaw (6,632 PRs, 28.5 min)
 
 ## Documentation
 
-- [INSTALL.md](INSTALL.md) — Installation guide with quick start and troubleshooting
-- [RATELIMITS.md](RATELIMITS.md) — GitHub API rate limits and prATC budget management
 - [CHANGELOG.md](CHANGELOG.md) — Release history
-- [ROADMAP.md](ROADMAP.md) — Current release line and upcoming priorities (v1.4.2-v1.6)
-- [version1.4.2.md](version1.4.2.md) — Shipped v1.4.2 operating model, resumable sync, and explicit states
-- [projects/](projects/) — persistent workflow runs and document-style artifacts
-- [docs/plans/2026-04-09-pratc-v1-3-review-engine-design.md](docs/plans/2026-04-09-pratc-v1-3-review-engine-design.md) — v1.3 review engine design
+- [ROADMAP.md](ROADMAP.md) — Current and upcoming releases (v1.5, v1.6, v1.7)
+- [TODO.md](TODO.md) — Active development plan with bug tracker
+- [version1.4.2.md](version1.4.2.md) — Shipped v1.4.2 operating model
+- [ARCHITECTURE.md](ARCHITECTURE.md) — System shape, data flow, and technical reference
 
 ## Features
 
 - **CLI Analysis**: Analyze, cluster, graph, and plan merges for GitHub repositories
+- **Garbage Classifier**: Automatically filters empty PRs, bot PRs, spam, and drafts before analysis
+- **Duplicate Detection**: Pairwise similarity scoring with configurable threshold (0.85)
+- **Conflict Graph**: Noise-filtered file overlap detection with severity scoring
+- **Substance Scoring**: 0-100 composite score (file depth, test coverage, freshness, clean findings)
+- **Deep Judgment Layers**: 16-layer decision ladder (confidence, dependency, blast radius, leverage, ownership, stability, mergeability, strategic weight, attention cost, reversibility, signal quality)
+- **Temporal Routing**: PRs split into `now`, `future`, and `blocked` buckets
+- **Intermediate Caching**: Duplicate groups, conflict graph, and substance scores cached in SQLite with corpus fingerprinting
+- **PDF Report**: Executive summary, junk section, duplicate chains, near-duplicates, now/future/blocked queues, full appendix
+- **Preflight Check**: Estimate sync time and delta before committing to a long run
+- **Singleton Lock**: Prevents concurrent prATC instances against the same repo
+- **Repo Normalization**: Case-insensitive repo names (OpenClaw/openclaw → openclaw/openclaw)
+- **Rate-Limit Aware**: Built-in retry, budget management, and auto-resume
 - **Web Dashboard**: ATC overview, triage inbox, dependency graphs, and merge planning
-- **ML Clustering**: Python service for PR clustering and duplicate detection
-- **SQLite Cache**: Incremental GitHub sync with persisted state
-- **Omni Batch Planning**: Select PRs by ID ranges and boolean expressions via selector syntax
-- **Rate-Limit Aware**: Built-in retry and budget management
-- **Review Pipeline**: Advisory analyzers for security, reliability, performance, and quality review output
-- **v1.4.2 Decision Map**: Risk buckets, decision trails, analyst summaries, and PDF packet generation
-- **Persistent project runs**: Workflow artifacts live under `projects/<repo>/runs/<timestamp>/` with a README manifest so runs behave like document sets, not scratch output.
 
 ## Quick Start
 
 ```bash
-# Build everything
-make verify-env
-make build
-make test
+# Build
+go build -o ./pratc-bin ./cmd/pratc/
 
-# Run API server
+# Pre-flight check (estimate before syncing)
+pratc preflight --repo=owner/repo
+
+# Full workflow (sync + analyze)
+pratc workflow --repo=owner/repo --use-cache-first --progress
+
+# Analyze from cache
+pratc analyze --repo=owner/repo --force-cache --format=json
+
+# Generate PDF report
+pratc report --repo=owner/repo --input-dir=projects/<repo>/runs/<timestamp>
+
+# API server
 pratc serve --port=7400
-
-# Run web dashboard (dev mode)
-cd web && bun run dev
 ```
 
 ## CLI Commands
+
+### preflight
+Pre-flight check for repository sync planning. Estimates delta, API calls, time, and rate limit status.
+
+```bash
+pratc preflight --repo=owner/repo
+```
+
+Output:
+```
+Preflight for openclaw/openclaw
+Cache:          6,646 PRs
+GitHub:         19,241 open PRs
+Delta:          12,595 PRs to fetch
+Rate limit:     4999 remaining (resets in 18:32 UTC)
+Est. API calls: ~25,316
+Est. time:      ~5.3 hours (at 4800 req/hr)
+Lock status:    clear (no other prATC instance running)
+```
 
 ### analyze
 Analyze pull requests for a repository.
 
 ```bash
 pratc analyze --repo=owner/repo --format=json
+pratc analyze --repo=owner/repo --force-cache           # Skip sync, use cached data
+pratc analyze --repo=owner/repo --use-cache-first        # Prefer cache, sync if stale
+pratc analyze --repo=owner/repo --max-prs=1000           # Cap analysis at 1000 PRs
 ```
 
-Output includes: `repo`, `generatedAt`, `counts`, `clusters`, `duplicates`, `overlaps`, `conflicts`, `stalenessSignals`.
+### workflow
+Run sync to completion, then analyze.
+
+```bash
+pratc workflow --repo=owner/repo --use-cache-first --progress
+pratc workflow --repo=owner/repo --refresh-sync --sync-max-prs=500
+```
+
+### sync
+Sync repository metadata and refs.
+
+```bash
+pratc sync --repo=owner/repo
+pratc sync --repo=owner/repo --sync-max-prs=200          # Cap initial fetch
+pratc sync --repo=owner/repo --refresh-sync              # Force fresh sync
+```
 
 ### cluster
 Cluster pull requests by similarity.
@@ -63,46 +111,34 @@ Cluster pull requests by similarity.
 pratc cluster --repo=owner/repo --format=json
 ```
 
-Output includes: `repo`, `generatedAt`, `model`, `thresholds`, `clusters`.
-
 ### graph
 Generate dependency/conflict graphs.
 
 ```bash
-pratc graph --repo=owner/repo --format=dot    # Default DOT output
-pratc graph --repo=owner/repo --format=json   # JSON output
+pratc graph --repo=owner/repo --format=dot
+pratc graph --repo=owner/repo --format=json
 ```
 
 ### plan
-Generate a ranked merge plan. **Dry-run by default** (no changes executed).
+Generate a ranked merge plan. Dry-run by default.
 
 ```bash
 pratc plan --repo=owner/repo --target=20
 pratc plan --repo=owner/repo --target=20 --mode=combination
-pratc plan --repo=owner/repo --target=20 --include-bots
-pratc plan --repo=owner/repo --target=20 --dry-run=false   # Execute mode
 ```
 
-**Flags:**
-- `--target`: Number of PRs to include (default: 20)
-- `--mode`: Formula mode - `combination` (default), `permutation`, `with_replacement`
-- `--dry-run`: Plan only, do not execute (default: `true`, always true if not explicitly set)
-- `--include-bots`: Include bot PRs in merge plan (default: `false`)
+### report
+Generate PDF report from workflow artifacts.
+
+```bash
+pratc report --repo=owner/repo --input-dir=projects/<repo>/runs/<timestamp> --output=report.pdf
+```
 
 ### serve
 Start the API server.
 
 ```bash
 pratc serve --port=7400
-pratc serve --port=7400 --repo=owner/repo   # Default repo for API
-```
-
-### sync
-Sync repository metadata and refs.
-
-```bash
-pratc sync --repo=owner/repo
-pratc sync --repo=owner/repo --watch --interval=5m
 ```
 
 ### audit
@@ -112,306 +148,74 @@ Query the audit log.
 pratc audit --limit=20 --format=json
 ```
 
-## API Routes
+## Triage Pipeline
 
-### Health
-- `GET /healthz` - Health check
-- `GET /api/health` - Health check (alias)
-
-### Settings
-- `GET /api/settings?repo=` - Get settings
-- `POST /api/settings` - Set setting
-- `DELETE /api/settings?scope=&repo=&key=` - Delete setting
-- `GET /api/settings/export?scope=&repo=` - Export as YAML
-- `POST /api/settings/import?scope=&repo=` - Import YAML
-
-### Analysis
-Legacy routes (query string repo):
-- `GET /analyze?repo=` - Analyze PRs
-- `GET /cluster?repo=` - Cluster PRs
-- `GET /graph?repo=&format=` - Graph PRs (add `&format=dot` for DOT output)
-- `GET /plan?repo=&target=&mode=` - Plan PRs
-
-RESTful routes (`/api/repos/:owner/:repo/...`):
-- `GET /api/repos/:owner/:repo/analyze`
-- `GET /api/repos/:owner/:repo/cluster`
-- `GET /api/repos/:owner/:repo/graph`
-- `GET /api/repos/:owner/:repo/plan` or `/api/repos/:owner/:repo/plans`
-- `GET /api/repos/:owner/:repo/plan/omni` - Omni batch plan with selector
-
-### Sync
-- `POST /api/repos/:owner/:repo/sync` - Trigger sync
-- `GET /api/repos/:owner/:repo/sync/stream` - Stream sync progress
-
-### Plan Query Parameters
-When calling plan endpoints, these query parameters are supported:
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `target` | int | 20 | Number of PRs to include |
-| `mode` | string | `combination` | Formula mode: `combination`, `permutation`, `with_replacement` |
-| `cluster_id` | string | - | Filter to specific cluster |
-| `exclude_conflicts` | bool | false | Exclude conflicting PRs |
-| `stale_score_threshold` | float | 0.0 | Staleness threshold (0-1) |
-| `candidate_pool_cap` | int | 100 | Max candidate pool size (1-500) |
-| `score_min` | float | 0.0 | Minimum PR score (0-100) |
-| `dry_run` | bool | true | Plan only, do not execute |
-
-## Omni Batch Planning
-
-Omni mode lets you select specific PRs by ID using a selector expression. This is useful when you already know which PRs you want to plan against, bypassing the normal scoring and filtering pipeline.
-
-### API Endpoint
+The analysis pipeline processes PRs through layered decision stages:
 
 ```
-GET /api/repos/:owner/:repo/plan/omni
+Garbage classifier (empty, bot, spam, draft)
+    ↓
+Duplicate detection (pairwise similarity, threshold 0.85)
+    ↓
+Conflict graph (noise-filtered file overlap, severity scoring)
+    ↓
+Substance scoring (0-100: file depth, tests, freshness, findings)
+    ↓
+Temporal routing (now / future / blocked)
+    ↓
+Deep judgment (16 layers: confidence, dependency, blast radius, ...)
+    ↓
+Review pipeline (security, reliability, performance analyzers)
+    ↓
+PDF report (executive summary → junk → dupes → now → review → future → appendix)
 ```
 
-### Query Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `selector` | string | *(required)* | PR selector expression (see syntax below) |
-| `target` | int | 20 | Number of PRs to select from the first stage |
-| `stage_size` | int | 64 | Maximum PRs per processing stage |
-
-### Selector Syntax
-
-Selectors use a simple expression language to reference PRs by number.
-
-**Grammar:**
-
-```
-expr       → orExpr
-orExpr     → andExpr (OR andExpr)*
-andExpr    → term (AND term)*
-term       → '(' expr ')' | atomic
-atomic     → ID | RANGE
-```
-
-- **ID**: A single PR number (e.g., `123`)
-- **RANGE**: Two IDs separated by a hyphen, inclusive (e.g., `100-200`)
-- **AND**: Intersection of two sets (binds tighter than OR)
-- **OR**: Union of two sets (loosest precedence)
-- **Parentheses**: Override default precedence
-
-### Selector Examples
-
-```bash
-# Single PR
-curl "http://localhost:7400/api/repos/owner/repo/plan/omni?selector=42"
-
-# Range of PRs (inclusive)
-curl "http://localhost:7400/api/repos/owner/repo/plan/omni?selector=1-100"
-
-# Multiple ranges combined with AND (intersection)
-# Selects PRs present in both ranges: {100, 101, ..., 150}
-curl "http://localhost:7400/api/repos/owner/repo/plan/omni?selector=50-150+AND+100-200"
-# Note: URL-encode spaces as + or %20
-
-# Multiple ranges combined with OR (union)
-# Selects PRs from either range
-curl "http://localhost:7400/api/repos/owner/repo/plan/omni?selector=1-50+OR+200-250"
-
-# Grouping with parentheses
-# Selects intersection of (1-100 OR 300-400) with 50-150
-curl "http://localhost:7400/api/repos/owner/repo/plan/omni?selector=(1-100+OR+300-400)+AND+50-150"
-# Result: {50, 51, ..., 100}
-
-# With custom stage size and target
-curl "http://localhost:7400/api/repos/owner/repo/plan/omni?selector=1-200&target=10&stage_size=32"
-```
-
-### Response Format
-
-```json
-{
-  "repo": "owner/repo",
-  "generatedAt": "2026-04-02T12:00:00Z",
-  "selector": "1-100",
-  "mode": "omni_batch",
-  "stageCount": 2,
-  "stages": [
-    { "stage": 1, "stageSize": 64, "matched": 64, "selected": 20 },
-    { "stage": 2, "stageSize": 64, "matched": 37, "selected": 0 }
-  ],
-  "selected": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
-  "ordering": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-}
-```
-
-- **stages**: The matched PRs are divided into batches of `stage_size`. Only the first stage populates the `selected` list, up to `target` PRs.
-- **selected**: PR IDs chosen from the first stage (limited by `target`).
-- **ordering**: Merge ordering for the selected PRs.
-
-### Integration with Other Commands
-
-Omni mode works alongside the standard analyze and config workflow:
-
-```bash
-# 1. Analyze the repo to understand the PR landscape
-pratc analyze --repo=owner/repo --format=json
-
-# 2. Configure planning settings
-pratc config set --scope=repo --repo=owner/repo planning.target 20
-
-# 3. Use omni mode for targeted planning on a specific PR range
-curl "http://localhost:7400/api/repos/owner/repo/plan/omni?selector=50-150"
-```
-
-## Dashboard
-
-prATC provides a dual dashboard system for monitoring sync operations and managing pull requests in real time. Both dashboards share the same data and update simultaneously.
-
-### TUI Dashboard (Terminal)
-
-A lightweight terminal-based dashboard perfect for server environments and quick checks.
-
-**Quick Start:**
-
-```bash
-# Start the TUI dashboard
-pratc monitor
-
-# Or start server with monitoring enabled
-pratc serve --port=7400 --monitor
-```
-
-**Features:**
-
-- **Three-zone layout:** Jobs panel, Timeline visualization, Rate Limit status
-- **Console logs:** Full-width log viewer with last 1,000 entries
-- **Keyboard controls:** Navigate with arrow keys, Tab to switch zones
-- **Real-time updates:** Sync job progress updates every 2 seconds
-- **Color-coded status:** Cyan (active), Green (success), Amber (warning), Red (critical)
-
-**Keyboard Shortcuts:**
-
-| Key | Action |
-|-----|--------|
-| `Tab` | Switch between zones |
-| `↑/↓` | Navigate jobs or scroll logs |
-| `←/→` | Scroll timeline |
-| `Enter` | View job details |
-| `p` | Pause monitoring |
-| `r` | Resume monitoring |
-| `s` | Restart sync |
-| `q` or `?` | Quit or toggle help |
-
-### Web Dashboard (Browser)
-
-A responsive browser-based interface ideal for daily monitoring and team visibility.
-
-**Quick Start:**
-
-```bash
-# Terminal 1: Start the API server
-pratc serve --port=7400
-
-# Terminal 2: Start the web dashboard (dev mode)
-cd web && bun run dev
-```
-
-Then open `http://localhost:3000/monitor` in your browser.
-
-**Features:**
-
-- **Responsive design:** Adapts to desktop, tablet, and mobile screens
-- **Interactive panels:** Click to expand job details, drag to scroll timeline
-- **Auto-refresh:** Jobs update every 10 seconds, rate limit every 30 seconds
-- **Log filtering:** Filter by level (Error, Warning, Info, Debug)
-- **Search functionality:** Find specific events in console logs
-
-**Layout by Screen Size:**
-
-- **Desktop (>1439px):** Three-column grid (Jobs, Timeline, Rate Limit)
-- **Tablet (768px-1439px):** Two-column grid
-- **Mobile (<768px):** Single column, stacked vertically
-
-### Dashboard Features
-
-Both dashboards provide:
-
-| Feature | Description |
-|---------|-------------|
-| **Sync Jobs** | Active sync operations with progress percentage and status |
-| **Timeline** | Activity visualization over time (15-minute intervals) |
-| **Rate Limit** | GitHub API budget status with remaining requests and reset time |
-| **Console** | Real-time system logs with color-coded severity levels |
-| **Pause/Resume** | Manual control when rate limit is critical |
-
-### Documentation
-
-- **[Dashboard User Guide](docs/dashboard-user-guide.md)** - Complete guide for TUI and Web dashboards
-- **[Monitor API Docs](docs/api/monitor-endpoints.md)** - WebSocket API for real-time updates
-
-### Screenshots
-
-*Screenshots showing the TUI three-zone layout and Web dashboard responsive design would appear here.*
-
-- **TUI Dashboard:** Terminal showing Jobs, Timeline, and Rate Limit panels with console logs below
-- **Web Dashboard:** Browser interface with interactive cards, timeline visualization, and rate limit gauge
+Every PR is accounted for. Every decision carries a reason code. No PR vanishes without an explanation.
 
 ## Repository Layout
 
 ```text
-cmd/pratc/          # CLI entrypoints
-internal/           # Go packages
-  cmd/              # CLI command implementations
-  app/              # Service layer
-  cache/            # SQLite persistence
-  github/           # GitHub client
-  filter/           # Pre-filter pipeline
-  formula/          # Combinatorial formula engine
-  graph/            # Dependency graph engine
-  planner/          # Merge planning
-  settings/         # Settings management
-  sync/             # Background sync
-  types/            # Shared types
-ml-service/         # Python ML service
-web/                # TypeScript Next.js dashboard
-fixtures/           # Test fixtures
+cmd/pratc/          CLI entrypoints
+internal/
+  app/              Service layer, pipeline orchestration, garbage/duplicate/conflict logic
+  cache/            SQLite persistence (schema v7, intermediate caching)
+  cmd/              CLI command implementations (preflight, lock, sync, analyze, ...)
+  github/           GitHub client with auth passthrough
+  graph/            Dependency graph engine
+  planning/         Pool selection, hierarchical planning, pairwise executor
+  report/           PDF generation (analyst sections, near-duplicate detail)
+  review/           Deep judgment layers, substance scoring, temporal routing
+  sync/             Background sync, rate-limit guard, bootstrap streaming
+  types/            Shared types, constants, repo normalization
+ml-service/         Python ML service
+web/                TypeScript Next.js dashboard
+fixtures/           Test fixtures
+projects/           Persistent workflow runs and PDF reports
 ```
 
 ## Configuration
 
-Environment variables:
-
 | Variable | Description |
 |----------|-------------|
 | `PRATC_PORT` | API server port (default: 7400) |
-| `PRATC_DB_PATH` | SQLite database path |
+| `PRATC_DB_PATH` | SQLite database path (default: ~/.pratc/pratc.db) |
 | `PRATC_SETTINGS_DB` | Settings database path |
-| `PRATC_ANALYSIS_BACKEND` | Analysis backend: `local` or `remote` |
-| `GITHUB_TOKEN` | GitHub API token |
+| `GITHUB_TOKEN` | GitHub API token (falls back to `gh auth token`) |
+
+## Auth
+
+prATC resolves GitHub tokens in order:
+1. `GITHUB_TOKEN` / `GH_TOKEN` / `GITHUB_PAT` environment variable
+2. `gh auth token` (from logged-in `gh` CLI session)
 
 ## Testing
 
 ```bash
-# Go tests
+go test ./...
 go test -race -v ./...
-
-# Python tests
-uv run pytest -v
-
-# Web tests
-bun run test
-
-# All tests
-make test
+go vet ./...
 ```
-
-## Exit Codes
-
-- `0` - Success
-- `1` - Runtime failure
-- `2` - Invalid arguments
-
-## Duplicate Classification
-
-- Similarity > 0.90: duplicate
-- Similarity 0.70-0.90: overlapping
 
 ## License
 
-MIT
+FSL-1.1-Apache-2.0 (non-commercial, converts to Apache 2.0 after 2 years)

@@ -1,108 +1,93 @@
-# Ignore all dot directories by default (use ! to keep specific ones)
+
 **/.*
-!.gitignore
-!.env.example
-
-# prATC project run artifacts
-/projects/
-
-# prATC analysis results and workflow outputs
-.pratc/
-.pratc-tree/
-*.pratc.json
-workflows/
-
-# Development / agent workspaces (not part of release)
-.sisyphus/
-.worktrees/
+*~
 .archives/
 .beads/
-.ruff_cache/
-.docs/
-.plans/
-
-# OS / editor
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
+bin/
+build/
+# Build artifacts
+bun.lock
+# Bun lock (we use package-lock.json for reproducibility)
+.cache/
 .claude/
-*.swp
-*.swo
-*~
-
-# Env / secrets
+.coverage
+coverage/
+coverage.out
+*.crt
+*.db
+*.der
+# Development / agent workspaces (not part of release)
+.direnv/
+dist/
+.docker/
+# Docker
+.docs/
+.DS_Store
 .env
 .env.*
 !.env.example
 .envrc
-.direnv/
-*.local
-*.pem
-*.key
-*.p12
-*.pfx
-*.crt
-*.der
-
-# Logs / temp
-*.log
-.cache/
-tmp/
-temp/
-.tmp/
-
+# Env / secrets
+fixtures/cache/
+# Fixtures data (fetched via scripts/fetch_fixtures.py - keep script, ignore data)
+fixtures/*.json
+fixtures/prs/
+fixtures/tmp/
+!.gitignore
 # Go
-bin/
-dist/
-coverage.out
-*.test
+.idea/
+# Ignore all dot directories by default (use ! to keep specific ones)
+*.key
+*.local
+# Local generated media/artifacts
+*.log
+# Logs / temp
+.mypy_cache/
+.next/
+next-env.d.ts
+# Next.js generated
+node_modules/
+# Node / web
+# OS / editor
+out/
+*.p12
+*.pdf
+*.pem
+*.pfx
+.plans/
+playwright-report/
+.pratc/
 /pratc
-
-# Python
+# prATC analysis results and workflow outputs
+pratc-bin.dummy
+*.pratc.json
+# prATC project run artifacts
+.pratc-tree/
+/projects/
 __pycache__/
 *.py[cod]
 .pytest_cache/
-.mypy_cache/
+# Python
 .ruff_cache/
-.coverage
-.venv/
-venv/
-
-# Node / web
-node_modules/
-.next/
-.turbo/
-coverage/
-playwright-report/
-test-results/
-*.tsbuildinfo
-
-# Build artifacts
-build/
-out/
+scorecard.png
+.sisyphus/
 *.sqlite
 *.sqlite3
-*.db
-/--viewport
-
-# Local generated media/artifacts
-scorecard.png
+*.swo
+*.swp
+temp/
+*.test
+test-results/
+test_scheduler_debug.go
+Thumbs.db
+.tmp/
+tmp/
+*.tsbuildinfo
+.turbo/
+.venv/
+venv/
 videos/
-
-# Fixtures data (fetched via scripts/fetch_fixtures.py - keep script, ignore data)
-fixtures/prs/
-fixtures/cache/
-fixtures/tmp/
-fixtures/*.json
-
-# Docker
-.docker/
-
-# Next.js generated
-next-env.d.ts
-
-# Bun lock (we use package-lock.json for reproducibility)
-bun.lock
+/--viewport
+.vscode/
+workflows/
 .worktrees/
-pratc-bin.dummy
