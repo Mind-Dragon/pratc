@@ -414,41 +414,107 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 		}
 	}
 
-	dupStart := time.Now()
-	var mergedPRs []review.MergedPRRecord
-	if s.cacheStore != nil {
-		var err error
-		mergedPRs, err = review.FetchMergedPRs(ctx, s.cacheStore, repoName)
-		if err != nil {
-			log.Warn("failed to fetch merged PRs", "error", err)
-		}
+	// Compute corpus fingerprint for intermediate result caching
+	var fingerprint string
+	if s.cacheStore != nil && len(prs) > 0 {
+		fingerprint = cache.CorpusFingerprint(prs)
 	}
-	duplicates, overlaps := classifyDuplicates(prs, mergedPRs, s.emit)
-	telemetry.StageLatenciesMS["duplicates_ms"] = int(time.Since(dupStart).Milliseconds())
-	s.emit("duplicates", len(duplicates), len(prs))
 
-	// Attempt ML-backed duplicate detection via Voyage if configured.
-	// Skip ML bridge in force-cache mode to avoid subprocess overhead.
-	if !s.allowForceCache && s.mlBridge != nil && s.mlBridge.Available() {
-		if mlDups, mlOverlaps, err := s.mlBridge.Duplicates(ctx, repoName, prs, types.DuplicateThreshold, types.OverlapThreshold, logger.RequestIDFromContext(ctx)); err == nil {
-			if len(mlDups) > 0 {
-				duplicates = mlDups
+	var duplicates []types.DuplicateGroup
+	var overlaps []types.DuplicateGroup
+	dupCacheHit := false
+
+	// Duplicate detection: try cache first
+	if s.cacheStore != nil && fingerprint != "" {
+		if cachedGroups, found, err := s.cacheStore.LoadDuplicateGroups(repoName, fingerprint); err == nil && found {
+			// Cache stores all groups; use similarity threshold to separate duplicates from overlaps
+			for _, g := range cachedGroups {
+				if g.Similarity >= types.DuplicateThreshold {
+					duplicates = append(duplicates, g)
+				} else if g.Similarity >= types.OverlapThreshold {
+					overlaps = append(overlaps, g)
+				}
 			}
-			if len(mlOverlaps) > 0 {
-				overlaps = mlOverlaps
+			dupCacheHit = true
+			telemetry.StageLatenciesMS["duplicates_ms"] = 0
+			s.emit("duplicates", len(duplicates), len(prs))
+			log.Info("duplicate groups loaded from cache", "dup_count", len(duplicates), "overlap_count", len(overlaps))
+		}
+	}
+
+	if !dupCacheHit {
+		dupStart := time.Now()
+		var mergedPRs []review.MergedPRRecord
+		if s.cacheStore != nil {
+			var err error
+			mergedPRs, err = review.FetchMergedPRs(ctx, s.cacheStore, repoName)
+			if err != nil {
+				log.Warn("failed to fetch merged PRs", "error", err)
+			}
+		}
+		duplicates, overlaps = classifyDuplicates(prs, mergedPRs, s.emit)
+		telemetry.StageLatenciesMS["duplicates_ms"] = int(time.Since(dupStart).Milliseconds())
+		s.emit("duplicates", len(duplicates), len(prs))
+
+		// Attempt ML-backed duplicate detection via Voyage if configured.
+		// Skip ML bridge in force-cache mode to avoid subprocess overhead.
+		if !s.allowForceCache && s.mlBridge != nil && s.mlBridge.Available() {
+			if mlDups, mlOverlaps, err := s.mlBridge.Duplicates(ctx, repoName, prs, types.DuplicateThreshold, types.OverlapThreshold, logger.RequestIDFromContext(ctx)); err == nil {
+				if len(mlDups) > 0 {
+					duplicates = mlDups
+				}
+				if len(mlOverlaps) > 0 {
+					overlaps = mlOverlaps
+				}
+			}
+		}
+
+		// Save duplicate groups to cache (both duplicates and overlaps)
+		if fingerprint != "" && (len(duplicates) > 0 || len(overlaps) > 0) {
+			allGroups := make([]types.DuplicateGroup, 0, len(duplicates)+len(overlaps))
+			allGroups = append(allGroups, duplicates...)
+			allGroups = append(allGroups, overlaps...)
+			if err := s.cacheStore.SaveDuplicateGroups(repoName, allGroups, fingerprint); err != nil {
+				log.Warn("failed to save duplicate groups to cache", "error", err)
 			}
 		}
 	}
+
 	var conflictProgress func(processed int, total int)
 	if meta.LiveSource {
 		writeLivePhaseStatus(log, "analysis in progress", len(prs))
 		conflictProgress = newLiveAnalysisProgressReporter(log, 100)
 	}
-	conflictStart := time.Now()
-	conflicts := buildConflicts(repoName, prs, conflictProgress)
-	telemetry.StageLatenciesMS["conflicts_ms"] = int(time.Since(conflictStart).Milliseconds())
-	telemetry.GraphDeltaEdges = len(conflicts)
-	s.emit("conflicts", len(conflicts), len(prs))
+
+	var conflicts []types.ConflictPair
+	conflictCacheHit := false
+
+	// Conflict detection: try cache first
+	if s.cacheStore != nil && fingerprint != "" {
+		if cachedConflicts, found, err := s.cacheStore.LoadConflictCache(repoName, fingerprint); err == nil && found {
+			conflicts = cachedConflicts
+			conflictCacheHit = true
+			telemetry.StageLatenciesMS["conflicts_ms"] = 0
+			telemetry.GraphDeltaEdges = len(conflicts)
+			s.emit("conflicts", len(conflicts), len(prs))
+			log.Info("conflicts loaded from cache", "count", len(conflicts))
+		}
+	}
+
+	if !conflictCacheHit {
+		conflictStart := time.Now()
+		conflicts = buildConflicts(repoName, prs, conflictProgress)
+		telemetry.StageLatenciesMS["conflicts_ms"] = int(time.Since(conflictStart).Milliseconds())
+		telemetry.GraphDeltaEdges = len(conflicts)
+		s.emit("conflicts", len(conflicts), len(prs))
+
+		// Save conflicts to cache
+		if fingerprint != "" && len(conflicts) > 0 {
+			if err := s.cacheStore.SaveConflictCache(repoName, conflicts, fingerprint); err != nil {
+				log.Warn("failed to save conflicts to cache", "error", err)
+			}
+		}
+	}
 	deepSubsetSize := 0
 	if s.precisionMode == precisionModeDeep {
 		deepSubsetSize = min(len(prs), s.deepCandidateSubsetSize)
@@ -1734,22 +1800,42 @@ func flattenGroups(input map[int]*types.DuplicateGroup) []types.DuplicateGroup {
 
 // noiseFiles are files that every PR in a monorepo touches, producing useless conflict noise.
 var noiseFiles = map[string]bool{
+	// JavaScript/TypeScript package managers
 	"package.json":        true,
 	"pnpm-lock.yaml":      true,
 	"yarn.lock":           true,
 	"package-lock.json":   true,
 	"bun.lockb":           true,
+	// Go modules
+	"go.mod":              true,
+	"go.sum":              true,
+	// Rust
+	"Cargo.toml":          true,
+	"Cargo.lock":          true,
+	// Python
+	"pyproject.toml":      true,
+	"setup.py":            true,
+	"requirements.txt":    true,
+	// Build
+	"Makefile":            true,
+	"Dockerfile":          true,
+	// VCS/config
 	".gitignore":          true,
+	".editorconfig":       true,
+	// Linters/formatters
 	".eslintrc":           true,
 	".eslintrc.json":      true,
 	".prettierrc":         true,
 	".prettierrc.json":    true,
+	// TypeScript
 	"tsconfig.json":       true,
 	"tsconfig.base.json":  true,
 	"vitest.config.ts":    true,
 	"jest.config.ts":      true,
-	".editorconfig":       true,
+	// Documentation
 	"CHANGELOG.md":        true,
+	"README.md":           true,
+	"LICENSE":             true,
 }
 
 // noiseExtensions are file extensions that are always noise in conflict detection.
@@ -1807,8 +1893,8 @@ func buildConflicts(repo string, prs []types.PR, progress func(processed int, to
 		files := parseSharedFiles(edge.Reason)
 		// Filter noise files: lock files, CI configs, dependency files that every PR touches
 		signalFiles := filterNoiseFiles(files)
-		if len(signalFiles) == 0 {
-			continue // no signal files shared, skip this conflict
+		if len(signalFiles) < 2 {
+			continue // need at least 2 shared signal files to be a real conflict
 		}
 		conflictType := "attention_needed"
 		severity := "low"

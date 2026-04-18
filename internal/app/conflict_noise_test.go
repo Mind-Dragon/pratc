@@ -72,15 +72,14 @@ func TestFilterNoiseFiles_MixedBatch(t *testing.T) {
 		".github/workflows/ci.yml",
 		"src/main.go",
 		"internal/app/service_test.go",
-		"README.md",
 		"src/utils/helper.py",
 	}
 	got := filterNoiseFiles(files)
-	// Expected: src/main.go, internal/app/service_test.go, README.md, src/utils/helper.py
-	if len(got) != 4 {
-		t.Errorf("expected 4 signal files, got %d: %v", len(got), got)
+	// Expected: src/main.go, internal/app/service_test.go, src/utils/helper.py (README.md is now noise)
+	if len(got) != 3 {
+		t.Errorf("expected 3 signal files, got %d: %v", len(got), got)
 	}
-	for _, f := range []string{"src/main.go", "internal/app/service_test.go", "README.md", "src/utils/helper.py"} {
+	for _, f := range []string{"src/main.go", "internal/app/service_test.go", "src/utils/helper.py"} {
 		found := false
 		for _, g := range got {
 			if g == f {
@@ -145,5 +144,80 @@ func TestIsSourceFile_Markdown(t *testing.T) {
 	t.Parallel()
 	if isSourceFile("README.md") {
 		t.Errorf("README.md should NOT be a source file")
+	}
+}
+
+// =============================================================================
+// Expanded noise files tests (monorepo noise)
+// =============================================================================
+
+func TestNoiseFiles_ExpandedList(t *testing.T) {
+	t.Parallel()
+	// These files should be filtered as noise
+	noiseFiles := []string{
+		// Go modules
+		"go.mod",
+		"go.sum",
+		// Documentation
+		"README.md",
+		"LICENSE",
+		"CHANGELOG.md", // already existed
+		// Build
+		"Makefile",
+		"Dockerfile",
+		// Rust
+		"Cargo.toml",
+		"Cargo.lock",
+		// Python
+		"pyproject.toml",
+		"setup.py",
+		"requirements.txt",
+	}
+	for _, f := range noiseFiles {
+		got := filterNoiseFiles([]string{f})
+		if len(got) != 0 {
+			t.Errorf("%s should be in noise files, got %v", f, got)
+		}
+	}
+}
+
+func TestFilterNoiseFiles_MixedBatch_Updated(t *testing.T) {
+	t.Parallel()
+	// Updated test with expanded noise list
+	files := []string{
+		"package.json",
+		"pnpm-lock.yaml",
+		"yarn.lock",
+		".github/workflows/ci.yml",
+		"src/main.go",
+		"internal/app/service_test.go",
+		"go.mod",         // now noise
+		"README.md",      // now noise
+		"src/utils/helper.py",
+	}
+	got := filterNoiseFiles(files)
+	// Expected: src/main.go, internal/app/service_test.go, src/utils/helper.py (3, not 4)
+	if len(got) != 3 {
+		t.Errorf("expected 3 signal files, got %d: %v", len(got), got)
+	}
+	for _, f := range []string{"src/main.go", "internal/app/service_test.go", "src/utils/helper.py"} {
+		found := false
+		for _, g := range got {
+			if g == f {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected %q in signal files, got %v", f, got)
+		}
+	}
+	// Verify noise files are NOT present
+	for _, f := range []string{"package.json", "pnpm-lock.yaml", "yarn.lock", ".github/workflows/ci.yml", "go.mod", "README.md"} {
+		for _, g := range got {
+			if g == f {
+				t.Errorf("noise file %q should not be in signal files", f)
+			}
+		}
 	}
 }

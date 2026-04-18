@@ -12,7 +12,7 @@ import "time"
 const (
 	// DuplicateThreshold is the minimum similarity score (0.0-1.0) above which
 	// two PRs are considered duplicates of each other.
-	DuplicateThreshold = 0.90
+	DuplicateThreshold = 0.85
 
 	// OverlapThreshold is the minimum similarity score (0.0-1.0) above which
 	// two PRs are considered to have overlapping changes.

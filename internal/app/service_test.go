@@ -90,8 +90,8 @@ func TestClusterReturnsThresholdsAndClusters(t *testing.T) {
 	if response.Model == "" {
 		t.Fatal("model should not be empty")
 	}
-	if response.Thresholds.Duplicate != 0.90 {
-		t.Fatalf("duplicate threshold = %.2f, want 0.90", response.Thresholds.Duplicate)
+	if response.Thresholds.Duplicate != 0.85 {
+		t.Fatalf("duplicate threshold = %.2f, want 0.85", response.Thresholds.Duplicate)
 	}
 	if response.Thresholds.Overlap != 0.70 {
 		t.Fatalf("overlap threshold = %.2f, want 0.70", response.Thresholds.Overlap)
