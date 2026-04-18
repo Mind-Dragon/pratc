@@ -117,6 +117,13 @@ Example:
 				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load duplicate detail section: %v\n", err)
 			}
 
+			// 3b. Near-duplicates section
+			if nearDups, err := report.LoadNearDuplicateDetailSection(resolvedInputDir, repo); err == nil {
+				exporter.AddSection(nearDups)
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not load near-duplicate detail section: %v\n", err)
+			}
+
 			// 4. Review + analyst sections (do this now, needs review, future/blocked)
 			if !skipReview {
 				if review, err := report.LoadReviewSection(resolvedInputDir, repo); err == nil {

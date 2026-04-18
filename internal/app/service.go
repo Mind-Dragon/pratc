@@ -1529,6 +1529,10 @@ func classifyGarbage(prs []types.PR) []types.GarbagePR {
 			reasons = append(reasons, "draft with minimal changes")
 		}
 
+		// Note: abandoned PR detection is handled by buildStaleness(), which has
+		// access to merged PR history and can distinguish truly abandoned PRs
+		// from old-but-still-relevant work. Do not duplicate that logic here.
+
 		if len(reasons) > 0 {
 			garbage = append(garbage, types.GarbagePR{
 				PRNumber: pr.Number,

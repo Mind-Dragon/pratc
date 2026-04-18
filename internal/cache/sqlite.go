@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/types"
@@ -1013,7 +1015,7 @@ func (s *Store) GetPausedSyncJobByRepo(repo string) (SyncJob, error) {
 }
 
 func (s *Store) init(ctx context.Context) error {
-	const supportedSchemaVersion = 5
+	const supportedSchemaVersion = 6
 
 	var currentVersion int
 	if err := s.db.QueryRowContext(ctx, `PRAGMA user_version;`).Scan(&currentVersion); err != nil {
@@ -1056,6 +1058,9 @@ func (s *Store) init(ctx context.Context) error {
 		`INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
 		 VALUES (5, 'sync_snapshot_ceiling', '2026-04-16T00:00:00Z');`,
 		`PRAGMA user_version = 5;`,
+		`INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
+		 VALUES (6, 'intermediate_cache', '2026-04-18T00:00:00Z');`,
+		`PRAGMA user_version = 6;`,
 		`CREATE TABLE IF NOT EXISTS audit_log (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			timestamp TEXT NOT NULL,
@@ -1136,6 +1141,34 @@ func (s *Store) init(ctx context.Context) error {
 			files_touched_json TEXT NOT NULL,
 			PRIMARY KEY (repo, number)
 		);`,
+		`CREATE TABLE IF NOT EXISTS duplicate_groups (
+			repo TEXT NOT NULL,
+			canonical_pr INTEGER NOT NULL,
+			duplicate_prs_json TEXT NOT NULL,
+			similarity REAL NOT NULL,
+			corpus_fingerprint TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			PRIMARY KEY (repo, canonical_pr, corpus_fingerprint)
+		);`,
+		`CREATE TABLE IF NOT EXISTS conflict_cache (
+			repo TEXT NOT NULL,
+			pr_a INTEGER NOT NULL,
+			pr_b INTEGER NOT NULL,
+			severity TEXT NOT NULL,
+			conflict_type TEXT NOT NULL,
+			shared_files_json TEXT NOT NULL,
+			corpus_fingerprint TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			PRIMARY KEY (repo, pr_a, pr_b, corpus_fingerprint)
+		);`,
+		`CREATE TABLE IF NOT EXISTS substance_cache (
+			repo TEXT NOT NULL,
+			pr_number INTEGER NOT NULL,
+			score INTEGER NOT NULL,
+			corpus_fingerprint TEXT NOT NULL,
+			computed_at TEXT NOT NULL,
+			PRIMARY KEY (repo, pr_number, corpus_fingerprint)
+		);`,
 		`CREATE INDEX IF NOT EXISTS idx_pull_requests_base_branch ON pull_requests(base_branch);`,
 		`CREATE INDEX IF NOT EXISTS idx_pull_requests_ci_status ON pull_requests(ci_status);`,
 		`CREATE INDEX IF NOT EXISTS idx_pull_requests_updated_at ON pull_requests(updated_at DESC);`,
@@ -1201,4 +1234,304 @@ func parseOptionalTime(raw string) time.Time {
 		return time.Time{}
 	}
 	return parsed
+}
+
+// CorpusFingerprint computes a deterministic hash of the PR corpus.
+// It uses sorted PR numbers and count to produce a fingerprint that changes
+// when the PR set changes, enabling cache invalidation.
+func CorpusFingerprint(prs []types.PR) string {
+	if len(prs) == 0 {
+		return "empty"
+	}
+	// Extract and sort PR numbers
+	numbers := make([]int, len(prs))
+	for i, pr := range prs {
+		numbers[i] = pr.Number
+	}
+	sort.Ints(numbers)
+
+	// Build a string representation
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("count:%d,", len(prs)))
+	for i, n := range numbers {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(fmt.Sprintf("%d", n))
+	}
+
+	// Hash the string using a simple hash
+	h := fnvHash(sb.String())
+	return fmt.Sprintf("%x", h)
+}
+
+// fnvHash computes a 64-bit FNV-1a hash of the input string.
+func fnvHash(s string) uint64 {
+	const (
+		fnvOffset uint64 = 14695981039346656037
+		fnvPrime  uint64 = 1099511628211
+	)
+	var h uint64 = fnvOffset
+	for i := 0; i < len(s); i++ {
+		h ^= uint64(s[i])
+		h *= fnvPrime
+	}
+	return h
+}
+
+// SaveDuplicateGroups saves duplicate groups to the cache, replacing any existing
+// entries for the same repo and fingerprint.
+func (s *Store) SaveDuplicateGroups(repo string, groups []types.DuplicateGroup, fingerprint string) error {
+	if len(groups) == 0 {
+		return nil
+	}
+
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// Delete existing entries for this repo and fingerprint
+	if _, err := tx.Exec(`DELETE FROM duplicate_groups WHERE repo = ? AND corpus_fingerprint = ?`, repo, fingerprint); err != nil {
+		return fmt.Errorf("delete existing duplicate groups: %w", err)
+	}
+
+	now := s.now().UTC().Format(time.RFC3339)
+	for _, group := range groups {
+		dupsJSON, err := json.Marshal(group.DuplicatePRNums)
+		if err != nil {
+			return fmt.Errorf("marshal duplicate prs: %w", err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO duplicate_groups (repo, canonical_pr, duplicate_prs_json, similarity, corpus_fingerprint, created_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, repo, group.CanonicalPRNumber, string(dupsJSON), group.Similarity, fingerprint, now); err != nil {
+			return fmt.Errorf("insert duplicate group: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit duplicate groups: %w", err)
+	}
+	return nil
+}
+
+// LoadDuplicateGroups loads duplicate groups from the cache.
+// Returns (groups, found, error). If no cache entry exists for the given
+// repo and fingerprint, returns (nil, false, nil).
+func (s *Store) LoadDuplicateGroups(repo string, fingerprint string) ([]types.DuplicateGroup, bool, error) {
+	rows, err := s.db.Query(`
+		SELECT canonical_pr, duplicate_prs_json, similarity
+		FROM duplicate_groups
+		WHERE repo = ? AND corpus_fingerprint = ?
+		ORDER BY canonical_pr ASC
+	`, repo, fingerprint)
+	if err != nil {
+		return nil, false, fmt.Errorf("query duplicate groups: %w", err)
+	}
+	defer rows.Close()
+
+	var groups []types.DuplicateGroup
+	for rows.Next() {
+		var canonicalPR int
+		var dupsJSON string
+		var similarity float64
+		if err := rows.Scan(&canonicalPR, &dupsJSON, &similarity); err != nil {
+			return nil, false, fmt.Errorf("scan duplicate group: %w", err)
+		}
+
+		var dups []int
+		if err := json.Unmarshal([]byte(dupsJSON), &dups); err != nil {
+			return nil, false, fmt.Errorf("unmarshal duplicate prs: %w", err)
+		}
+
+		groups = append(groups, types.DuplicateGroup{
+			CanonicalPRNumber: canonicalPR,
+			DuplicatePRNums:   dups,
+			Similarity:        similarity,
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate duplicate groups: %w", err)
+	}
+
+	if len(groups) == 0 {
+		return nil, false, nil
+	}
+	return groups, true, nil
+}
+
+// SaveConflictCache saves conflict pairs to the cache, replacing any existing
+// entries for the same repo and fingerprint.
+func (s *Store) SaveConflictCache(repo string, conflicts []types.ConflictPair, fingerprint string) error {
+	if len(conflicts) == 0 {
+		return nil
+	}
+
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// Delete existing entries for this repo and fingerprint
+	if _, err := tx.Exec(`DELETE FROM conflict_cache WHERE repo = ? AND corpus_fingerprint = ?`, repo, fingerprint); err != nil {
+		return fmt.Errorf("delete existing conflict cache: %w", err)
+	}
+
+	now := s.now().UTC().Format(time.RFC3339)
+	for _, conflict := range conflicts {
+		filesJSON, err := json.Marshal(conflict.FilesTouched)
+		if err != nil {
+			return fmt.Errorf("marshal shared files: %w", err)
+		}
+
+		// Store with ordered pr_a < pr_b for consistent primary key
+		prA, prB := conflict.SourcePR, conflict.TargetPR
+		if prA > prB {
+			prA, prB = prB, prA
+		}
+
+		if _, err := tx.Exec(`
+			INSERT INTO conflict_cache (repo, pr_a, pr_b, severity, conflict_type, shared_files_json, corpus_fingerprint, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`, repo, prA, prB, conflict.Severity, conflict.ConflictType, string(filesJSON), fingerprint, now); err != nil {
+			return fmt.Errorf("insert conflict cache: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit conflict cache: %w", err)
+	}
+	return nil
+}
+
+// LoadConflictCache loads conflict pairs from the cache.
+// Returns (conflicts, found, error). If no cache entry exists for the given
+// repo and fingerprint, returns (nil, false, nil).
+func (s *Store) LoadConflictCache(repo string, fingerprint string) ([]types.ConflictPair, bool, error) {
+	rows, err := s.db.Query(`
+		SELECT pr_a, pr_b, severity, conflict_type, shared_files_json
+		FROM conflict_cache
+		WHERE repo = ? AND corpus_fingerprint = ?
+		ORDER BY pr_a ASC, pr_b ASC
+	`, repo, fingerprint)
+	if err != nil {
+		return nil, false, fmt.Errorf("query conflict cache: %w", err)
+	}
+	defer rows.Close()
+
+	var conflicts []types.ConflictPair
+	for rows.Next() {
+		var prA, prB int
+		var severity, conflictType string
+		var filesJSON string
+		if err := rows.Scan(&prA, &prB, &severity, &conflictType, &filesJSON); err != nil {
+			return nil, false, fmt.Errorf("scan conflict cache: %w", err)
+		}
+
+		var files []string
+		if err := json.Unmarshal([]byte(filesJSON), &files); err != nil {
+			return nil, false, fmt.Errorf("unmarshal shared files: %w", err)
+		}
+
+		conflicts = append(conflicts, types.ConflictPair{
+			SourcePR:     prA,
+			TargetPR:     prB,
+			Severity:     severity,
+			ConflictType: conflictType,
+			FilesTouched: files,
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate conflict cache: %w", err)
+	}
+
+	if len(conflicts) == 0 {
+		return nil, false, nil
+	}
+	return conflicts, true, nil
+}
+
+// SaveSubstanceCache saves substance scores to the cache, replacing any existing
+// entries for the same repo and fingerprint.
+func (s *Store) SaveSubstanceCache(repo string, scores map[int]int, fingerprint string) error {
+	if len(scores) == 0 {
+		return nil
+	}
+
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// Delete existing entries for this repo and fingerprint
+	if _, err := tx.Exec(`DELETE FROM substance_cache WHERE repo = ? AND corpus_fingerprint = ?`, repo, fingerprint); err != nil {
+		return fmt.Errorf("delete existing substance cache: %w", err)
+	}
+
+	now := s.now().UTC().Format(time.RFC3339)
+	for prNumber, score := range scores {
+		if _, err := tx.Exec(`
+			INSERT INTO substance_cache (repo, pr_number, score, corpus_fingerprint, computed_at)
+			VALUES (?, ?, ?, ?, ?)
+		`, repo, prNumber, score, fingerprint, now); err != nil {
+			return fmt.Errorf("insert substance cache: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit substance cache: %w", err)
+	}
+	return nil
+}
+
+// LoadSubstanceCache loads substance scores from the cache.
+// Returns (scores, found, error). If no cache entry exists for the given
+// repo and fingerprint, returns (nil, false, nil).
+func (s *Store) LoadSubstanceCache(repo string, fingerprint string) (map[int]int, bool, error) {
+	rows, err := s.db.Query(`
+		SELECT pr_number, score
+		FROM substance_cache
+		WHERE repo = ? AND corpus_fingerprint = ?
+		ORDER BY pr_number ASC
+	`, repo, fingerprint)
+	if err != nil {
+		return nil, false, fmt.Errorf("query substance cache: %w", err)
+	}
+	defer rows.Close()
+
+	scores := make(map[int]int)
+	for rows.Next() {
+		var prNumber, score int
+		if err := rows.Scan(&prNumber, &score); err != nil {
+			return nil, false, fmt.Errorf("scan substance cache: %w", err)
+		}
+		scores[prNumber] = score
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate substance cache: %w", err)
+	}
+
+	if len(scores) == 0 {
+		return nil, false, nil
+	}
+	return scores, true, nil
 }

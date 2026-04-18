@@ -40,6 +40,7 @@ type analystDataset struct {
 	JunkRows         []AnalystRow
 	TopUsefulRows    []AnalystRow
 	Duplicates       []AnalystDuplicateEntry
+	NearDuplicates   []AnalystDuplicateEntry
 	CategoryCounts   map[string]int
 	CategoryExamples map[string][]AnalystRow
 	PlanSelected     []AnalystRow
@@ -187,6 +188,28 @@ func loadAnalystDataset(inputDir, repo string) (*analystDataset, error) {
 			return dataset.Duplicates[i].Similarity > dataset.Duplicates[j].Similarity
 		}
 		return dataset.Duplicates[i].CanonicalPRNumber < dataset.Duplicates[j].CanonicalPRNumber
+	})
+
+	for _, dup := range analyze.Overlaps {
+		entry := AnalystDuplicateEntry{
+			CanonicalPRNumber: dup.CanonicalPRNumber,
+			CanonicalTitle:    prByNumber[dup.CanonicalPRNumber].Title,
+			Similarity:        dup.Similarity,
+			Reason:            dup.Reason,
+		}
+		for _, n := range dup.DuplicatePRNums {
+			if row, ok := rowsByPR[n]; ok {
+				entry.DuplicatePRs = append(entry.DuplicatePRs, row)
+			}
+		}
+		sort.Slice(entry.DuplicatePRs, func(i, j int) bool { return entry.DuplicatePRs[i].PRNumber < entry.DuplicatePRs[j].PRNumber })
+		dataset.NearDuplicates = append(dataset.NearDuplicates, entry)
+	}
+	sort.Slice(dataset.NearDuplicates, func(i, j int) bool {
+		if dataset.NearDuplicates[i].Similarity != dataset.NearDuplicates[j].Similarity {
+			return dataset.NearDuplicates[i].Similarity > dataset.NearDuplicates[j].Similarity
+		}
+		return dataset.NearDuplicates[i].CanonicalPRNumber < dataset.NearDuplicates[j].CanonicalPRNumber
 	})
 
 	planPath := inputDir + "/step-5-plan.json"
@@ -607,7 +630,7 @@ func LoadDecisionTrailSection(inputDir, repo string) (*DecisionTrailSection, err
 }
 
 // renderOrder defines the display order for classification groups.
-var renderOrder = []string{"merge_candidate", "high_value", "needs_review", "duplicate", "blocked", "re_engage", "stale", "low_value", "junk"}
+var renderOrder = []string{"merge_candidate", "high_value", "needs_review", "near_duplicate", "duplicate", "blocked", "re_engage", "stale", "low_value", "junk"}
 
 // classificationColor returns (r,g,b) for a classification badge.
 func classificationColor(class string) (int, int, int) {
@@ -618,6 +641,8 @@ func classificationColor(class string) (int, int, int) {
 		return 41, 128, 185 // blue
 	case "needs_review":
 		return 243, 156, 18 // amber
+	case "near_duplicate":
+		return 230, 126, 34 // orange
 	case "duplicate":
 		return 149, 165, 166 // grey
 	case "blocked":
@@ -809,7 +834,7 @@ func (s *FullPRTableSection) Render(pdf *fpdf.Fpdf) {
 	pdf.CellFormat(95, 7, "Top Example", "1", 1, "L", true, 0, "")
 	y += 7
 
-	renderOrder := []string{"merge_candidate", "high_value", "needs_review", "duplicate", "blocked", "re_engage", "stale", "low_value", "junk"}
+	renderOrder := []string{"merge_candidate", "high_value", "needs_review", "near_duplicate", "duplicate", "blocked", "re_engage", "stale", "low_value", "junk"}
 	total := float64(len(s.Rows))
 	for _, class := range renderOrder {
 		rows := grouped[class]
@@ -934,6 +959,58 @@ func (s *DuplicateDetailSection) Render(pdf *fpdf.Fpdf) {
 	pdf.SetFont("Arial", "", 10)
 	pdf.SetXY(15, 40)
 	pdf.Cell(180, 6, fmt.Sprintf("Repository: %s | Generated: %s", s.Repo, s.GeneratedAt.Format(time.RFC1123)))
+	y := 52.0
+	for _, entry := range s.Entries {
+		pdf.SetFont("Arial", "B", 11)
+		pdf.SetXY(15, y)
+		pdf.Cell(180, 6, fmt.Sprintf("Canonical PR #%d — %s (similarity %.2f)", entry.CanonicalPRNumber, truncate(entry.CanonicalTitle, 70), entry.Similarity))
+		y += 6
+		pdf.SetFont("Arial", "", 9)
+		pdf.SetXY(20, y)
+		pdf.MultiCell(170, 5, fmt.Sprintf("Reason: %s", entry.Reason), "", "L", false)
+		y = pdf.GetY() + 1
+		for _, dup := range entry.DuplicatePRs {
+			pdf.SetXY(24, y)
+			pdf.Cell(165, 5, fmt.Sprintf("• #%d %s — %s", dup.PRNumber, truncate(dup.Title, 60), truncate(strings.Join(dup.Reasons, "; "), 50)))
+			y += 5
+		}
+		y += 4
+		if y > 260 {
+			pdf.AddPage()
+			y = 20
+		}
+	}
+}
+
+type NearDuplicateDetailSection struct {
+	Repo        string
+	GeneratedAt time.Time
+	Entries     []AnalystDuplicateEntry
+}
+
+func LoadNearDuplicateDetailSection(inputDir, repo string) (*NearDuplicateDetailSection, error) {
+	data, err := loadAnalystDataset(inputDir, repo)
+	if err != nil {
+		return nil, err
+	}
+	return &NearDuplicateDetailSection{Repo: repo, GeneratedAt: data.GeneratedAt, Entries: data.NearDuplicates}, nil
+}
+
+func (s *NearDuplicateDetailSection) Render(pdf *fpdf.Fpdf) {
+	if len(s.Entries) == 0 {
+		return
+	}
+	pdf.AddPage()
+	pdf.SetFillColor(230, 126, 34)
+	pdf.Rect(0, 0, 210, 35, "F")
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetFont("Arial", "B", 18)
+	pdf.SetXY(15, 12)
+	pdf.Cell(180, 10, "Near-Duplicate Detail")
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFont("Arial", "", 10)
+	pdf.SetXY(15, 40)
+	pdf.Cell(180, 6, fmt.Sprintf("Repository: %s | Generated: %s | %d near-duplicate groups", s.Repo, s.GeneratedAt.Format(time.RFC1123), len(s.Entries)))
 	y := 52.0
 	for _, entry := range s.Entries {
 		pdf.SetFont("Arial", "B", 11)

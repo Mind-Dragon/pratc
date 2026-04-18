@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	supportedSchemaVersion = 5
+	supportedSchemaVersion = 6
 )
 
 func TestCacheUpsertAndQuery(t *testing.T) {
@@ -522,8 +522,8 @@ func TestMigrationFreshInstall(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT version, name, applied_at FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &name, &appliedAt); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 5 || name != "sync_snapshot_ceiling" {
-		t.Fatalf("expected version=5 name=sync_snapshot_ceiling, got version=%d name=%s", version, name)
+	if version != 6 || name != "intermediate_cache" {
+		t.Fatalf("expected version=6 name=intermediate_cache, got version=%d name=%s", version, name)
 	}
 
 	requiredTables := []string{
@@ -621,8 +621,8 @@ func TestMigrationUpgradeFromNminus1(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations after upgrade: %v", err)
 	}
-	if version != supportedSchemaVersion || name != "sync_snapshot_ceiling" {
-		t.Fatalf("expected migration version=%d name=sync_snapshot_ceiling, got version=%d name=%s", supportedSchemaVersion, version, name)
+	if version != supportedSchemaVersion || name != "intermediate_cache" {
+		t.Fatalf("expected migration version=%d name=intermediate_cache, got version=%d name=%s", supportedSchemaVersion, version, name)
 	}
 
 	requiredTables := []string{
@@ -974,8 +974,8 @@ func TestMigrationIdempotency(t *testing.T) {
 	if err := store2.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if count != 5 {
-		t.Fatalf("expected 5 migration records, got %d", count)
+	if count != 6 {
+		t.Fatalf("expected 6 migration records, got %d", count)
 	}
 
 	var userVersion int
