@@ -95,10 +95,10 @@ The title containment boost intentionally caps at 0.80, but the duplicate thresh
 
 **Fix:**
 - [ ] Lower `DuplicateThreshold` from 0.90 to 0.80, OR
-- [ ] Add file-overlap as a primary duplicate signal: if two PRs share > 70% of changed files AND have any title similarity (Jaccard > 0), classify as duplicate regardless of composite score
-- [ ] Add test: `TestDuplicateDetection_FindsKnownDuplicates` — create PR pairs with known duplicate characteristics, verify they are grouped
-- [ ] Add test: `TestDuplicateDetection_ThresholdReached` — verify the scoring formula can actually produce scores above the duplicate threshold
-- [ ] Run against openclaw/openclaw and verify > 10 duplicate groups found
+- [x] Add file-overlap as a primary duplicate signal (file>0.8 + title>0.05 boost path): if two PRs share > 70% of changed files AND have any title similarity (Jaccard > 0), classify as duplicate regardless of composite score
+- [x] Add test: `TestDuplicateDetection_FindsKnownDuplicates` — create PR pairs with known duplicate characteristics, verify they are grouped
+- [x] Add test: `TestDuplicateDetection_ThresholdReached` — verify the scoring formula can actually produce scores above the duplicate threshold
+- [ ] Run against openclaw/openclaw and verify > 10 duplicate groups found (deferred — needs live run)
 
 ### BUG-5: Conflict count still 92,715 despite noise filtering
 
@@ -109,11 +109,11 @@ The title containment boost intentionally caps at 0.80, but the duplicate thresh
 The current logic: `buildConflicts()` iterates all edges from the graph, filters noise files, and creates a ConflictPair for each edge with remaining signal files. But it doesn't filter by minimum shared-file count — a single shared config file still creates a conflict.
 
 **Fix:**
-- [ ] Add minimum shared-file threshold: require at least 2 shared signal files to create a conflict pair
-- [ ] OR: require at least 1 source code file (not just config/docs) in the shared set
-- [ ] Add `noiseFiles` entries for common monorepo files: `go.mod`, `go.sum`, `README.md`, `.gitignore`, `Makefile`, `Dockerfile`, `LICENSE`
-- [ ] Add test: `TestBuildConflicts_MinimumFileThreshold` — PRs sharing only 1 file should not produce a conflict
-- [ ] Run against openclaw/openclaw and verify conflict count < 5,000
+- [x] Add minimum shared-file threshold: require at least 2 shared signal files to create a conflict pair
+- [x] OR: require at least 1 source code file (alternative approach not needed — 2-file threshold sufficient) (not just config/docs) in the shared set
+- [x] Add `noiseFiles` entries for common monorepo files: go.mod, go.sum, Cargo.toml/lock, pyproject.toml, Makefile, Dockerfile, README.md, LICENSE: `go.mod`, `go.sum`, `README.md`, `.gitignore`, `Makefile`, `Dockerfile`, `LICENSE`
+- [x] Add test: `TestBuildConflicts_MinimumFileThreshold` — PRs sharing only 1 file should not produce a conflict
+- [ ] Run against openclaw/openclaw and verify conflict count < 5,000 (deferred — needs live run)
 
 ### BUG-6: Analysis takes 28.5 minutes for 6,632 PRs (exceeds 15-min goal)
 
@@ -132,9 +132,9 @@ The current logic: `buildConflicts()` iterates all edges from the graph, filters
 - [ ] Cache tokenized titles in SQLite to avoid re-tokenizing on every run
 
 **Fix — intermediate caching:**
-- [ ] After first run, cache duplicate groups with corpus fingerprint
-- [ ] On subsequent runs with same corpus, load from cache instead of recomputing
-- [ ] The intermediate caching (schema v7) infrastructure exists but isn't wired into the analysis pipeline yet
+- [x] After first run, cache duplicate groups with corpus fingerprint
+- [x] On subsequent runs with same corpus, load from cache instead of recomputing
+- [x] The intermediate caching (schema v7) infrastructure is now wired into the analysis pipeline
 
 **Target:** < 15 minutes for 6,632 PRs
 
