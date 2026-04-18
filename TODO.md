@@ -22,6 +22,62 @@ Most v1.5 features were already implemented in the codebase. This execution sess
 - [ ] Conflict count < 5,000 (needs live corpus run)
 - [ ] Full analysis < 15 minutes (needs live corpus run)
 
+## Critical bugs found during live run (2026-04-18)
+
+### BUG-1: GitHub auth token not passed to sync worker
+
+**Root cause:** `defaultWorker()` in `internal/sync/default_runner.go:150` creates the GitHub client with `os.Getenv("GITHUB_TOKEN")` directly. The sync command calls `github.ResolveToken(ctx)` at line 145 of `sync.go`, but the resolved token is discarded — it's never passed to the worker.
+
+**Impact:** When `GITHUB_TOKEN` env var is not set, prATC uses unauthenticated GitHub API rate limit (60 req/hr) even though `gh auth token` returns a valid token. This makes any sync of >60 PRs impossible without manually exporting `GITHUB_TOKEN`.
+
+**Fix:**
+- [ ] Change `defaultWorker()` to call `github.ResolveToken(context.Background())` instead of `os.Getenv("GITHUB_TOKEN")`
+- [ ] Pass the resolved token (or error) into the worker constructor
+- [ ] Add test: `TestDefaultWorker_UsesResolvedToken` — verify worker gets token from `gh auth token` fallback
+- [ ] Audit all other `os.Getenv("GITHUB_TOKEN")` usages to ensure they also use `ResolveToken`
+
+### BUG-2: Repo name case sensitivity causes cache fragmentation
+
+**Root cause:** `openclaw/openclaw` and `OpenClaw/OpenClaw` are treated as different repos. The SQLite cache stores PRs, sync progress, and artifacts under the exact string the user typed. A user who runs `pratc analyze --repo=OpenClaw/OpenClaw` gets a different (empty) cache than `--repo=openclaw/openclaw` which has 6,646 PRs.
+
+**Impact:** Wasted sync time, duplicate data, confusing behavior. User may think the tool is broken when they just used different casing.
+
+**Fix:**
+- [ ] Add `NormalizeRepoName(repo string) string` function that lowercases the owner/repo
+- [ ] Apply normalization at every entry point: sync, analyze, workflow, serve, cluster, graph, plan, report
+- [ ] Migrate existing cache entries: add a migration that lowercases all `repo` columns in: pull_requests, sync_progress, sync_jobs, audit_log, duplicate_groups, conflict_cache, substance_cache
+- [ ] Add test: `TestNormalizeRepoName` — "OpenClaw/OpenClaw", "openclaw/openclaw", "oPeNcLaW/oPeNcLaW" all → "openclaw/openclaw"
+- [ ] Add test: `TestCacheRepoNormalization` — same PR stored under different casings resolves to one entry
+- [ ] Update CLI help text to note repo names are case-insensitive
+
+### BUG-3: No pre-flight check or singleton lock for long-running operations
+
+**Problem:** Running `pratc sync` or `pratc workflow` against a large repo (19K+ PRs) can take hours. There's no way to:
+1. Estimate how long a sync will take before committing to it
+2. Detect if another prATC instance is already running against the same repo (causing duplicate API calls, rate limit waste, and timeouts)
+
+**Fix — Pre-flight check:**
+- [ ] Add `preflight` subcommand or `--preflight` flag to sync/workflow
+- [ ] Pre-flight checks:
+  - Cached PR count vs live open PR count (shows delta)
+  - Estimated API calls needed (based on delta + rate limit remaining)
+  - Estimated time (based on API calls / rate limit)
+  - Rate limit status (remaining requests, reset time)
+  - Whether a fresh sync is even needed (cache is recent enough)
+- [ ] Output: human-readable summary like "60 new PRs to fetch, ~120 API calls, ~2 minutes at current rate. Proceed? [Y/n]"
+- [ ] Add test: `TestPreflight_DeltaEstimate` — cached 1000 PRs, live 1060 PRs → estimate 60 PRs to fetch
+
+**Fix — Singleton lock:**
+- [ ] Add a file-based lock (`~/.pratc/locks/<repo-hash>.lock`) acquired before any sync/workflow/analyze
+- [ ] Lock file contains: PID, start time, command
+- [ ] If lock exists and process is still running → error "another prATC instance is running for this repo (PID X, started Y)"
+- [ ] If lock exists but process is dead → stale lock, auto-clean and proceed
+- [ ] Lock released on exit (defer) or on signal (SIGTERM/SIGINT)
+- [ ] Add `--force` flag to override lock (with warning)
+- [ ] Add test: `TestSingletonLock_AcquireAndRelease` — acquire, verify lock, release, verify clean
+- [ ] Add test: `TestSingletonLock_BlockedByActive` — second acquire fails while first holds lock
+- [ ] Add test: `TestSingletonLock_StaleLockCleanup` — dead PID lock is auto-cleaned
+
 ## Source of truth hierarchy
 
 1. `GUIDELINE.md` — bucket vocabulary, layer ordering, non-negotiables (authority)
