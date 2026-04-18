@@ -1,6 +1,7 @@
 
 **/.*
 *~
+1hr
 .archives/
 .beads/
 bin/
@@ -62,6 +63,7 @@ playwright-report/
 pratc-bin.dummy
 *.pratc.json
 # prATC project run artifacts
+pratc-settings.db
 .pratc-tree/
 /projects/
 __pycache__/
@@ -75,6 +77,7 @@ scorecard.png
 *.sqlite3
 *.swo
 *.swp
+sync.test
 temp/
 *.test
 test-results/
