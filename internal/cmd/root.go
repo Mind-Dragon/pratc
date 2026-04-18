@@ -88,4 +88,5 @@ func RegisterCommands() {
 	RegisterAuditCommand()
 	RegisterWorkflowCommand()
 	RegisterMonitorCommand()
+	RegisterPreflightCommand()
 }

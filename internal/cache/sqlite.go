@@ -1015,7 +1015,7 @@ func (s *Store) GetPausedSyncJobByRepo(repo string) (SyncJob, error) {
 }
 
 func (s *Store) init(ctx context.Context) error {
-	const supportedSchemaVersion = 6
+	const supportedSchemaVersion = 7
 
 	var currentVersion int
 	if err := s.db.QueryRowContext(ctx, `PRAGMA user_version;`).Scan(&currentVersion); err != nil {
@@ -1061,6 +1061,9 @@ func (s *Store) init(ctx context.Context) error {
 		`INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
 		 VALUES (6, 'intermediate_cache', '2026-04-18T00:00:00Z');`,
 		`PRAGMA user_version = 6;`,
+		`INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
+		 VALUES (7, 'repo_name_normalization', '2026-04-18T00:00:00Z');`,
+		`PRAGMA user_version = 7;`,
 		`CREATE TABLE IF NOT EXISTS audit_log (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			timestamp TEXT NOT NULL,
@@ -1200,6 +1203,58 @@ func (s *Store) init(ctx context.Context) error {
 	}
 	if err := s.addColumnIfNotExists("pull_requests", "provenance_json", "TEXT NOT NULL DEFAULT '{}' "); err != nil {
 		return err
+	}
+
+	// Migration v7: normalize repo names to lowercase.
+	// For tables with (repo, number) unique constraints, delete rows from
+	// mixed-case variants that conflict with existing lowercase rows before
+	// normalizing. The lowercase entry is always kept (it has more data from
+	// the primary cache).
+	if currentVersion < 7 {
+		// Tables with (repo, number) unique keys — deduplicate first
+		dedupeTables := []struct {
+			table string
+			key   string // the non-repo part of the unique key
+		}{
+			{"pull_requests", "number"},
+			{"pr_files", "pr_number"},
+			{"pr_reviews", "pr_number"},
+			{"ci_status", "pr_number"},
+			{"merged_pr_index", "number"},
+		}
+		for _, dt := range dedupeTables {
+			// Delete rows where LOWER(repo) matches an existing lowercase row
+			_, _ = s.db.ExecContext(ctx, fmt.Sprintf(
+				`DELETE FROM %s WHERE repo != LOWER(repo) AND EXISTS (
+					SELECT 1 FROM %s t2 WHERE t2.repo = LOWER(%s.repo) AND t2.%s = %s.%s
+				)`, dt.table, dt.table, dt.table, dt.key, dt.table, dt.key,
+			))
+			// Now normalize remaining rows
+			_, err := s.db.ExecContext(ctx, fmt.Sprintf(
+				`UPDATE %s SET repo = LOWER(repo) WHERE repo != LOWER(repo)`, dt.table,
+			))
+			if err != nil {
+				return fmt.Errorf("migrate repo normalization on %s: %w", dt.table, err)
+			}
+		}
+
+		// Tables without unique key conflicts — just lowercase
+		simpleTables := []string{
+			"audit_log",
+			"sync_progress",
+			"sync_jobs",
+			"duplicate_groups",
+			"conflict_cache",
+			"substance_cache",
+		}
+		for _, table := range simpleTables {
+			_, err := s.db.ExecContext(ctx, fmt.Sprintf(
+				`UPDATE %s SET repo = LOWER(repo) WHERE repo != LOWER(repo)`, table,
+			))
+			if err != nil {
+				return fmt.Errorf("migrate repo normalization on %s: %w", table, err)
+			}
+		}
 	}
 
 	return nil

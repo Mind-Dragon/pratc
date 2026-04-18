@@ -8,6 +8,7 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/app"
 	"github.com/jeffersonnunn/pratc/internal/logger"
 	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
+	"github.com/jeffersonnunn/pratc/internal/types"
 	"github.com/spf13/cobra"
 )
 
@@ -28,6 +29,8 @@ func RegisterGraphCommand() {
 			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
+
+			repo = types.NormalizeRepoName(repo)
 
 			budget := ratelimit.NewBudgetManager(
 				ratelimit.WithRateLimit(rateLimit),

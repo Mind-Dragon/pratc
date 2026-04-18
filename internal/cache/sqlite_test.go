@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,7 +15,7 @@ import (
 )
 
 const (
-	supportedSchemaVersion = 6
+	supportedSchemaVersion = 7
 )
 
 func TestCacheUpsertAndQuery(t *testing.T) {
@@ -522,8 +523,8 @@ func TestMigrationFreshInstall(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT version, name, applied_at FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &name, &appliedAt); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 6 || name != "intermediate_cache" {
-		t.Fatalf("expected version=6 name=intermediate_cache, got version=%d name=%s", version, name)
+	if version != 7 || name != "repo_name_normalization" {
+		t.Fatalf("expected version=7 name=repo_name_normalization, got version=%d name=%s", version, name)
 	}
 
 	requiredTables := []string{
@@ -621,8 +622,8 @@ func TestMigrationUpgradeFromNminus1(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations after upgrade: %v", err)
 	}
-	if version != supportedSchemaVersion || name != "intermediate_cache" {
-		t.Fatalf("expected migration version=%d name=intermediate_cache, got version=%d name=%s", supportedSchemaVersion, version, name)
+	if version != 7 || name != "repo_name_normalization" {
+		t.Fatalf("expected migration version=7 name=repo_name_normalization, got version=%d name=%s", version, name)
 	}
 
 	requiredTables := []string{
@@ -974,8 +975,8 @@ func TestMigrationIdempotency(t *testing.T) {
 	if err := store2.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if count != 6 {
-		t.Fatalf("expected 6 migration records, got %d", count)
+	if count != 7 {
+		t.Fatalf("expected 7 migration records, got %d", count)
 	}
 
 	var userVersion int
@@ -1036,4 +1037,234 @@ func TestMigrationSyncJobsPersistAcrossUpgrade(t *testing.T) {
 	if job.Repo != "test/repo" {
 		t.Fatalf("expected repo test/repo, got %s", job.Repo)
 	}
+}
+
+func TestMigrationV7_NormalizesRepoNames(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "repo-normalize.db")
+
+	// Create a v6 schema with mixed-case repo names
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+
+	schema := []string{
+		`CREATE TABLE pull_requests (
+			id TEXT NOT NULL,
+			repo TEXT NOT NULL,
+			number INTEGER NOT NULL,
+			title TEXT NOT NULL,
+			body TEXT NOT NULL,
+			url TEXT NOT NULL,
+			author TEXT NOT NULL,
+			labels_json TEXT NOT NULL,
+			files_changed_json TEXT NOT NULL,
+			review_status TEXT NOT NULL,
+			ci_status TEXT NOT NULL,
+			mergeable TEXT NOT NULL,
+			base_branch TEXT NOT NULL,
+			head_branch TEXT NOT NULL,
+			cluster_id TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			is_draft INTEGER NOT NULL,
+			is_bot INTEGER NOT NULL,
+			additions INTEGER NOT NULL,
+			deletions INTEGER NOT NULL,
+			changed_files_count INTEGER NOT NULL,
+			provenance_json TEXT NOT NULL DEFAULT '{}',
+			PRIMARY KEY (repo, number)
+		);`,
+		`CREATE TABLE sync_progress (
+			repo TEXT PRIMARY KEY,
+			cursor TEXT NOT NULL DEFAULT '',
+			processed_prs INTEGER NOT NULL DEFAULT 0,
+			total_prs INTEGER NOT NULL DEFAULT 0,
+			snapshot_ceiling INTEGER NOT NULL DEFAULT 0,
+			last_sync_at TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL
+		);`,
+		`CREATE TABLE sync_jobs (
+			id TEXT PRIMARY KEY,
+			repo TEXT NOT NULL,
+			status TEXT NOT NULL,
+			error_message TEXT NOT NULL DEFAULT '',
+			last_sync_at TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);`,
+		`CREATE TABLE audit_log (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			timestamp TEXT NOT NULL,
+			action TEXT NOT NULL,
+			repo TEXT NOT NULL DEFAULT '',
+			details TEXT NOT NULL DEFAULT ''
+		);`,
+		`CREATE TABLE duplicate_groups (
+			repo TEXT NOT NULL,
+			canonical_pr INTEGER NOT NULL,
+			duplicate_prs_json TEXT NOT NULL,
+			similarity REAL NOT NULL,
+			corpus_fingerprint TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			PRIMARY KEY (repo, canonical_pr, corpus_fingerprint)
+		);`,
+		`CREATE TABLE conflict_cache (
+			repo TEXT NOT NULL,
+			pr_a INTEGER NOT NULL,
+			pr_b INTEGER NOT NULL,
+			severity TEXT NOT NULL,
+			conflict_type TEXT NOT NULL,
+			shared_files_json TEXT NOT NULL,
+			corpus_fingerprint TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			PRIMARY KEY (repo, pr_a, pr_b, corpus_fingerprint)
+		);`,
+		`CREATE TABLE substance_cache (
+			repo TEXT NOT NULL,
+			pr_number INTEGER NOT NULL,
+			score INTEGER NOT NULL,
+			corpus_fingerprint TEXT NOT NULL,
+			computed_at TEXT NOT NULL,
+			PRIMARY KEY (repo, pr_number, corpus_fingerprint)
+		);`,
+		`CREATE TABLE pr_files (
+			repo TEXT NOT NULL,
+			pr_number INTEGER NOT NULL,
+			path TEXT NOT NULL,
+			PRIMARY KEY (repo, pr_number, path)
+		);`,
+		`CREATE TABLE pr_reviews (
+			repo TEXT NOT NULL,
+			pr_number INTEGER NOT NULL,
+			author TEXT NOT NULL,
+			state TEXT NOT NULL,
+			PRIMARY KEY (repo, pr_number, author, state)
+		);`,
+		`CREATE TABLE ci_status (
+			repo TEXT NOT NULL,
+			pr_number INTEGER NOT NULL,
+			state TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (repo, pr_number)
+		);`,
+		`CREATE TABLE merged_pr_index (
+			repo TEXT NOT NULL,
+			number INTEGER NOT NULL,
+			merged_at TEXT NOT NULL,
+			files_touched_json TEXT NOT NULL,
+			PRIMARY KEY (repo, number)
+		);`,
+		`CREATE TABLE schema_migrations (
+			version INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			applied_at TEXT NOT NULL
+		);`,
+		`INSERT INTO schema_migrations (version, name, applied_at) VALUES (6, 'intermediate_cache', '2026-04-18T00:00:00Z');`,
+		`PRAGMA user_version = 6;`,
+	}
+
+	for _, stmt := range schema {
+		if _, err := db.Exec(stmt); err != nil {
+			db.Close()
+			t.Fatalf("setup schema: %v", err)
+		}
+	}
+
+	// Insert mixed-case repo data
+	mixedCaseData := []struct {
+		table   string
+		repoCol string
+		repo    string
+		extra   string
+	}{
+		{"pull_requests", "repo", "OpenClaw/OpenClaw", "'PR-1', 1, 'title', 'body', 'url', 'author', '[]', '[]', 'approved', 'success', 'true', 'main', 'branch', 'cluster-1', '2026-03-12T10:00:00Z', '2026-03-12T10:00:00Z', 0, 0, 0, 0, 0, '{}'"},
+		{"sync_progress", "repo", "OpenClaw/OpenClaw", "'cursor', 0, 0, 0, '2026-03-12T10:00:00Z', '2026-03-12T10:00:00Z'"},
+		{"sync_jobs", "repo", "OpenClaw/OpenClaw", "'job-1', 'completed', '', '', '2026-03-12T10:00:00Z', '2026-03-12T10:00:00Z'"},
+		{"audit_log", "repo", "OpenClaw/OpenClaw", "'2026-03-12T10:00:00Z', 'sync', 'details'"},
+		{"duplicate_groups", "repo", "OpenClaw/OpenClaw", "1, '[]', 0.9, 'fp1', '2026-03-12T10:00:00Z'"},
+		{"conflict_cache", "repo", "OpenClaw/OpenClaw", "1, 2, 'low', 'textual', '[]', 'fp1', '2026-03-12T10:00:00Z'"},
+		{"substance_cache", "repo", "OpenClaw/OpenClaw", "1, 80, 'fp1', '2026-03-12T10:00:00Z'"},
+		{"pr_files", "repo", "OpenClaw/OpenClaw", "1, 'path.go'"},
+		{"pr_reviews", "repo", "OpenClaw/OpenClaw", "1, 'author', 'approved'"},
+		{"ci_status", "repo", "OpenClaw/OpenClaw", "1, 'success', '2026-03-12T10:00:00Z'"},
+		{"merged_pr_index", "repo", "OpenClaw/OpenClaw", "1, '2026-03-12T10:00:00Z', '[]'"},
+	}
+
+	for _, d := range mixedCaseData {
+		query := fmt.Sprintf("INSERT INTO %s (%s, %s) VALUES ('%s', %s)",
+			d.table, d.repoCol, strings.Join(getOtherCols(d.table, d.repoCol), ", "), d.repo, d.extra)
+		if _, err := db.Exec(query); err != nil {
+			db.Close()
+			t.Fatalf("insert mixed-case data into %s: %v", d.table, err)
+		}
+	}
+
+	db.Close()
+
+	// Open with migration - this should apply v7 normalization
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("open store after migration: %v", err)
+	}
+	defer store.Close()
+
+	// Verify pull_requests repo is lowercased
+	prs, err := store.ListPRs(PRFilter{Repo: "openclaw/openclaw"})
+	if err != nil {
+		t.Fatalf("list prs after migration: %v", err)
+	}
+	if len(prs) != 1 {
+		t.Fatalf("expected 1 pr with lowercased repo, got %d", len(prs))
+	}
+	if prs[0].Repo != "openclaw/openclaw" {
+		t.Fatalf("expected repo 'openclaw/openclaw', got %q", prs[0].Repo)
+	}
+
+	// Verify sync_progress repo is lowercased
+	lastSync, err := store.LastSync("openclaw/openclaw")
+	if err != nil {
+		t.Fatalf("get last sync after migration: %v", err)
+	}
+	if lastSync.IsZero() {
+		t.Fatal("expected non-zero last sync after migration")
+	}
+
+	// Verify querying with mixed-case returns empty (proving normalization works both ways)
+	prsMixed, err := store.ListPRs(PRFilter{Repo: "OpenClaw/OpenClaw"})
+	if err != nil {
+		t.Fatalf("list prs with mixed-case after migration: %v", err)
+	}
+	if len(prsMixed) != 0 {
+		t.Fatalf("expected 0 prs when querying with mixed-case after migration, got %d", len(prsMixed))
+	}
+}
+
+func getOtherCols(table, exclude string) []string {
+	colMap := map[string][]string{
+		"pull_requests":    {"id", "number", "title", "body", "url", "author", "labels_json", "files_changed_json", "review_status", "ci_status", "mergeable", "base_branch", "head_branch", "cluster_id", "created_at", "updated_at", "is_draft", "is_bot", "additions", "deletions", "changed_files_count", "provenance_json"},
+		"sync_progress":    {"cursor", "processed_prs", "total_prs", "snapshot_ceiling", "last_sync_at", "updated_at"},
+		"sync_jobs":        {"id", "status", "error_message", "last_sync_at", "created_at", "updated_at"},
+		"audit_log":        {"timestamp", "action", "details"},
+		"duplicate_groups":  {"canonical_pr", "duplicate_prs_json", "similarity", "corpus_fingerprint", "created_at"},
+		"conflict_cache":   {"pr_a", "pr_b", "severity", "conflict_type", "shared_files_json", "corpus_fingerprint", "created_at"},
+		"substance_cache":  {"pr_number", "score", "corpus_fingerprint", "computed_at"},
+		"pr_files":         {"pr_number", "path"},
+		"pr_reviews":        {"pr_number", "author", "state"},
+		"ci_status":        {"pr_number", "state", "updated_at"},
+		"merged_pr_index":  {"number", "merged_at", "files_touched_json"},
+	}
+	cols, ok := colMap[table]
+	if !ok {
+		return nil
+	}
+	result := make([]string, 0, len(cols))
+	for _, c := range cols {
+		if c != exclude {
+			result = append(result, c)
+		}
+	}
+	return result
 }

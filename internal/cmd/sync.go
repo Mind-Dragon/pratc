@@ -16,6 +16,7 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/logger"
 	prsync "github.com/jeffersonnunn/pratc/internal/sync"
 	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
+	"github.com/jeffersonnunn/pratc/internal/types"
 	"github.com/spf13/cobra"
 )
 
@@ -79,6 +80,7 @@ func RegisterSyncCommand() {
 	var showProgress bool
 	var syncMaxPRs int
 	var refreshSync bool
+	var force bool
 
 	command := &cobra.Command{
 		Use:   "sync",
@@ -101,6 +103,25 @@ Examples:
 			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
+
+			repo = types.NormalizeRepoName(repo)
+
+			// Acquire repo lock
+			var lock *RepoLock
+			var err error
+			if force {
+				lock, err = ForceAcquireRepoLock(repo)
+				if err != nil {
+					return fmt.Errorf("force lock failed: %w", err)
+				}
+				log.Warn("force lock acquired - overriding existing instance")
+			} else {
+				lock, err = AcquireRepoLock(repo)
+				if err != nil {
+					return err
+				}
+			}
+			defer lock.Release()
 
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
@@ -142,11 +163,12 @@ Examples:
 				ratelimit.WithResetBuffer(resetBuffer),
 			)
 
-			if _, err := github.ResolveToken(ctx); err != nil {
+			token, err := github.ResolveToken(ctx)
+			if err != nil {
 				return err
 			}
 			metrics := ratelimit.NewMetrics()
-			innerRunner := prsync.NewDefaultRunner(nil, "", store, syncMaxPRs)
+			innerRunner := prsync.NewDefaultRunner(nil, "", store, syncMaxPRs, token)
 
 			log.Info("starting sync", "repo", repo, "budget", budget.String())
 
@@ -282,6 +304,7 @@ Examples:
 	command.Flags().BoolVar(&showProgress, "progress", false, "Show progress with ETA")
 	command.Flags().IntVar(&syncMaxPRs, "sync-max-prs", 0, "Max PRs to sync on this pass (0=no cap)")
 	command.Flags().BoolVar(&refreshSync, "refresh-sync", false, "Force a fresh sync even when a local snapshot already exists")
+	command.Flags().BoolVar(&force, "force", false, "Override lock and force sync (use with caution)")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }

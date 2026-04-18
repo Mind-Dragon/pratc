@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jeffersonnunn/pratc/internal/app"
 	"github.com/jeffersonnunn/pratc/internal/logger"
+	"github.com/jeffersonnunn/pratc/internal/types"
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +24,8 @@ func RegisterClusterCommand() {
 			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
+
+			repo = types.NormalizeRepoName(repo)
 
 			service := app.NewService(buildCacheFirstConfig(useCacheFirst, forceCache, nil))
 			log.Info("starting cluster", "repo", repo)

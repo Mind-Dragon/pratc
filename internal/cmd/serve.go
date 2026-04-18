@@ -57,7 +57,8 @@ var newRepoSyncManager = func(jobDBPath, jobID string) *prsync.Manager {
 		dbPath = filepath.Join(home, ".pratc", "pratc.db")
 	}
 	cacheStore, _ := cache.Open(dbPath)
-	return prsync.NewManager(prsync.NewDefaultRunner(jobRecorder, jobID, cacheStore, 0))
+	token, _ := github.ResolveToken(context.Background())
+	return prsync.NewManager(prsync.NewDefaultRunner(jobRecorder, jobID, cacheStore, 0, token))
 }
 
 func RegisterServeCommand() {
@@ -72,6 +73,8 @@ func RegisterServeCommand() {
 			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
+
+			repo = types.NormalizeRepoName(repo)
 			log.Info("starting server", "port", port, "repo", repo)
 			return runServer(ctx, port, repo, useCacheFirst)
 		},

@@ -101,7 +101,7 @@ func TestSyncIntegration_CurrentSyncBehavior(t *testing.T) {
 	}
 	t.Logf("PR count before sync: %d", len(prsBefore))
 
-	worker := defaultWorker(nil, 0)
+	worker := defaultWorker(nil, 0, "")
 	t.Logf("Worker.CacheStore is nil (expected with nil passed)")
 	t.Logf("Worker.Metadata type: %T", worker.Metadata)
 

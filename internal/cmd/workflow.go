@@ -18,6 +18,7 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/logger"
 	prsync "github.com/jeffersonnunn/pratc/internal/sync"
 	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
+	"github.com/jeffersonnunn/pratc/internal/types"
 	"github.com/spf13/cobra"
 )
 
@@ -45,6 +46,7 @@ func RegisterWorkflowCommand() {
 	var resetBuffer int
 	var syncMaxPRs int
 	var refreshSync bool
+	var force bool
 
 	command := &cobra.Command{
 		Use:   "workflow",
@@ -52,7 +54,7 @@ func RegisterWorkflowCommand() {
 		Long: `Run a full prATC workflow for a repository.
 
 The workflow command performs a blocking sync run, automatically waits through
-rate-limit pauses, then runs analysis once fresh sync data is available.
+ rate-limit pauses, then runs analysis once fresh sync data is available.
 
 The workflow is service-friendly: it does not require a TTY. Use 'pratc monitor
 --repo=owner/repo' in another terminal to watch live dashboard updates while the
@@ -76,7 +78,27 @@ Examples:
 				return fmt.Errorf("repo is required")
 			}
 
-			if _, err := gh.ResolveToken(ctx); err != nil {
+			repo = types.NormalizeRepoName(repo)
+
+			// Acquire repo lock
+			var lock *RepoLock
+			var err error
+			if force {
+				lock, err = ForceAcquireRepoLock(repo)
+				if err != nil {
+					return fmt.Errorf("force lock failed: %w", err)
+				}
+				log.Warn("force lock acquired - overriding existing instance")
+			} else {
+				lock, err = AcquireRepoLock(repo)
+				if err != nil {
+					return err
+				}
+			}
+			defer lock.Release()
+
+			token, err := gh.ResolveToken(ctx)
+			if err != nil {
 				return err
 			}
 
@@ -114,7 +136,7 @@ Examples:
 				log.Info("reusing local sync snapshot", "repo", repo)
 			}
 			if !reused {
-				syncSummary, err = runWorkflowSync(ctx, cmd, store, repo, progress, rateLimit, reserveBuffer, resetBuffer, syncMaxPRs)
+				syncSummary, err = runWorkflowSync(ctx, cmd, store, repo, token, progress, rateLimit, reserveBuffer, resetBuffer, syncMaxPRs)
 				if err != nil {
 					return err
 				}
@@ -196,6 +218,7 @@ Examples:
 	command.Flags().IntVar(&rateLimit, "rate-limit", 5000, "GitHub API rate limit per hour")
 	command.Flags().IntVar(&reserveBuffer, "reserve-buffer", 200, "Minimum requests to keep in reserve")
 	command.Flags().IntVar(&resetBuffer, "reset-buffer", 15, "Seconds to wait after rate limit reset")
+	command.Flags().BoolVar(&force, "force", false, "Override lock and force workflow (use with caution)")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
@@ -217,7 +240,7 @@ func openWorkflowCacheStore() (*cache.Store, error) {
 	return store, nil
 }
 
-func runWorkflowSync(ctx context.Context, cmd *cobra.Command, store *cache.Store, repo string, progress bool, rateLimit, reserveBuffer, resetBuffer, syncMaxPRs int) (workflowSyncSummary, error) {
+func runWorkflowSync(ctx context.Context, cmd *cobra.Command, store *cache.Store, repo string, token string, progress bool, rateLimit, reserveBuffer, resetBuffer, syncMaxPRs int) (workflowSyncSummary, error) {
 	job, err := loadWorkflowJob(store, repo)
 	if err != nil {
 		return workflowSyncSummary{}, err
@@ -230,7 +253,7 @@ func runWorkflowSync(ctx context.Context, cmd *cobra.Command, store *cache.Store
 			ratelimit.WithResetBuffer(resetBuffer),
 		)
 		metrics := ratelimit.NewMetrics()
-		innerRunner := prsync.NewDefaultRunner(nil, job.ID, store, syncMaxPRs)
+		innerRunner := prsync.NewDefaultRunner(nil, job.ID, store, syncMaxPRs, token)
 		guard := prsync.NewRateLimitGuard(budget, metrics, store, job.ID)
 		runner := prsync.NewRateLimitRunner(innerRunner, guard, store, repo)
 

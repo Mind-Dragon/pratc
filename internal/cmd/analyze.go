@@ -193,6 +193,25 @@ func RegisterAnalyzeCommand() {
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
 
+			repo = types.NormalizeRepoName(repo)
+
+			// Acquire repo lock
+			var lock *RepoLock
+			var err error
+			if force {
+				lock, err = ForceAcquireRepoLock(repo)
+				if err != nil {
+					return fmt.Errorf("force lock failed: %w", err)
+				}
+				log.Warn("force lock acquired - overriding existing instance")
+			} else {
+				lock, err = AcquireRepoLock(repo)
+				if err != nil {
+					return err
+				}
+			}
+			defer lock.Release()
+
 			budget := ratelimit.NewBudgetManager(
 				ratelimit.WithRateLimit(rateLimit),
 				ratelimit.WithReserveBuffer(reserveBuffer),

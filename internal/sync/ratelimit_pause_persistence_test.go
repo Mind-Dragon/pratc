@@ -173,7 +173,7 @@ func TestRateLimitRunnerResumeUsesStoredCursor(t *testing.T) {
 	}
 
 	// Now create a new DefaultRunner and verify it sees the cursor
-	innerRunner := NewDefaultRunner(nil, resumedJob.ID, store, 0)
+	innerRunner := NewDefaultRunner(nil, resumedJob.ID, store, 0, "")
 
 	// We can't easily verify the cursor is actually USED without mocking
 	// githubMetadataSource, but we can at least verify the runner has the
@@ -435,7 +435,7 @@ func TestWatchModeCursorSurvivesProcessRestart(t *testing.T) {
 	budget.RecordResponse(1000, time.Now().Add(1*time.Hour).Unix())
 	metrics := ratelimit.NewMetrics()
 	guard := NewRateLimitGuard(budget, metrics, store, resumedJob.ID)
-	innerRunner := NewDefaultRunner(nil, resumedJob.ID, store, 0)
+	innerRunner := NewDefaultRunner(nil, resumedJob.ID, store, 0, "")
 	_ = NewRateLimitRunner(innerRunner, guard, store, repo)
 
 	// We don't execute the runner here; the point of this test is that the

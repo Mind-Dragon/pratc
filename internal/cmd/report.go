@@ -35,6 +35,7 @@ Example:
 			if repo == "" {
 				return fmt.Errorf("--repo is required")
 			}
+			repo = types.NormalizeRepoName(repo)
 
 			if outputPath == "" {
 				outputPath = "report.pdf"
