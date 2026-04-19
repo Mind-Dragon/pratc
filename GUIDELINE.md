@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document sets the operating rules for the v1.4.2 full-corpus triage engine.
+This document sets the operating rules for the v1.5.0 full-corpus triage engine.
 
 The system does not get to ignore PRs. It does not get to hide uncertainty. It does not get to collapse the world into a single score and pretend that is enough.
 
@@ -128,5 +128,5 @@ The system uses confidence scores to express how much it trusts its own judgment
 - **ROADMAP.md** defines what gets built and when.
 - **ARCHITECTURE.md** defines the system shape and data flow.
 - **This document** defines the rules the system must follow.
-- **ARCHITECTURE.md** now includes the technical reference details for component breakdowns, API routes, data model, and SLOs.
+- **CHANGELOG.md** records what actually shipped in each version.
 - If any document conflicts with this one on bucket definitions, layer ordering, or non-negotiables, this document wins.

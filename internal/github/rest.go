@@ -66,11 +66,10 @@ func (c *Client) FetchPullRequestsREST(ctx context.Context, repo string, opts Pu
 
 	var allPRs []types.PR
 	page := 1
-
+	retries := 0
 	for {
 		url := fmt.Sprintf("%s/repos/%s/%s/pulls?state=open&sort=updated&direction=asc&per_page=%d&page=%d",
 			c.baseURL, owner, name, perPage, page)
-
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			return nil, fmt.Errorf("build rest request: %w", err)
@@ -82,10 +81,16 @@ func (c *Client) FetchPullRequestsREST(ctx context.Context, repo string, opts Pu
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
+			if isTransientTransportError(err) && retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest transport error, retrying", "url", url, "page", page, "wait_seconds", wait.Seconds(), "error", err.Error())
+				c.sleep(wait)
+				retries++
+				continue
+			}
 			return nil, fmt.Errorf("perform rest request: %w", err)
 		}
 
-		// Handle rate limiting
 		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
 			bodyBytes, _ := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
@@ -100,7 +105,6 @@ func (c *Client) FetchPullRequestsREST(ctx context.Context, repo string, opts Pu
 			c.log.Warn("rest rate limited", "url", url, "wait_seconds", wait.Seconds())
 			c.sleep(wait)
 
-			// Retry once after waiting
 			req.Header.Set("If-None-Match", resp.Header.Get("ETag"))
 			resp2, err2 := c.httpClient.Do(req)
 			if err2 != nil {
@@ -109,11 +113,24 @@ func (c *Client) FetchPullRequestsREST(ctx context.Context, repo string, opts Pu
 			resp = resp2
 		}
 
+		if resp.StatusCode >= 500 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			errMsg := strings.TrimSpace(string(bodyBytes))
+			if retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest transient server error, retrying", "url", url, "status", resp.StatusCode, "wait_seconds", wait.Seconds(), "body", errMsg)
+				c.sleep(wait)
+				retries++
+				continue
+			}
+			return nil, fmt.Errorf("github rest request failed with status %d: %s", resp.StatusCode, errMsg)
+		}
+
 		if resp.StatusCode >= 300 {
 			bodyBytes, _ := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
 			errMsg := strings.TrimSpace(string(bodyBytes))
-			// Return rate limit error if it's a 403/429
 			if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
 				wait := retryAfter(resp.Header.Get("Retry-After"))
 				if wait <= 0 {
@@ -165,6 +182,7 @@ func (c *Client) FetchPullRequestsREST(ctx context.Context, repo string, opts Pu
 		if len(prNodes) < perPage {
 			break
 		}
+		retries = 0
 		page++
 
 		// Safety cap on pages

@@ -114,3 +114,16 @@ func normalizePageSize(perPage int) int {
 	}
 	return perPage
 }
+
+// buildOpenPRCountQuery returns a lightweight GraphQL query that fetches only
+// the totalCount of open pull requests, without fetching any PR nodes.
+func buildOpenPRCountQuery(owner string, repo string) (string, map[string]any) {
+	return `query OpenPRCount($owner: String!, $repo: String!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequests(states: OPEN, first: 1) {
+      totalCount
+    }
+  }
+}
+`, map[string]any{"owner": owner, "repo": repo}
+}

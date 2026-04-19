@@ -192,7 +192,6 @@ func TestRateLimitGuardMetrics(t *testing.T) {
 	budget.RecordResponse(500, time.Now().Add(1*time.Hour).Unix())
 
 	guard := NewRateLimitGuard(budget, metrics, store, jobID)
-
 	_, _ = guard.CheckBudget(jobID, 100)
 
 	snapshot := metrics.Snapshot()

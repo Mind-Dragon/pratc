@@ -1,5 +1,7 @@
 # prATC v1.4.2 — Local-First Sync With Explicit Sync Ceilings
 
+> **Status: SHIPPED (2026-04-16).** This milestone is complete. For current work, see v1.5 in CHANGELOG.md and TODO.md.
+
 This is the shipped v1.4.2 operating model. It keeps the workflow honest about what was already synced, what still needs GitHub, and when the repo can stay entirely local.
 
 If this file ever conflicts with `GUIDELINE.md` on bucket names, layer order, or non-negotiables, `GUIDELINE.md` wins.

@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,6 +11,7 @@ import (
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/github"
+	"github.com/jeffersonnunn/pratc/internal/logger"
 	"github.com/jeffersonnunn/pratc/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -53,15 +52,9 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repo = types.NormalizeRepoName(repo)
 
+			log := logger.New("preflight")
 			ctx := context.Background()
 
-			// Resolve token
-			token, err := github.ResolveToken(ctx)
-			if err != nil {
-				return err
-			}
-
-			// Open cache store
 			dbPath := strings.TrimSpace(os.Getenv("PRATC_DB_PATH"))
 			if dbPath == "" {
 				home, _ := os.UserHomeDir()
@@ -77,11 +70,15 @@ Examples:
 				Repo:        repo,
 				GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 			}
+			log.Info("preflight analysis", "repo", repo)
 
 			// Count cached PRs
 			prs, err := store.ListPRs(cache.PRFilter{Repo: repo})
 			if err == nil {
 				result.CachedPRs = len(prs)
+				log.Info("cached PRs", "count", result.CachedPRs)
+			} else {
+				log.Warn("preflight cache read failed", "repo", repo, "error", err)
 			}
 
 			// Get last sync time
@@ -90,19 +87,31 @@ Examples:
 				result.LastSynced = lastSync.UTC().Format("2006-01-02")
 			}
 
-			// Query GitHub API for open PR count and rate limit
+			// Query GitHub API for open PR count and rate limit using GraphQL
 			owner, name, err := splitRepo(repo)
 			if err != nil {
 				return fmt.Errorf("parse repo: %w", err)
 			}
+			repoName := owner + "/" + name
 
-			// Get open issues count from GitHub REST API
-			openPRs, rateLimit, err := fetchGitHubOpenPRsAndRateLimit(ctx, owner, name, token)
-			if err != nil {
-				// Non-fatal - we can still show partial info
+			var openPRCount int
+			var rateLimit ghRateLimit
+			if err := attemptTokenFallbackWithTrace(ctx, log, func(token string) error {
+				result, err := github.FetchOpenPRCountWithToken(ctx, token, repoName)
+				if err != nil {
+					return err
+				}
+				openPRCount = result.Count
+				rateLimit = ghRateLimit{
+					Remaining: result.RateLimit.Remaining,
+					Reset:     result.RateLimit.ResetAt,
+				}
+				return nil
+			}); err != nil {
+				log.Warn("preflight token fallback failed", "repo", repoName, "error", err)
 				result.GitHubOpenPRs = 0
 			} else {
-				result.GitHubOpenPRs = openPRs
+				result.GitHubOpenPRs = openPRCount
 				if rateLimit.Remaining >= 0 {
 					result.RateLimitRem = rateLimit.Remaining
 				}
@@ -165,48 +174,6 @@ Examples:
 type ghRateLimit struct {
 	Remaining int
 	Reset     time.Time
-}
-
-func fetchGitHubOpenPRsAndRateLimit(ctx context.Context, owner, name, token string) (int, ghRateLimit, error) {
-	// Use GitHub REST API to get open issues count
-	req, err := http.NewRequestWithContext(ctx, "GET",
-		fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, name), nil)
-	if err != nil {
-		return 0, ghRateLimit{}, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return 0, ghRateLimit{}, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return 0, ghRateLimit{}, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
-	}
-
-	var data struct {
-		OpenIssuesCount int `json:"open_issues_count"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return 0, ghRateLimit{}, err
-	}
-
-	// Get rate limit info
-	remaining := 0
-	if rm := resp.Header.Get("X-RateLimit-Remaining"); rm != "" {
-		remaining, _ = strconv.Atoi(rm)
-	}
-	reset := time.Now().Add(time.Hour) // Default
-	if re := resp.Header.Get("X-RateLimit-Reset"); re != "" {
-		if epoch, err := strconv.ParseInt(re, 10, 64); err == nil {
-			reset = time.Unix(epoch, 0)
-		}
-	}
-
-	return data.OpenIssuesCount, ghRateLimit{Remaining: remaining, Reset: reset}, nil
 }
 
 func estimateAPICalls(deltaPRs int) int {

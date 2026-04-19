@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document describes the system shape for the v1.4.2 full-corpus triage engine.
+This document describes the system shape for the v1.5.0 full-corpus triage engine.
 
 The point is not to make the system clever in one shot. The point is to make it honest, layered, and complete: every PR enters, every decision is explainable, and the system keeps separating the obvious from the subtle until what remains is worth human attention.
 
@@ -151,7 +151,9 @@ The architecture accepts that the corpus may be large.
 What it may not do is silently narrow the corpus.
 
 ### Known scaling constraints to address
-- `maxPRs` default of 1000 in `internal/cmd/analyze.go` — removed; no-cap behavior is now explicit
+- `maxPRs` cap of 5,000 applied to the overnight openclaw/openclaw run — full corpus is ~6,632 PRs; need to remove or raise the cap
+- Conflict pairs at 38,884 after noise filtering — still above the 5,000 target; needs further noise file expansion or higher shared-file minimum
+- Duplicate groups at 9 — may be genuine corpus behavior or a signal that file-overlap weighting needs tuning
 - Legacy pool-cap constants still exist in `internal/types/`, but `BuildCandidatePool()` does not enforce them in the active runtime path
 - `ListPRs()` in `internal/cache/sqlite.go` now exposes caller-visible paging/streaming via `PRPage` and `ListPRsIter()`; callers no longer need to materialize the full slice
 - Bootstrap sync in `internal/sync/worker.go` now streams into the cache store
@@ -206,7 +208,7 @@ Health() *HealthResponse
 
 ### Shared thresholds and defaults
 
-- Duplicate threshold: 0.90
+- Duplicate threshold: 0.85 (lowered from 0.90 in v1.5 — scoring formula maxes at 0.85)
 - Overlap threshold: 0.70
 - Default target: 20
 - Default candidate pool cap: 100
@@ -227,7 +229,7 @@ Health() *HealthResponse
 ### Data layer
 
 - SQLite with forward-only migrations
-- Schema version 2
+- Schema version 7 (adds duplicate_groups, conflict_cache, substance_cache tables; repo normalization migration)
 - Pragmas on open: WAL, busy_timeout, foreign_keys
 
 ### Sync and rate limiting
@@ -253,6 +255,15 @@ Health() *HealthResponse
 - Graph: 120s
 - Plan: 90s
 
+### Production run results (openclaw/openclaw, 2026-04-19)
+
+- 4,992 PRs analyzed (capped at 5,000; full corpus is ~6,632)
+- 69 clusters, 9 duplicate groups, 741 overlap groups
+- 38,884 conflict pairs (reduced from 92,911 by v1.5 noise filtering; still above target of 5,000)
+- 215 stale PRs, 8 garbage PRs
+- Full sync + analyze pipeline: 28.5 min (first run, no cache)
+- Intermediate cache now stores duplicate groups, conflicts, and substance scores; second run skips O(n^2) recomputation
+
 ## Key design principle
 
 prATC is not a single ranking function.
@@ -271,5 +282,5 @@ The architecture exists to answer those questions without flattening them into o
 ## Relationship to other documents
 - **GUIDELINE.md** is the authority on bucket definitions, layer ordering, and non-negotiables.
 - **ROADMAP.md** defines what gets built and when.
-- **version1.4.2.md** is the milestone summary and working contract.
 - **This document** defines the system shape, data flow, technical reference details, and design philosophy.
+- **version1.4.2.md** is the v1.4.2 milestone summary (shipped). See CHANGELOG.md for v1.5.0 changes.

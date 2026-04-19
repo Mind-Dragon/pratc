@@ -48,6 +48,13 @@ func WithResetBuffer(seconds int) Option {
 	}
 }
 
+// ReserveBuffer returns the configured reserve buffer.
+func (b *BudgetManager) ReserveBuffer() int {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.reserveBuffer
+}
+
 // WithMetrics sets the metrics collector for telemetry tracking.
 func WithMetrics(metrics *Metrics) Option {
 	return func(b *BudgetManager) {

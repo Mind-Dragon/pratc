@@ -14,9 +14,9 @@ prATC development roadmap.
 - 16-layer decision ladder (documented, partially implemented)
 - See `version1.4.2.md` for full details
 
-## Version 1.5 — Triage Engine Fixes + Performance (IN PROGRESS)
+## Version 1.5 — Triage Engine Fixes + Performance (CODE COMPLETE, VERIFICATION PENDING)
 
-**Target: 2026-04-25.** Fix production issues found during live openclaw/openclaw run.
+**Code complete: 2026-04-19.** BUG-1 through BUG-6 all fixed and on main. Overnight production run completed. Remaining: conflict/duplicate tuning and final metric verification.
 
 ### Completed
 
@@ -32,9 +32,11 @@ prATC development roadmap.
 
 ### Remaining (live run verification)
 
-- [ ] Verify duplicate detection finds > 10 groups on openclaw/openclaw
-- [ ] Verify conflict count < 5,000 on openclaw/openclaw
-- [ ] Verify analysis < 15 min for 6,632 PRs (intermediate cache should help on second run)
+Overnight run `20260419-065654` results: 4,992 PRs, 9 duplicate groups, 38,884 conflict pairs, 8 garbage PRs.
+
+- [ ] Raise cap to 7,000+ or remove cap — verify duplicate groups > 10
+- [ ] Expand noise file list or raise shared-file minimum — reduce conflicts below 5,000
+- [ ] Run cached second pass — verify analysis < 15 min
 
 ### Next improvements (if needed after verification)
 

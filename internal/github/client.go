@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -345,6 +346,62 @@ func (c *Client) RateLimitStatus() (RateLimitStatus, error) {
 	}, nil
 }
 
+// OpenPRCountResult holds the result of fetching open PR count.
+type OpenPRCountResult struct {
+	Count      int
+	RateLimit  RateLimitStatus
+	TotalCount int // same as Count, kept for API compatibility
+}
+
+// FetchOpenPRCount fetches the total count of open pull requests using GraphQL.
+// It returns the count along with current rate limit status.
+// This is a lightweight query that only fetches the totalCount, not any PR data.
+func (c *Client) FetchOpenPRCount(ctx context.Context, repo string) (OpenPRCountResult, error) {
+	owner, name, err := splitRepo(repo)
+	if err != nil {
+		return OpenPRCountResult{}, err
+	}
+
+	query, variables := buildOpenPRCountQuery(owner, name)
+
+	var response struct {
+		Data struct {
+			Repository struct {
+				PullRequests struct {
+					TotalCount int `json:"totalCount"`
+				} `json:"pullRequests"`
+			} `json:"repository"`
+		} `json:"data"`
+	}
+
+	if err := c.graphQL(ctx, query, variables, &response); err != nil {
+		return OpenPRCountResult{}, err
+	}
+
+	// Get rate limit status from budget if available
+	rlStatus := RateLimitStatus{}
+	if c.budget != nil {
+		rlStatus = RateLimitStatus{
+			Remaining: c.budget.Remaining(),
+			ResetAt:   c.budget.ResetAt(),
+		}
+	}
+
+	return OpenPRCountResult{
+		Count:      response.Data.Repository.PullRequests.TotalCount,
+		RateLimit:  rlStatus,
+		TotalCount: response.Data.Repository.PullRequests.TotalCount,
+	}, nil
+}
+
+// FetchOpenPRCountWithToken is a standalone function that creates a temporary client
+// with the given token and fetches the open PR count. This is useful for
+// preflight checks that need to use token fallback.
+func FetchOpenPRCountWithToken(ctx context.Context, token, repo string) (OpenPRCountResult, error) {
+	client := NewClient(Config{Token: token})
+	return client.FetchOpenPRCount(ctx, repo)
+}
+
 type PRFilesResult struct {
 	PRNumber int
 	Files    []string
@@ -437,6 +494,13 @@ func (c *Client) graphQL(ctx context.Context, query string, variables map[string
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
+			if isTransientTransportError(err) && attempt < c.maxSecondaryRetries {
+				wait := transientBackoff(attempt)
+				c.log.Warn("graphql transport error, retrying", "attempt", attempt+1, "max_retries", c.maxSecondaryRetries, "wait_seconds", wait.Seconds(), "error", err.Error())
+				c.sleep(wait)
+				lastErr = fmt.Errorf("perform graphql request: %w", err)
+				continue
+			}
 			return fmt.Errorf("perform graphql request: %w", err)
 		}
 
@@ -448,6 +512,19 @@ func (c *Client) graphQL(ctx context.Context, query string, variables map[string
 		if retry {
 			_ = resp.Body.Close()
 			continue
+		}
+
+		if isTransientHTTPStatus(resp.StatusCode) {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			lastErr = fmt.Errorf("github graphql request failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+			if attempt < c.maxSecondaryRetries {
+				wait := transientBackoff(attempt)
+				c.log.Warn("graphql transient server error, retrying", "attempt", attempt+1, "max_retries", c.maxSecondaryRetries, "status", resp.StatusCode, "wait_seconds", wait.Seconds())
+				c.sleep(wait)
+				continue
+			}
+			return lastErr
 		}
 
 		if resp.StatusCode >= 300 {
@@ -486,6 +563,42 @@ func isRateLimitError(err error) bool {
 
 func addJitter(d time.Duration) time.Duration {
 	return d + time.Duration(rand.Int63n(int64(d/4)))
+}
+
+func transientBackoff(attempt int) time.Duration {
+	if attempt < 0 {
+		attempt = 0
+	}
+	base := time.Second << attempt
+	if base > 30*time.Second {
+		base = 30 * time.Second
+	}
+	return addJitter(base)
+}
+
+func isTransientTransportError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "temporarily") ||
+		strings.Contains(msg, "connection refused") ||
+		strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "broken pipe")
+}
+
+func isTransientHTTPStatus(status int) bool {
+	switch status {
+	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Client) handleRateLimit(resp *http.Response, attempt int) (bool, error) {

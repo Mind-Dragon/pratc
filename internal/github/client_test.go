@@ -15,6 +15,12 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
+type tempNetError struct{ msg string }
+
+func (e tempNetError) Error() string   { return e.msg }
+func (e tempNetError) Timeout() bool   { return true }
+func (e tempNetError) Temporary() bool { return true }
+
 func TestPullRequestsQueryIncludesPaginationCursor(t *testing.T) {
 	t.Parallel()
 
@@ -280,6 +286,166 @@ func TestRateLimitBackoff(t *testing.T) {
 	}
 	if len(sleeps) == 0 {
 		t.Fatal("expected at least one backoff sleep")
+	}
+}
+
+func TestFetchOpenPRCountRetriesTransientTransportError(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	calls := 0
+	var sleeps []time.Duration
+	client := NewClient(Config{
+		BaseURL: "https://example.test",
+		HTTPClient: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			mu.Lock()
+			calls++
+			call := calls
+			mu.Unlock()
+			if call == 1 {
+				return nil, tempNetError{msg: "temporary network timeout"}
+			}
+			return jsonResponse(t, http.StatusOK, map[string]string{"Content-Type": "application/json"}, map[string]any{
+				"data": map[string]any{
+					"repository": map[string]any{
+						"pullRequests": map[string]any{"totalCount": 7},
+					},
+				},
+			})
+		}),
+		MaxSecondaryRetries: 2,
+		Sleep: func(d time.Duration) {
+			mu.Lock()
+			sleeps = append(sleeps, d)
+			mu.Unlock()
+		},
+	})
+
+	result, err := client.FetchOpenPRCount(context.Background(), "owner/repo")
+	if err != nil {
+		t.Fatalf("FetchOpenPRCount() error = %v", err)
+	}
+	if result.Count != 7 {
+		t.Fatalf("FetchOpenPRCount() count = %d, want 7", result.Count)
+	}
+	mu.Lock()
+	gotCalls := calls
+	gotSleeps := append([]time.Duration(nil), sleeps...)
+	mu.Unlock()
+	if gotCalls != 2 {
+		t.Fatalf("expected 2 calls after transient retry, got %d", gotCalls)
+	}
+	if len(gotSleeps) != 1 || gotSleeps[0] <= 0 {
+		t.Fatalf("expected one positive backoff sleep, got %v", gotSleeps)
+	}
+}
+
+func TestFetchOpenPRCountRetriesTransientServerError(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	calls := 0
+	var sleeps []time.Duration
+	client := NewClient(Config{
+		BaseURL: "https://example.test",
+		HTTPClient: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			mu.Lock()
+			calls++
+			call := calls
+			mu.Unlock()
+			if call == 1 {
+				return &http.Response{
+					StatusCode: http.StatusServiceUnavailable,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"message":"temporary outage"}`)),
+				}, nil
+			}
+			return jsonResponse(t, http.StatusOK, map[string]string{"Content-Type": "application/json"}, map[string]any{
+				"data": map[string]any{
+					"repository": map[string]any{
+						"pullRequests": map[string]any{"totalCount": 9},
+					},
+				},
+			})
+		}),
+		MaxSecondaryRetries: 2,
+		Sleep: func(d time.Duration) {
+			mu.Lock()
+			sleeps = append(sleeps, d)
+			mu.Unlock()
+		},
+	})
+
+	result, err := client.FetchOpenPRCount(context.Background(), "owner/repo")
+	if err != nil {
+		t.Fatalf("FetchOpenPRCount() error = %v", err)
+	}
+	if result.Count != 9 {
+		t.Fatalf("FetchOpenPRCount() count = %d, want 9", result.Count)
+	}
+	mu.Lock()
+	gotCalls := calls
+	gotSleeps := append([]time.Duration(nil), sleeps...)
+	mu.Unlock()
+	if gotCalls != 2 {
+		t.Fatalf("expected 2 calls after 503 retry, got %d", gotCalls)
+	}
+	if len(gotSleeps) != 1 || gotSleeps[0] <= 0 {
+		t.Fatalf("expected one positive backoff sleep, got %v", gotSleeps)
+	}
+}
+
+func TestFetchPullRequestsRESTRetriesTransientServerError(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	calls := 0
+	var sleeps []time.Duration
+	client := NewClient(Config{
+		BaseURL: "https://example.test",
+		HTTPClient: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			mu.Lock()
+			calls++
+			call := calls
+			mu.Unlock()
+			if call == 1 {
+				return &http.Response{
+					StatusCode: http.StatusBadGateway,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"message":"upstream bad gateway"}`)),
+				}, nil
+			}
+			body, _ := json.Marshal([]map[string]any{})
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(string(body))),
+			}, nil
+		}),
+		MaxSecondaryRetries: 2,
+		Sleep: func(d time.Duration) {
+			mu.Lock()
+			sleeps = append(sleeps, d)
+			mu.Unlock()
+		},
+	})
+
+	prs, err := client.FetchPullRequestsREST(context.Background(), "owner/repo", PullRequestListOptions{})
+	if err != nil {
+		t.Fatalf("FetchPullRequestsREST() error = %v", err)
+	}
+	if len(prs) != 0 {
+		t.Fatalf("expected no PRs, got %d", len(prs))
+	}
+	mu.Lock()
+	gotCalls := calls
+	gotSleeps := append([]time.Duration(nil), sleeps...)
+	mu.Unlock()
+	if gotCalls != 2 {
+		t.Fatalf("expected 2 calls after REST retry, got %d", gotCalls)
+	}
+	if len(gotSleeps) != 1 || gotSleeps[0] <= 0 {
+		t.Fatalf("expected one positive backoff sleep, got %v", gotSleeps)
 	}
 }
 
