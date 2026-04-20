@@ -398,6 +398,49 @@ def test_synthesize_wave_empty_when_no_open_gaps(tmp_paths, sample_state):
     assert tasks == []
 
 
+def test_rebuild_session_todo_from_repo_local_state(tmp_paths, sample_state, sample_gap_list):
+    """
+    Prove /autonomous can rebuild the Hermes session todo entirely from
+    repo-local state and latest audit output.
+
+    This test verifies that given only:
+    - autonomous/STATE.yaml (open_gaps list)
+    - autonomous/GAP_LIST.md (gap details)
+
+    The synthesize_wave() function produces the session todo with no
+    hidden chat memory or external context required.
+
+    This is the core proof that a new controller session can resume from
+    repo-local state without hidden chat context (exit criteria item 1).
+    """
+    state_path, gap_path = tmp_paths
+    # Write only repo-local files - no chat memory, no external state
+    ctrl.save_state(sample_state)
+    gap_path.write_text(sample_gap_list)
+
+    # Rebuild session todo purely from repo-local files
+    tasks = ctrl.synthesize_wave()
+
+    # Verify we got tasks for every open gap
+    assert len(tasks) == 6, f"Expected 6 tasks, got {len(tasks)}"
+    synthesized_gap_ids = {t['gap_id'] for t in tasks}
+    assert synthesized_gap_ids == set(sample_state['open_gaps'])
+
+    # Verify each task has the required fields for the session todo
+    for t in tasks:
+        assert 'gap_id' in t
+        assert 'title' in t
+        assert 'wave_group' in t
+        assert 'action' in t
+        assert 'verification_note' in t
+        # verification_note must reference the audit check
+        assert 'audit' in t['verification_note'].lower() or 'audit' in t['action'].lower()
+
+    # Verify ordering is deterministic (run twice, get same result)
+    tasks2 = ctrl.synthesize_wave()
+    assert tasks == tasks2, "Session todo rebuild must be deterministic"
+
+
 def test_synthesize_wave_cmd_executable(tmp_paths, sample_state, sample_gap_list, capsys):
     """The synthesize-wave subcommand runs without error and prints tasks."""
     state_path, gap_path = tmp_paths
@@ -410,6 +453,31 @@ def test_synthesize_wave_cmd_executable(tmp_paths, sample_state, sample_gap_list
     out = capsys.readouterr().out
     assert 'G-001' in out
     assert 'wave_group' in out.lower() or 'wave' in out.lower()
+
+
+def test_rebuild_session_todo_cli_output(tmp_paths, sample_state, sample_gap_list, capsys):
+    """
+    Verify the synthesize-wave CLI command produces machine-readable YAML
+    that the /autonomous skill can consume for session todo reconstruction.
+
+    This test proves the CLI is usable by external callers (the /autonomous
+    skill) for repo-local session rebuild.
+    """
+    state_path, gap_path = tmp_paths
+    ctrl.save_state(sample_state)
+    gap_path.write_text(sample_gap_list)
+
+    args = FakeArgs()
+    ctrl.cmd_synthesize_wave(args)
+
+    out = capsys.readouterr().out
+    # Must have YAML marker indicating machine-readable output
+    assert '--- YAML ---' in out
+    # Must have wave_tasks key with list value
+    assert 'wave_tasks:' in out
+    # Must have the gap IDs
+    assert 'G-001' in out
+    assert 'G-002' in out
 
 
 # ---------------------------------------------------------------------------
