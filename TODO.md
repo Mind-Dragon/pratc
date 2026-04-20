@@ -59,7 +59,7 @@ If a finding lives only in chat, it is not part of the system.
 - [x] Create `scripts/audit_guideline.py` scaffold and verify it emits `AUDIT_RESULTS.json`
 - [x] Create `scripts/gap_list_from_audit.py` scaffold and verify it regenerates `autonomous/GAP_LIST.md`
 - [x] Create `scripts/autonomous_controller.py` scaffold and verify basic state transitions (`reconcile`, `resume`, `pause`, `next-wave`, `complete`)
-- [ ] Harden `autonomous_controller.py` from scaffold into a reliable checkpoint manager; verify repeated resume cycles preserve state truthfully with `python -m pytest -q scripts/test_autonomous_controller.py`
+- [x] Harden `autonomous_controller.py` from scaffold into a reliable checkpoint manager; verified by `python -m pytest -q scripts/test_autonomous_controller.py` (30 passed) and combined audit/controller python suite (69 passed)
 - [x] Expand audit coverage from core checks to the full required GUIDELINE/report-readiness matrix; verified by `python -m pytest -q tests/test_audit_guideline.py` and final-wave audit-green run
 
 ## Workstream 2 — Session orchestration

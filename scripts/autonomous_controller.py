@@ -69,7 +69,9 @@ def save_state(state):
         if key in state and state[key] not in (None, ''):
             output[key] = state[key]
         elif key in ('open_gaps', 'blocked_gaps', 'completed_gaps'):
-            output[key] = state.get(key, [])
+            val = state.get(key)
+            # Normalize None/missing to []; preserve actual lists
+            output[key] = val if isinstance(val, list) else []
         elif key == 'notes':
             output[key] = state.get(key, [])
         elif key == 'paused':
@@ -287,8 +289,8 @@ def cmd_init(args):
     state.update({
         'mode': 'active',
         'repo': args.repo,
-        'branch': branch,
-        'baseline_commit': state.get('baseline_commit', commit),
+        'branch': state.get('branch', branch),  # preserve existing branch
+        'baseline_commit': state.get('baseline_commit', commit),  # preserve existing baseline
         'current_run_id': Path(args.corpus_dir).name,
         'corpus_dir': args.corpus_dir,
         'phase': state.get('phase', 'bootstrap'),
@@ -346,6 +348,10 @@ def cmd_pause(args):
 def cmd_resume(_args):
     """Resume from a paused state."""
     state = load_state()
+    # Guard: do not resurrect a completed session
+    if state.get('mode') == 'complete':
+        print(f"resume: session is complete, cannot resume from phase={state.get('phase')} wave={state.get('current_wave')}")
+        return
     state['paused'] = False
     state['mode'] = 'active'
     state['stop_reason'] = ''

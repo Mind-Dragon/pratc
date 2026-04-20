@@ -410,3 +410,186 @@ def test_synthesize_wave_cmd_executable(tmp_paths, sample_state, sample_gap_list
     out = capsys.readouterr().out
     assert 'G-001' in out
     assert 'wave_group' in out.lower() or 'wave' in out.lower()
+
+
+# ---------------------------------------------------------------------------
+# Tests: null-list normalization across save/load
+# ---------------------------------------------------------------------------
+
+def test_null_gap_lists_normalized_to_empty_on_save(tmp_paths, sample_state):
+    """blocked_gaps/completed_gaps: null must become [] after a save/load cycle."""
+    state_path, _ = tmp_paths
+    # Simulate the current STATE.yaml state: null lists instead of empty lists
+    sample_state['blocked_gaps'] = None
+    sample_state['completed_gaps'] = None
+    ctrl.save_state(sample_state)
+
+    # Read raw YAML to verify null is not written
+    raw = yaml.safe_load(state_path.read_text())
+    assert raw['blocked_gaps'] == [], f"expected [], got {raw['blocked_gaps']!r}"
+    assert raw['completed_gaps'] == [], f"expected [], got {raw['completed_gaps']!r}"
+
+    # Also verify load round-trips cleanly
+    loaded = ctrl.load_state()
+    assert loaded['blocked_gaps'] == []
+    assert loaded['completed_gaps'] == []
+
+
+def test_empty_open_gaps_serializes_as_list_not_null(tmp_paths, sample_state):
+    """open_gaps: [] must serialize as a YAML list, not null or absent."""
+    state_path, _ = tmp_paths
+    sample_state['open_gaps'] = []
+    ctrl.save_state(sample_state)
+
+    raw = yaml.safe_load(state_path.read_text())
+    assert 'open_gaps' in raw, "open_gaps key must be present in output"
+    assert raw['open_gaps'] == [], f"expected [], got {raw['open_gaps']!r}"
+
+
+# ---------------------------------------------------------------------------
+# Tests: repeated reconcile/pause/resume/next-wave/complete cycles
+# ---------------------------------------------------------------------------
+
+def test_three_consecutive_pause_resume_cycles_preserve_all_fields(tmp_paths, sample_state):
+    """Three pause→resume cycles must preserve every state field truthfully."""
+    state_path, _ = tmp_paths
+    ctrl.save_state(sample_state)
+
+    # Capture baseline fields that must survive all cycles
+    baseline_fields = {
+        'mode', 'repo', 'branch', 'baseline_commit', 'current_run_id',
+        'corpus_dir', 'phase', 'current_wave', 'open_gaps', 'blocked_gaps',
+        'completed_gaps', 'last_audit_path', 'last_green_commit',
+        'resume_command', 'notes',
+    }
+
+    for cycle in range(3):
+        # Pause
+        ctrl.cmd_pause(FakeArgs(reason=f'hold {cycle}'))
+        state = ctrl.load_state()
+        assert state['paused'] is True, f"cycle {cycle}: paused should be True"
+        assert state['mode'] == 'paused', f"cycle {cycle}: mode should be paused"
+
+        # Resume
+        ctrl.cmd_resume(FakeArgs())
+        state = ctrl.load_state()
+        assert state['paused'] is False, f"cycle {cycle}: paused should be False"
+        assert state['mode'] == 'active', f"cycle {cycle}: mode should be active"
+        assert state['stop_reason'] == '', f"cycle {cycle}: stop_reason should be empty"
+
+        # Verify stable fields unchanged across the full cycle
+        for f in baseline_fields:
+            if f == 'updated_at':
+                continue  # updated_at changes on every save
+            assert state.get(f) == sample_state.get(f), \
+                f"cycle {cycle}: field {f} changed: {state.get(f)!r} vs {sample_state.get(f)!r}"
+
+
+def test_reconcile_preserves_wave_and_phase(tmp_paths, sample_state):
+    """reconcile must not clobber current_wave or phase."""
+    state_path, _ = tmp_paths
+    sample_state['current_wave'] = '2'
+    sample_state['phase'] = 'wave_2'
+    ctrl.save_state(sample_state)
+
+    ctrl.cmd_reconcile(FakeArgs())
+
+    state = ctrl.load_state()
+    assert state['current_wave'] == '2', f"current_wave was clobbered: {state['current_wave']!r}"
+    assert state['phase'] == 'wave_2', f"phase was clobbered: {state['phase']!r}"
+
+
+def test_next_wave_then_pause_then_resume_full_cycle(tmp_paths, sample_state):
+    """next-wave → pause → resume preserves the advanced wave number."""
+    state_path, _ = tmp_paths
+    ctrl.save_state(sample_state)
+
+    ctrl.cmd_next_wave(FakeArgs())
+    state = ctrl.load_state()
+    assert state['current_wave'] == '2'
+    assert state['phase'] == 'wave_2'
+
+    ctrl.cmd_pause(FakeArgs(reason='mid-wave hold'))
+    state = ctrl.load_state()
+    assert state['paused'] is True
+    assert state['current_wave'] == '2'
+
+    ctrl.cmd_resume(FakeArgs())
+    state = ctrl.load_state()
+    assert state['paused'] is False
+    assert state['current_wave'] == '2', "wave must be preserved across pause/resume"
+    assert state['phase'] == 'wave_2'
+
+
+def test_resume_from_active_mode_does_not_clobber_phase(tmp_paths, sample_state):
+    """resume when not paused (active mode) must not reset phase to reconcile."""
+    state_path, _ = tmp_paths
+    sample_state['phase'] = 'wave_3'
+    sample_state['current_wave'] = '3'
+    sample_state['paused'] = False
+    sample_state['mode'] = 'active'
+    ctrl.save_state(sample_state)
+
+    ctrl.cmd_resume(FakeArgs())
+
+    state = ctrl.load_state()
+    # phase should stay wave_3 since we were already active, not bootstrap
+    assert state['phase'] == 'wave_3', f"phase clobbered: got {state['phase']!r}, want wave_3"
+
+
+def test_complete_then_resume_is_idempotent(tmp_paths, sample_state):
+    """complete sets mode=complete; subsequent resume must not resurrect active state."""
+    state_path, _ = tmp_paths
+    ctrl.save_state(sample_state)
+
+    ctrl.cmd_complete(FakeArgs(reason='all done'))
+    state = ctrl.load_state()
+    assert state['mode'] == 'complete'
+    assert state['phase'] == 'complete'
+
+    # Trying to resume from complete is a no-op on mode (stays complete)
+    ctrl.cmd_resume(FakeArgs())
+    state = ctrl.load_state()
+    assert state['mode'] == 'complete', "resume should not resurrect complete mode"
+    assert state['phase'] == 'complete'
+
+
+def test_updated_at_changes_on_every_save(tmp_paths, sample_state):
+    """updated_at must be fresh after each save, proving the timestamp is not stale."""
+    state_path, _ = tmp_paths
+    ctrl.save_state(sample_state)
+    state1 = ctrl.load_state()
+    ts1 = state1['updated_at']
+
+    import time
+    time.sleep(0.01)  # ensure different timestamp
+
+    ctrl.cmd_pause(FakeArgs(reason='test'))
+    state2 = ctrl.load_state()
+    ts2 = state2['updated_at']
+
+    assert ts1 != ts2, f"updated_at did not change: {ts1!r} == {ts2!r}"
+
+
+def test_init_does_not_reset_baseline_commit_if_already_set(tmp_paths, sample_state):
+    """init must not overwrite baseline_commit when state already has one."""
+    state_path, _ = tmp_paths
+    sample_state['baseline_commit'] = 'abc1234'
+    ctrl.save_state(sample_state)
+
+    ctrl.cmd_init(FakeArgs(repo='same/repo', corpus_dir='/tmp/same'))
+
+    state = ctrl.load_state()
+    assert state['baseline_commit'] == 'abc1234'
+
+
+def test_init_does_not_reset_branch_if_already_set(tmp_paths, sample_state):
+    """init must not overwrite branch when state already has one."""
+    state_path, _ = tmp_paths
+    sample_state['branch'] = 'release-v1'
+    ctrl.save_state(sample_state)
+
+    ctrl.cmd_init(FakeArgs(repo='same/repo', corpus_dir='/tmp/same'))
+
+    state = ctrl.load_state()
+    assert state['branch'] == 'release-v1'
