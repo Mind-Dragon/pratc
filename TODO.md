@@ -44,7 +44,8 @@ If a finding lives only in chat, it is not part of the system.
   - `scripts/gap_list_from_audit.py`
   - `scripts/autonomous_controller.py`
 - The latest audit against `projects/openclaw_openclaw/runs/final-wave` is green and produces `AUDIT_RESULTS.json` plus a no-open-gap `autonomous/GAP_LIST.md`.
-- The repo is not yet autonomous-complete because the controller loop has not yet closed the product gaps in the decision engine or the graph/report signal-quality gaps.
+- Product/output gaps are closed on the current canonical cache-backed rerun.
+- The repo is not yet autonomous-complete because the remaining work is controller-proof / hardening: repo-local resume, todo reconstruction, wave synthesis, closeout discipline, interruption recovery, and final report polish.
 
 ---
 
@@ -94,7 +95,7 @@ If a finding lives only in chat, it is not part of the system.
 
 - [x] Run one full autonomous cycle end-to-end: audit → gap list → subagent fix wave → build/test → rerun audit; verified on `projects/openclaw_openclaw/runs/final-wave`
 - [ ] Prove interruption recovery by stopping mid-cycle and resuming from `autonomous/STATE.yaml`
-- [ ] Record per-run outputs under `autonomous/runs/<timestamp>/`
+- [x] Record per-run outputs under `autonomous/runs/<timestamp>/`; verified by `autonomous/runs/20260420-final-wave/{controller-log.md,wave-summary.md}`
 - [x] Update roadmap/docs after the first truthful autonomous green wave
 
 ---
