@@ -65,7 +65,7 @@ If a finding lives only in chat, it is not part of the system.
 ## Workstream 2 — Session orchestration
 
 - [x] Create Hermes `/autonomous` skill
-- [ ] Prove `/autonomous` can rebuild the Hermes session todo entirely from repo-local state and latest audit output; verify by reconciling from `autonomous/STATE.yaml` + `autonomous/GAP_LIST.md` with no hidden chat context
+- [x] Prove `/autonomous` can rebuild the Hermes session todo entirely from repo-local state and latest audit output; verified by `python -m pytest -q scripts/test_autonomous_controller.py` (repo-local rebuild tests) and `python3 scripts/autonomous_controller.py synthesize-wave`
 - [ ] Define wave-generation logic from `autonomous/GAP_LIST.md` into session todo items; verify independent gaps become parallelizable wave items with attached verification commands
 - [ ] Add closeout discipline so `/autonomous` patches `STATE.yaml`, `GAP_LIST.md`, and `TODO.md` truthfully after each verified wave
 
