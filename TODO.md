@@ -45,7 +45,8 @@ If a finding lives only in chat, it is not part of the system.
   - `scripts/autonomous_controller.py`
 - The latest audit against `projects/openclaw_openclaw/runs/final-wave` is green and produces `AUDIT_RESULTS.json` plus a no-open-gap `autonomous/GAP_LIST.md`.
 - Product/output gaps are closed on the current canonical cache-backed rerun.
-- The repo is not yet autonomous-complete because the remaining work is controller-proof / hardening: repo-local resume, todo reconstruction, wave synthesis, closeout discipline, interruption recovery, and final report polish.
+- Controller-proof / hardening work is now verified: repo-local resume, todo reconstruction, wave synthesis, closeout discipline, interruption recovery, per-run artifact discipline, and report placeholder cleanup.
+- The repo is autonomous-complete on the current canonical cache-backed verification path.
 
 ---
 
@@ -102,17 +103,17 @@ If a finding lives only in chat, it is not part of the system.
 
 ## Current open gaps from the latest known run
 
-No required open gaps remain on `projects/openclaw_openclaw/runs/final-wave`; controller-proof items below remain open.
+No required open gaps remain on `projects/openclaw_openclaw/runs/final-wave`; the controller-proof phase is complete.
 
 ## Exit criteria
 
 Autonomous mode is considered real when all of the following are true:
 
-- [ ] A new controller session can resume from repo-local state without hidden chat context
-- [ ] The session todo can be reconstructed from `STATE.yaml` + `GAP_LIST.md`
-- [ ] `scripts/audit_guideline.py` and `scripts/gap_list_from_audit.py` form a deterministic audit surface
-- [ ] `scripts/autonomous_controller.py` truthfully tracks phase/wave/checkpoint state through pause/resume
-- [ ] Hermes `/autonomous` can run at least one full verified loop using delegated subagents
-- [ ] Build and test verification remain green after control-plane changes
+- [x] A new controller session can resume from repo-local state without hidden chat context
+- [x] The session todo can be reconstructed from `STATE.yaml` + `GAP_LIST.md`
+- [x] `scripts/audit_guideline.py` and `scripts/gap_list_from_audit.py` form a deterministic audit surface
+- [x] `scripts/autonomous_controller.py` truthfully tracks phase/wave/checkpoint state through pause/resume
+- [x] Hermes `/autonomous` can run at least one full verified loop using delegated subagents
+- [x] Build and test verification remain green after control-plane changes
 - [x] The required audit surface is fully green on `projects/openclaw_openclaw/runs/final-wave`
-- [ ] `AUTONOMOUS.md`, `TODO.md`, and `autonomous/*` describe the same system
+- [x] `AUTONOMOUS.md`, `TODO.md`, and `autonomous/*` describe the same system
