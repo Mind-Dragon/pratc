@@ -36,7 +36,7 @@ cd /home/agent/pratc
 cd /home/agent/pratc
 python3 scripts/autonomous_controller.py init \
   --repo openclaw/openclaw \
-  --corpus-dir projects/OpenClaw_OpenClaw/runs/20260419-065654
+  --corpus-dir projects/openclaw_openclaw/runs/final-wave
 ```
 
 ## Full autonomous loop
@@ -55,9 +55,9 @@ Do not leave findings stranded only in chat.
 
 ```bash
 cd /home/agent/pratc
-python3 scripts/audit_guideline.py projects/OpenClaw_OpenClaw/runs/20260419-065654
+python3 scripts/audit_guideline.py projects/openclaw_openclaw/runs/final-wave
 python3 scripts/gap_list_from_audit.py \
-  --audit projects/OpenClaw_OpenClaw/runs/20260419-065654/AUDIT_RESULTS.json \
+  --audit projects/openclaw_openclaw/runs/final-wave/AUDIT_RESULTS.json \
   --gap-list autonomous/GAP_LIST.md \
   --state autonomous/STATE.yaml
 ```
@@ -74,7 +74,11 @@ python -m pytest -q tests/test_audit_guideline.py scripts/test_autonomous_contro
 
 ```bash
 cd /home/agent/pratc
-./pratc-bin workflow --repo openclaw/openclaw --use-cache-first --progress
+./bin/pratc analyze --repo openclaw/openclaw --force-cache --max-prs 5000 --format=json > <fresh-run-dir>/analyze.json
+./bin/pratc cluster --repo openclaw/openclaw --force-cache --format=json > <fresh-run-dir>/step-3-cluster.json
+./bin/pratc graph --repo openclaw/openclaw --force-cache --max-prs 5000 --format=json > <fresh-run-dir>/step-4-graph.json
+./bin/pratc plan --repo openclaw/openclaw --force-cache --max-prs 5000 --target 20 --format=json > <fresh-run-dir>/step-5-plan.json
+./bin/pratc report --repo openclaw/openclaw --input-dir <fresh-run-dir> --output <fresh-run-dir>/report.pdf
 python3 scripts/audit_guideline.py <fresh-run-dir>
 python3 scripts/gap_list_from_audit.py \
   --audit <fresh-run-dir>/AUDIT_RESULTS.json \
@@ -125,7 +129,7 @@ python3 scripts/autonomous_controller.py complete --reason "all required audit c
 4. Seed the Hermes session todo with the current wave
 5. Dispatch subagents for non-trivial gap work
 6. Verify locally with build + tests
-7. Rerun workflow/audit and regenerate gap list
+7. Rerun analyze/cluster/graph/plan/report and regenerate the audit/gap list
 8. Update checkpoint and continue or stop
 
 ## Recovery notes
@@ -152,4 +156,4 @@ python3 scripts/autonomous_controller.py complete --reason "all required audit c
 
 Until replaced by a fresher verified run, use:
 - repo: `openclaw/openclaw`
-- corpus dir: `projects/OpenClaw_OpenClaw/runs/20260419-065654`
+- corpus dir: `projects/openclaw_openclaw/runs/final-wave`

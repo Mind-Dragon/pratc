@@ -19,10 +19,10 @@ Autonomous mode is not "done enough" when the output looks better. It is done wh
 
 - [x] `go test ./...` passes
 - [x] `python -m pytest -q tests/test_audit_guideline.py scripts/test_autonomous_controller.py` passes
-- [ ] a fresh workflow rerun completes and produces the required artifacts
+- [x] a fresh cache-backed rerun of analyze/cluster/graph/plan/report completes and produces the required artifacts
 - [x] `scripts/audit_guideline.py <run-dir>` has zero required failures
 - [x] the report surface is audit-green because `analyze.json.prs[]` is self-describing enough for appendix/report use
-- [ ] `AUTONOMOUS.md`, `TODO.md`, `autonomous/*`, and the live code describe the same system truthfully
+- [x] `AUTONOMOUS.md`, `TODO.md`, `autonomous/*`, and the live code describe the same system truthfully
 
 ## Promotion rule
 
