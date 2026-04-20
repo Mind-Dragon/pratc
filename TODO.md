@@ -95,7 +95,7 @@ If a finding lives only in chat, it is not part of the system.
 
 - [x] Run one full autonomous cycle end-to-end: audit → gap list → subagent fix wave → build/test → rerun audit; verified on `projects/openclaw_openclaw/runs/final-wave`
 - [x] Prove interruption recovery by stopping mid-cycle and resuming from `autonomous/STATE.yaml`; verified by interruption-recovery tests in `scripts/test_autonomous_controller.py` and `python3 scripts/autonomous_controller.py audit-state`
-- [x] Record per-run outputs under `autonomous/runs/<timestamp>/`; verified by `autonomous/runs/20260420-final-wave/{controller-log.md,wave-summary.md}`
+- [x] Record per-run outputs under `autonomous/runs/<timestamp>/`; verified by `autonomous/runs/20260420-final-wave/{controller-log.md,wave-summary.md}` and `python3 scripts/autonomous_controller.py new-run --timestamp 20990101-proof ...`
 - [x] Update roadmap/docs after the first truthful autonomous green wave
 
 ---

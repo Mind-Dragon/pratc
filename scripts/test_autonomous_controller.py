@@ -1063,3 +1063,189 @@ def test_closeout_mini_cycle_simulated(tmp_paths, sample_state, sample_gap_list)
     synthesized_ids = {t['gap_id'] for t in tasks}
     assert 'G-001' not in synthesized_ids, "G-001 should not appear in new wave synthesis"
     assert synthesized_ids == set(state['open_gaps']), f"synthesized: {synthesized_ids}, open: {state['open_gaps']}"
+
+
+# ---------------------------------------------------------------------------
+# Tests: per-run artifact discipline
+# ---------------------------------------------------------------------------
+
+def test_make_run_dir_creates_timestamped_directory(tmp_path, monkeypatch):
+    """
+    make_run_dir() creates autonomous/runs/<timestamp>/ with subagent-results/ subdir.
+    """
+    runs_dir = tmp_path / 'autonomous' / 'runs'
+    monkeypatch.setattr(ctrl, 'REPO_ROOT', tmp_path)
+
+    run_dir = ctrl.make_run_dir(timestamp='20260420-test')
+
+    assert run_dir.exists(), f"run_dir should exist: {run_dir}"
+    assert run_dir.is_dir(), f"run_dir should be a directory: {run_dir}"
+    assert (run_dir / 'subagent-results').is_dir(), "subagent-results/ subdir should be created"
+    assert run_dir.name == '20260420-test', f"run_dir name should be timestamp: {run_dir.name}"
+
+
+def test_make_run_dir_generates_timestamp_when_not_provided(tmp_path, monkeypatch):
+    """
+    make_run_dir() without a timestamp argument generates one from current UTC time.
+    """
+    runs_dir = tmp_path / 'autonomous' / 'runs'
+    monkeypatch.setattr(ctrl, 'REPO_ROOT', tmp_path)
+
+    run_dir = ctrl.make_run_dir()
+
+    assert run_dir.exists(), f"run_dir should exist: {run_dir}"
+    # Timestamp should be YYYYMMDD-HHMMSS format
+    assert len(run_dir.name) == 15, f"timestamp should be 15 chars (YYYYMMDD-HHMMSS): {run_dir.name}"
+    assert run_dir.name[0:4].isdigit(), f"year should be digits: {run_dir.name}"
+
+
+def test_make_run_dir_is_idempotent(tmp_path, monkeypatch):
+    """
+    Calling make_run_dir twice with the same timestamp returns the same path.
+    """
+    runs_dir = tmp_path / 'autonomous' / 'runs'
+    monkeypatch.setattr(ctrl, 'REPO_ROOT', tmp_path)
+
+    run_dir1 = ctrl.make_run_dir(timestamp='20260420-idempotent')
+    run_dir2 = ctrl.make_run_dir(timestamp='20260420-idempotent')
+
+    assert run_dir1 == run_dir2, "same timestamp should return same directory"
+
+
+def test_write_controller_log_creates_file(tmp_path, monkeypatch):
+    """
+    write_controller_log() creates controller-log.md with the provided log lines.
+    """
+    monkeypatch.setattr(ctrl, 'REPO_ROOT', tmp_path)
+    run_dir = tmp_path / 'autonomous' / 'runs' / '20260420-log-test'
+    run_dir.mkdir(parents=True)
+
+    log_lines = ['- line one', '- line two', '- line three']
+    ctrl.write_controller_log(run_dir, log_lines)
+
+    log_file = run_dir / 'controller-log.md'
+    assert log_file.exists(), f"controller-log.md should exist: {log_file}"
+    content = log_file.read_text()
+    assert 'line one' in content
+    assert 'line two' in content
+    assert 'line three' in content
+
+
+def test_write_wave_summary_creates_file(tmp_path, monkeypatch):
+    """
+    write_wave_summary() creates wave-summary.md with the provided summary lines.
+    """
+    monkeypatch.setattr(ctrl, 'REPO_ROOT', tmp_path)
+    run_dir = tmp_path / 'autonomous' / 'runs' / '20260420-summary-test'
+    run_dir.mkdir(parents=True)
+
+    summary_lines = ['- source: test corpus', '- outcome: green', '- gaps closed: 3']
+    ctrl.write_wave_summary(run_dir, summary_lines)
+
+    summary_file = run_dir / 'wave-summary.md'
+    assert summary_file.exists(), f"wave-summary.md should exist: {summary_file}"
+    content = summary_file.read_text()
+    assert 'source: test corpus' in content
+    assert 'outcome: green' in content
+    assert 'gaps closed: 3' in content
+
+
+def test_link_or_copy_audit_copies_when_file_exists(tmp_path, monkeypatch):
+    """
+    link_or_copy_audit() copies AUDIT_RESULTS.json into the run directory when the source exists.
+    """
+    monkeypatch.setattr(ctrl, 'REPO_ROOT', tmp_path)
+    run_dir = tmp_path / 'autonomous' / 'runs' / '20260420-audit-test'
+    run_dir.mkdir(parents=True)
+
+    # Create a fake audit source file
+    audit_source = tmp_path / 'source' / 'AUDIT_RESULTS.json'
+    audit_source.parent.mkdir()
+    audit_source.write_text('{"checks": [{"id": "test", "status": "pass"}]}')
+
+    ctrl.link_or_copy_audit(run_dir, str(audit_source))
+
+    copied_audit = run_dir / 'AUDIT_RESULTS.json'
+    assert copied_audit.exists(), f"AUDIT_RESULTS.json should be copied: {copied_audit}"
+    content = copied_audit.read_text()
+    assert 'test' in content
+    assert '"status": "pass"' in content
+
+
+def test_link_or_copy_audit_skips_silently_when_source_missing(tmp_path, monkeypatch):
+    """
+    link_or_copy_audit() does nothing when the audit source file does not exist.
+    """
+    monkeypatch.setattr(ctrl, 'REPO_ROOT', tmp_path)
+    run_dir = tmp_path / 'autonomous' / 'runs' / '20260420-missing-audit'
+    run_dir.mkdir(parents=True)
+
+    # Should not raise - just skips
+    ctrl.link_or_copy_audit(run_dir, str(tmp_path / 'nonexistent' / 'AUDIT_RESULTS.json'))
+
+    # No file should be created
+    assert not (run_dir / 'AUDIT_RESULTS.json').exists()
+
+
+def test_new_run_command_creates_all_required_artifacts(tmp_path, monkeypatch):
+    """
+    The new-run command creates the full per-run artifact structure:
+    autonomous/runs/<timestamp>/ with controller-log.md, wave-summary.md, subagent-results/,
+    and optionally AUDIT_RESULTS.json.
+    """
+    runs_dir = tmp_path / 'autonomous' / 'runs'
+    monkeypatch.setattr(ctrl, 'REPO_ROOT', tmp_path)
+    monkeypatch.setattr(ctrl, 'RUNS_DIR', runs_dir)
+
+    args = FakeArgs(
+        timestamp='20260420-newrun',
+        log_lines=['- step one', '- step two'],
+        summary_lines=['- source: test', '- result: ok'],
+        audit_path=None
+    )
+    ctrl.cmd_new_run(args)
+
+    run_dir = tmp_path / 'autonomous' / 'runs' / '20260420-newrun'
+    assert run_dir.exists(), f"run_dir should exist: {run_dir}"
+    assert (run_dir / 'controller-log.md').exists(), "controller-log.md should exist"
+    assert (run_dir / 'wave-summary.md').exists(), "wave-summary.md should exist"
+    assert (run_dir / 'subagent-results').is_dir(), "subagent-results/ should exist"
+
+
+def test_new_run_command_with_audit_copies_audit_file(tmp_path, monkeypatch):
+    """
+    new-run with --audit-path copies the audit file to the run directory.
+    """
+    runs_dir = tmp_path / 'autonomous' / 'runs'
+    monkeypatch.setattr(ctrl, 'REPO_ROOT', tmp_path)
+    monkeypatch.setattr(ctrl, 'RUNS_DIR', runs_dir)
+
+    # Create source audit file
+    audit_source = tmp_path / 'source' / 'AUDIT_RESULTS.json'
+    audit_source.parent.mkdir()
+    audit_source.write_text('{"checks": []}')
+
+    args = FakeArgs(
+        timestamp='20260420-audit',
+        log_lines=['- audited'],
+        summary_lines=['- audit passed'],
+        audit_path=str(audit_source)
+    )
+    ctrl.cmd_new_run(args)
+
+    run_dir = tmp_path / 'autonomous' / 'runs' / '20260420-audit'
+    assert (run_dir / 'AUDIT_RESULTS.json').exists(), "AUDIT_RESULTS.json should be copied"
+
+
+def test_run_dir_path_returns_correct_path(tmp_path, monkeypatch):
+    """
+    run_dir_path(timestamp) returns the correct path without creating anything.
+    """
+    runs_dir = tmp_path / 'autonomous' / 'runs'
+    monkeypatch.setattr(ctrl, 'REPO_ROOT', tmp_path)
+    monkeypatch.setattr(ctrl, 'RUNS_DIR', runs_dir)
+
+    path = ctrl.run_dir_path('20260420-testpath')
+
+    assert path == tmp_path / 'autonomous' / 'runs' / '20260420-testpath'
+    assert not path.exists(), "run_dir_path should not create the directory"

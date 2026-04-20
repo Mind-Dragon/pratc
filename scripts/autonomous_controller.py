@@ -589,6 +589,114 @@ def cmd_synthesize_wave(_args):
 
 
 # ---------------------------------------------------------------------------
+# Per-run artifact discipline
+# ---------------------------------------------------------------------------
+
+RUNS_DIR = REPO_ROOT / 'autonomous' / 'runs'
+
+
+def run_dir_path(timestamp):
+    """Return the path to a run directory for the given timestamp (no side effects)."""
+    return RUNS_DIR / timestamp
+
+
+def make_run_dir(timestamp=None):
+    """
+    Create and return the per-run artifact directory for the given timestamp.
+
+    Creates autonomous/runs/<timestamp>/ with a subagent-results/ subdirectory.
+    If timestamp is None, generates one from current UTC time in YYYYMMDD-HHMMSS format.
+    Idempotent: if the directory already exists, returns the existing path.
+
+    Returns:
+        Path to the created (or existing) run directory.
+    """
+    if timestamp is None:
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
+
+    run_dir = RUNS_DIR / timestamp
+    subagent_results = run_dir / 'subagent-results'
+
+    run_dir.mkdir(parents=True, exist_ok=True)
+    subagent_results.mkdir(parents=True, exist_ok=True)
+
+    return run_dir
+
+
+def write_controller_log(run_dir, log_lines):
+    """
+    Write controller-log.md into the run directory.
+
+    Args:
+        run_dir: Path to the run directory (created by make_run_dir)
+        log_lines: list of log entry strings to write
+    """
+    log_file = run_dir / 'controller-log.md'
+    header = '# Controller log\n\n'
+    entries = '\n'.join(log_lines) + '\n' if log_lines else ''
+    log_file.write_text(header + entries)
+
+
+def write_wave_summary(run_dir, summary_lines):
+    """
+    Write wave-summary.md into the run directory.
+
+    Args:
+        run_dir: Path to the run directory (created by make_run_dir)
+        summary_lines: list of summary entry strings to write
+    """
+    summary_file = run_dir / 'wave-summary.md'
+    header = '# Wave summary\n\n'
+    entries = '\n'.join(summary_lines) + '\n' if summary_lines else ''
+    summary_file.write_text(header + entries)
+
+
+def link_or_copy_audit(run_dir, audit_path):
+    """
+    Copy AUDIT_RESULTS.json into the run directory if the source file exists.
+
+    Uses copy (not symlink) for portability across filesystems and to ensure
+    the artifact persists independently of the source.
+
+    Args:
+        run_dir: Path to the run directory (created by make_run_dir)
+        audit_path: path to the source AUDIT_RESULTS.json file
+    """
+    import shutil
+
+    src = Path(audit_path)
+    if not src.exists():
+        return  # silent no-op if source is missing
+
+    dst = run_dir / 'AUDIT_RESULTS.json'
+    shutil.copy2(src, dst)
+
+
+def cmd_new_run(args):
+    """
+    Create a new per-run artifact directory with all required artifacts.
+
+    Args:
+        timestamp:   string timestamp for the run directory name
+        log_lines:   list of strings for controller-log.md
+        summary_lines: list of strings for wave-summary.md
+        audit_path:  optional path to AUDIT_RESULTS.json to copy
+    """
+    run_dir = make_run_dir(timestamp=args.timestamp)
+
+    if args.log_lines:
+        write_controller_log(run_dir, args.log_lines)
+
+    if args.summary_lines:
+        write_wave_summary(run_dir, args.summary_lines)
+
+    if args.audit_path:
+        link_or_copy_audit(run_dir, args.audit_path)
+
+    print(f'created run directory: {run_dir}')
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
@@ -630,6 +738,13 @@ def main():
 
     p = sub.add_parser('audit-state')
     p.set_defaults(func=cmd_audit_state)
+
+    p = sub.add_parser('new-run')
+    p.add_argument('--timestamp', default=None, help='timestamp for run directory name (default: current UTC time)')
+    p.add_argument('--log-lines', nargs='*', default=[], help='log entry lines for controller-log.md')
+    p.add_argument('--summary-lines', nargs='*', default=[], help='summary lines for wave-summary.md')
+    p.add_argument('--audit-path', default=None, help='path to AUDIT_RESULTS.json to copy into run directory')
+    p.set_defaults(func=cmd_new_run)
 
     args = parser.parse_args()
     args.func(args)
