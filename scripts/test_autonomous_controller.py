@@ -661,3 +661,177 @@ def test_init_does_not_reset_branch_if_already_set(tmp_paths, sample_state):
 
     state = ctrl.load_state()
     assert state['branch'] == 'release-v1'
+
+
+# ---------------------------------------------------------------------------
+# Tests: closeout discipline
+# ---------------------------------------------------------------------------
+
+def test_closeout_moves_gaps_from_open_to_completed(tmp_paths, sample_state):
+    """closeout moves specified gap IDs from open_gaps to completed_gaps."""
+    state_path, gap_path = tmp_paths
+    # Set up state with 3 open gaps
+    sample_state['open_gaps'] = ['G-001', 'G-002', 'G-003']
+    sample_state['completed_gaps'] = []
+    ctrl.save_state(sample_state)
+
+    # Closeout G-001 only
+    args = FakeArgs(gaps='G-001', audit_path=None, todo_path=None)
+    ctrl.cmd_closeout(args)
+
+    state = ctrl.load_state()
+    assert state['open_gaps'] == ['G-002', 'G-003'], f"open_gaps should only have remaining: {state['open_gaps']}"
+    assert state['completed_gaps'] == ['G-001'], f"completed_gaps should have G-001: {state['completed_gaps']}"
+
+
+def test_closeout_moves_multiple_gaps(tmp_paths, sample_state):
+    """closeout can move multiple gap IDs at once."""
+    state_path, gap_path = tmp_paths
+    sample_state['open_gaps'] = ['G-001', 'G-002', 'G-003', 'G-004']
+    sample_state['completed_gaps'] = []
+    ctrl.save_state(sample_state)
+
+    args = FakeArgs(gaps='G-001,G-003', audit_path=None, todo_path=None)
+    ctrl.cmd_closeout(args)
+
+    state = ctrl.load_state()
+    assert set(state['open_gaps']) == {'G-002', 'G-004'}
+    assert set(state['completed_gaps']) == {'G-001', 'G-003'}
+
+
+def test_closeout_preserves_other_state_fields(tmp_paths, sample_state):
+    """closeout must not clobber other STATE.yaml fields."""
+    state_path, gap_path = tmp_paths
+    sample_state['open_gaps'] = ['G-001']
+    sample_state['current_wave'] = '2'
+    sample_state['phase'] = 'wave_2'
+    sample_state['notes'] = ['wave 2 in progress']
+    ctrl.save_state(sample_state)
+
+    args = FakeArgs(gaps='G-001', audit_path=None, todo_path=None)
+    ctrl.cmd_closeout(args)
+
+    state = ctrl.load_state()
+    assert state['current_wave'] == '2'
+    assert state['phase'] == 'wave_2'
+    assert state['notes'] == ['wave 2 in progress']
+
+
+def test_closeout_with_no_open_gaps_is_noop(tmp_paths, sample_state):
+    """closeout on empty open_gaps does nothing (safe to call)."""
+    state_path, gap_path = tmp_paths
+    sample_state['open_gaps'] = []
+    sample_state['completed_gaps'] = []
+    ctrl.save_state(sample_state)
+
+    args = FakeArgs(gaps='', audit_path=None, todo_path=None)
+    ctrl.cmd_closeout(args)
+
+    state = ctrl.load_state()
+    assert state['open_gaps'] == []
+    assert state['completed_gaps'] == []
+
+
+def test_closeout_updates_gap_list_md(tmp_paths, sample_state, sample_gap_list):
+    """closeout regenerates GAP_LIST.md from audit results."""
+    import json as json_module
+    state_path, gap_path = tmp_paths
+    # Create a minimal audit results file in temp dir
+    audit_dir = state_path.parent / 'audit'
+    audit_dir.mkdir()
+    audit_path = audit_dir / 'AUDIT_RESULTS.json'
+
+    # Create an audit with only G-003 as failure (G-001, G-002 now passing)
+    audit_data = {
+        'repo': 'openclaw/openclaw',
+        'generated_at': '2026-04-20T18:00:00Z',
+        'checks': [
+            {'id': 'bucket_coverage', 'label': 'bucket coverage', 'status': 'pass', 'expected': '4992', 'actual': '4992'},
+            {'id': 'reason_coverage', 'label': 'reason trail', 'status': 'pass', 'expected': '4992', 'actual': '4992'},
+            {'id': 'confidence_coverage', 'label': 'confidence coverage', 'status': 'fail', 'expected': '4992', 'actual': '0'},
+        ]
+    }
+    audit_path.write_text(json_module.dumps(audit_data, indent=2))
+
+    sample_state['open_gaps'] = ['G-001', 'G-002', 'G-003']
+    sample_state['completed_gaps'] = []
+    ctrl.save_state(sample_state)
+
+    args = FakeArgs(gaps='G-001,G-002', audit_path=str(audit_path), todo_path=None)
+    ctrl.cmd_closeout(args)
+
+    # GAP_LIST.md should now only have G-003 as open
+    gap_text = gap_path.read_text()
+    assert 'G-003' in gap_text
+    # G-001 and G-002 are not listed as open gaps
+    assert '### G-001' not in gap_text
+    assert '### G-002' not in gap_text
+
+
+def test_closeout_updates_todo_md(tmp_paths, sample_state):
+    """closeout appends a closeout note to TODO.md."""
+    state_path, gap_path = tmp_paths
+    todo_path = state_path.parent / 'TODO.md'
+    todo_path.write_text("# prATC TODO\n\n## Current status\n\n- Work in progress\n")
+
+    sample_state['open_gaps'] = ['G-001']
+    sample_state['current_wave'] = '2'
+    ctrl.save_state(sample_state)
+
+    args = FakeArgs(gaps='G-001', audit_path=None, todo_path=str(todo_path))
+    ctrl.cmd_closeout(args)
+
+    todo_text = todo_path.read_text()
+    assert 'G-001' in todo_text
+    assert 'verified' in todo_text.lower() or 'closed' in todo_text.lower() or 'wave 2' in todo_text.lower()
+
+
+def test_closeout_idempotent(tmp_paths, sample_state):
+    """closing out the same gap twice is safe (no double-add)."""
+    state_path, gap_path = tmp_paths
+    sample_state['open_gaps'] = ['G-001', 'G-002']
+    sample_state['completed_gaps'] = []
+    ctrl.save_state(sample_state)
+
+    args = FakeArgs(gaps='G-001', audit_path=None, todo_path=None)
+    ctrl.cmd_closeout(args)
+    ctrl.cmd_closeout(args)  # close G-001 again
+
+    state = ctrl.load_state()
+    assert state['completed_gaps'] == ['G-001'], f"no double-add: {state['completed_gaps']}"
+    assert state['open_gaps'] == ['G-002']
+
+
+def test_closeout_mini_cycle_simulated(tmp_paths, sample_state, sample_gap_list):
+    """
+    Simulate a mini-cycle: wave starts with open gaps, subagent fixes G-001,
+    closeout is called, then next wave synthesize only sees remaining gaps.
+
+    This proves the closeout path updates repo-local state consistently.
+    """
+    state_path, gap_path = tmp_paths
+
+    # Initial state: wave 1 with 3 open gaps
+    sample_state['open_gaps'] = ['G-001', 'G-002', 'G-003']
+    sample_state['completed_gaps'] = []
+    sample_state['current_wave'] = '1'
+    sample_state['phase'] = 'wave_1'
+    ctrl.save_state(sample_state)
+    gap_path.write_text(sample_gap_list)
+
+    # Simulate: subagent fixed G-001, verified by audit
+    # Closeout G-001
+    args = FakeArgs(gaps='G-001', audit_path=None, todo_path=None)
+    ctrl.cmd_closeout(args)
+
+    # Verify STATE.yaml updated correctly
+    state = ctrl.load_state()
+    assert state['completed_gaps'] == ['G-001']
+    assert set(state['open_gaps']) == {'G-002', 'G-003'}
+    assert state['current_wave'] == '1'  # wave not advanced by closeout
+
+    # Synthesize next wave - should only see remaining gaps
+    tasks = ctrl.synthesize_wave()
+    synthesized_ids = {t['gap_id'] for t in tasks}
+    assert 'G-001' not in synthesized_ids, "G-001 should not appear in new wave synthesis"
+    assert synthesized_ids == set(state['open_gaps']), f"synthesized: {synthesized_ids}, open: {state['open_gaps']}"

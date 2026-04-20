@@ -67,7 +67,7 @@ If a finding lives only in chat, it is not part of the system.
 - [x] Create Hermes `/autonomous` skill
 - [x] Prove `/autonomous` can rebuild the Hermes session todo entirely from repo-local state and latest audit output; verified by `python -m pytest -q scripts/test_autonomous_controller.py` (repo-local rebuild tests) and `python3 scripts/autonomous_controller.py synthesize-wave`
 - [x] Define wave-generation logic from `autonomous/GAP_LIST.md` into session todo items; verified by `python -m pytest -q scripts/test_autonomous_controller.py -k 'synthesize_wave or rebuild_session_todo'` and `python3 scripts/autonomous_controller.py synthesize-wave`
-- [ ] Add closeout discipline so `/autonomous` patches `STATE.yaml`, `GAP_LIST.md`, and `TODO.md` truthfully after each verified wave
+- [x] Add closeout discipline so `/autonomous` patches `STATE.yaml`, `GAP_LIST.md`, and `TODO.md` truthfully after each verified wave; verified by 8 closeout tests in `scripts/test_autonomous_controller.py` and simulated mini-cycle test
 
 ## Workstream 3 — Product gap closure
 

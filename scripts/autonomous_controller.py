@@ -361,6 +361,141 @@ def cmd_resume(_args):
     print(f"resume from phase={state.get('phase')} wave={state.get('current_wave')}")
 
 
+def cmd_closeout(args):
+    """
+    Mark verified-gap IDs as closed after a verified wave.
+
+    After the subagent verifies gaps are fixed (audit passes), closeout moves
+    those gap IDs from open_gaps to completed_gaps in STATE.yaml, regenerates
+    GAP_LIST.md from the latest audit, and appends a note to TODO.md.
+
+    Args:
+        gaps: comma-separated list of gap IDs that were verified (e.g. 'G-001,G-002')
+        audit_path: path to AUDIT_RESULTS.json for GAP_LIST.md regeneration (optional)
+        todo_path: path to TODO.md to append closeout note (optional)
+    """
+    state = load_state()
+    gap_ids = [g.strip() for g in args.gaps.split(',') if g.strip()]
+
+    if not gap_ids:
+        print('closeout: no gaps specified, nothing to do')
+        return
+
+    open_gaps = list(state.get('open_gaps', []))
+    completed_gaps = list(state.get('completed_gaps', []))
+
+    # Move each gap from open to completed (idempotent: skip if not in open_gaps)
+    for gid in gap_ids:
+        if gid in open_gaps:
+            open_gaps.remove(gid)
+            if gid not in completed_gaps:
+                completed_gaps.append(gid)
+
+    state['open_gaps'] = open_gaps
+    state['completed_gaps'] = completed_gaps
+    save_state(state)
+
+    # Regenerate GAP_LIST.md from audit if audit_path provided
+    if args.audit_path:
+        _regenerate_gap_list_from_audit(Path(args.audit_path))
+
+    # Append closeout note to TODO.md if path provided
+    if args.todo_path:
+        _append_closeout_note(Path(args.todo_path), gap_ids, state.get('current_wave', '?'))
+
+    wave = state.get('current_wave', '?')
+    print(f'closeout: marked {len(gap_ids)} gap(s) as verified-closed (wave {wave})')
+
+
+def _regenerate_gap_list_from_audit(audit_path: Path):
+    """
+    Regenerate GAP_LIST.md from a full audit results file.
+    Only gaps that still fail remain as 'open'; verified gaps are excluded.
+    """
+    if not audit_path.exists():
+        print(f'closeout: audit file not found: {audit_path}')
+        return
+
+    import json
+    try:
+        audit_data = json.loads(audit_path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        print(f'closeout: could not read audit file: {e}')
+        return
+
+    checks = audit_data.get('checks', [])
+    failures = [c for c in checks if c.get('status') == 'fail']
+
+    GAP_MAP = {
+        'bucket_coverage': ('G-001', 'bucket coverage missing', 'P0'),
+        'reason_coverage': ('G-002', 'reason trail missing', 'P0'),
+        'confidence_coverage': ('G-003', 'confidence coverage missing', 'P0'),
+        'dependency_edge_quality': ('G-004', 'trivial dependency edge explosion', 'P1'),
+        'conflict_pairs_threshold': ('G-005', 'conflict noise still too high', 'P1'),
+        'temporal_routing': ('G-006', 'temporal routing not visible', 'P1'),
+        'report_self_describing_prs': ('G-007', 'report surface not self-describing enough', 'P1'),
+        'future_work_visible': ('G-008', 'future work visibility missing', 'P1'),
+        'duplicate_presence': ('G-009', 'duplicate presence missing on cache-backed rerun', 'P1'),
+        'selected_reason_coverage': ('G-010', 'selected plan items lack reasons', 'P1'),
+    }
+
+    body = [
+        '# Autonomous Gap List',
+        '',
+        f'Updated from audit: `{audit_path}`',
+        '',
+        '## Open gaps',
+        '',
+    ]
+
+    if failures:
+        for check in failures:
+            check_id = check.get('id', '')
+            gap_id, title, sev = GAP_MAP.get(check_id, (f'X-{check_id}', check.get('label', ''), 'P2'))
+            actual = check.get('actual', '')
+            if isinstance(actual, dict):
+                actual = json.dumps(actual)
+            body.append(f'### {gap_id} — {title}')
+            body.append(f'- Audit check: `{check_id}`')
+            body.append(f'- Severity: {sev}')
+            body.append(f"- Expected: {check.get('expected', '')}")
+            body.append(f'- Actual: {actual}')
+            body.append('- Status: open')
+            body.append('- Notes: generated from latest audit failure')
+            body.append('')
+    else:
+        body.append('No open gaps. Latest audit passed.')
+        body.append('')
+
+    body.extend([
+        '## Update protocol',
+        '',
+        'This file is generated from audit output. Preserve stable gap IDs where possible.',
+        ''
+    ])
+
+    GAP_LIST_PATH.write_text('\n'.join(body))
+
+
+def _append_closeout_note(todo_path: Path, gap_ids, wave):
+    """Append a closeout note to TODO.md."""
+    if not todo_path.exists():
+        print(f'closeout: TODO.md not found at {todo_path}')
+        return
+
+    ts = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    note = (
+        f'\n## Wave {wave} closeout ({ts})\n'
+        f'- Verified and closed: {", ".join(gap_ids)}\n'
+    )
+
+    try:
+        existing = todo_path.read_text()
+        todo_path.write_text(existing.rstrip() + note + '\n')
+    except OSError as e:
+        print(f'closeout: could not write TODO.md: {e}')
+
+
 def cmd_complete(args):
     """Mark the autonomous session complete."""
     state = load_state()
@@ -411,6 +546,12 @@ def main():
     p = sub.add_parser('complete')
     p.add_argument('--reason', required=True)
     p.set_defaults(func=cmd_complete)
+
+    p = sub.add_parser('closeout')
+    p.add_argument('--gaps', required=True, help='comma-separated gap IDs verified in this wave (e.g. G-001,G-002)')
+    p.add_argument('--audit-path', help='path to AUDIT_RESULTS.json for GAP_LIST.md regeneration')
+    p.add_argument('--todo-path', help='path to TODO.md for closeout note')
+    p.set_defaults(func=cmd_closeout)
 
     p = sub.add_parser('synthesize-wave')
     p.set_defaults(func=cmd_synthesize_wave)
