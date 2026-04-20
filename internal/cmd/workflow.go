@@ -145,18 +145,15 @@ Examples:
 				return err
 			}
 
-			service := app.NewService(app.Config{
-				AllowLive:     forceLive,
-				UseCacheFirst: useCacheFirst,
-				MaxPRs:        maxPRs,
-				IncludeReview: true,
-				OnAnalyzeProgress: func(phase string, done, total int) {
-					fmt.Fprintf(cmd.ErrOrStderr(), "\r[analyze %s] %d/%d ", phase, done, total)
-					if phase == "done" {
-						fmt.Fprintln(cmd.ErrOrStderr())
-					}
-				},
-			})
+			cfg := buildWorkflowAnalyzeConfig(useCacheFirst, forceLive, maxPRs, store, token)
+			cfg.IncludeReview = true
+			cfg.OnAnalyzeProgress = func(phase string, done, total int) {
+				fmt.Fprintf(cmd.ErrOrStderr(), "\r[analyze %s] %d/%d ", phase, done, total)
+				if phase == "done" {
+					fmt.Fprintln(cmd.ErrOrStderr())
+				}
+			}
+			service := app.NewService(cfg)
 			analyzeCtx := logger.ContextWithRequestID(ctx, requestID)
 			analyzeLog := logger.FromContext(analyzeCtx)
 			analyzeLog.Info("starting workflow analyze", "repo", repo)
@@ -200,6 +197,12 @@ Examples:
 				return err
 			}
 
+			reportPath := filepath.Join(resolvedOutDir, "report.pdf")
+			analyzeLog.Info("starting workflow report", "repo", repo, "output", reportPath)
+			if err := generatePDFReport(repo, resolvedOutDir, reportPath, false, true, cmd.ErrOrStderr()); err != nil {
+				return err
+			}
+
 			fmt.Fprintf(cmd.ErrOrStderr(), "Workflow complete for %s\n", repo)
 			encoder := json.NewEncoder(cmd.OutOrStdout())
 			encoder.SetIndent("", "  ")
@@ -225,6 +228,18 @@ Examples:
 
 func defaultWorkflowOutDir(repo string) string {
 	return projectRunDir(repo, time.Now())
+}
+
+func buildWorkflowAnalyzeConfig(useCacheFirst, forceLive bool, maxPRs int, cacheStore *cache.Store, token string) app.Config {
+	return app.Config{
+		AllowLive:       forceLive,
+		AllowForceCache: true,
+		UseCacheFirst:   useCacheFirst,
+		CacheStore:      cacheStore,
+		Token:           token,
+		MaxPRs:          maxPRs,
+		IncludeReview:   true,
+	}
 }
 
 func openWorkflowCacheStore() (*cache.Store, error) {

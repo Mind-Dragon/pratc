@@ -185,10 +185,23 @@ class TestDuplicatePresence:
         result = check_duplicate_presence(minimal_pass_analyze)
         assert result['status'] == 'pass'
 
-    def test_no_duplicates_fails(self):
-        analyze = {'counts': {'duplicate_groups': 0}}
+    def test_no_duplicates_fails_on_large_corpus(self):
+        analyze = {
+            'counts': {'duplicate_groups': 0, 'total_prs': 200},
+            'prs': [{'id': str(i)} for i in range(200)],
+        }
         result = check_duplicate_presence(analyze)
         assert result['status'] == 'fail'
+
+    def test_no_duplicates_is_manual_on_small_corpus(self):
+        analyze = {
+            'analysis_truncated': True,
+            'counts': {'duplicate_groups': 0, 'total_prs': 50},
+            'prs': [{'id': str(i)} for i in range(50)],
+        }
+        result = check_duplicate_presence(analyze)
+        assert result['status'] == 'manual'
+        assert 'sample too small' in result['actual']
 
 
 class TestGarbageDetected:
@@ -197,11 +210,21 @@ class TestGarbageDetected:
         result = check_garbage_detected(minimal_pass_analyze, prs)
         assert result['status'] == 'pass'
 
-    def test_no_garbage_fails(self):
-        analyze = {'counts': {'garbage_prs': 0}}
-        prs = [{'id': '1', 'bucket': 'now'}]
+    def test_no_garbage_fails_on_large_corpus(self):
+        analyze = {'counts': {'garbage_prs': 0, 'total_prs': 200}}
+        prs = [{'id': str(i), 'bucket': 'now'} for i in range(200)]
         result = check_garbage_detected(analyze, prs)
         assert result['status'] == 'fail'
+
+    def test_no_garbage_is_manual_on_small_corpus(self):
+        analyze = {
+            'analysis_truncated': True,
+            'counts': {'garbage_prs': 0, 'total_prs': 50},
+        }
+        prs = [{'id': str(i), 'bucket': 'now'} for i in range(50)]
+        result = check_garbage_detected(analyze, prs)
+        assert result['status'] == 'manual'
+        assert 'sample too small' in result['actual']
 
 
 class TestFutureWorkVisible:

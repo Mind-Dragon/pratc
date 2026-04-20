@@ -28,6 +28,8 @@ HIGH_VALUE_BUCKETS = {'high_value', 'merge_candidate'}
 TEMPORAL_BUCKETS = {'now', 'future', 'blocked'}
 # Disposal buckets - terminal states.
 DISPOSAL_BUCKETS = {'junk', 'duplicate', 'stale'}
+# Small smoke runs are too shallow to require duplicate/junk presence.
+MIN_PRS_FOR_CONTENT_PRESENCE_CHECKS = 150
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -50,6 +52,23 @@ def count_duplicate_groups(analyze: dict[str, Any]) -> int:
     if isinstance(duplicates, list):
         return len(duplicates)
     return 0
+
+
+def analyzed_pr_count(analyze: dict[str, Any], prs: list[dict[str, Any]] | None = None) -> int:
+    counts = analyze.get('counts', {}) or {}
+    total = counts.get('total_prs')
+    if isinstance(total, int) and total > 0:
+        return total
+    if prs is not None:
+        return len(prs)
+    listed = analyze.get('prs')
+    if isinstance(listed, list):
+        return len(listed)
+    return 0
+
+
+def sample_too_small_for_presence_checks(analyze: dict[str, Any], prs: list[dict[str, Any]] | None = None) -> bool:
+    return analyzed_pr_count(analyze, prs) < MIN_PRS_FOR_CONTENT_PRESENCE_CHECKS
 
 
 def pr_bucket(pr: dict[str, Any]) -> str:
@@ -278,6 +297,18 @@ def check_high_confidence_cap_respected(prs: list[dict[str, Any]]) -> dict[str, 
 def check_duplicate_presence(analyze: dict[str, Any]) -> dict[str, Any]:
     """Duplicates are not separate problems - duplicate groups should be detected."""
     dup_groups = count_duplicate_groups(analyze)
+    sample_size = analyzed_pr_count(analyze)
+    if dup_groups == 0 and sample_too_small_for_presence_checks(analyze):
+        return {
+            'id': 'duplicate_presence',
+            'label': 'duplicate groups detected',
+            'status': 'manual',
+            'expected': f'> 0 once sample reaches >= {MIN_PRS_FOR_CONTENT_PRESENCE_CHECKS} PRs',
+            'actual': (
+                f'sample too small to require duplicates '
+                f'({sample_size} < {MIN_PRS_FOR_CONTENT_PRESENCE_CHECKS})'
+            ),
+        }
     return {
         'id': 'duplicate_presence',
         'label': 'duplicate groups detected',
@@ -296,6 +327,22 @@ def check_garbage_detected(analyze: dict[str, Any], prs: list[dict[str, Any]]) -
     garbage_count = counts.get('garbage_prs', 0)
     junk_bucket_count = sum(1 for pr in prs if pr_bucket(pr) == 'junk')
     total_garbage = max(garbage_count, junk_bucket_count)
+    sample_size = analyzed_pr_count(analyze, prs)
+    if total_garbage == 0 and sample_too_small_for_presence_checks(analyze, prs):
+        return {
+            'id': 'garbage_detected',
+            'label': 'garbage detection has run',
+            'status': 'manual',
+            'expected': (
+                f'> 0 garbage or junk PRs detected once sample reaches >= '
+                f'{MIN_PRS_FOR_CONTENT_PRESENCE_CHECKS} PRs'
+            ),
+            'actual': (
+                f'sample too small to require garbage/junk presence '
+                f'({sample_size} < {MIN_PRS_FOR_CONTENT_PRESENCE_CHECKS}); '
+                f'garbage_prs={garbage_count}, junk_buckets={junk_bucket_count}'
+            ),
+        }
     return {
         'id': 'garbage_detected',
         'label': 'garbage detection has run',

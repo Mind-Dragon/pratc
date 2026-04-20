@@ -358,6 +358,44 @@ func TestAnalyzeUsesFreshCacheWhenSyncIsRecent(t *testing.T) {
 	}
 }
 
+func TestClusterAllowsForceCacheWhenAnalyzeOutlastsCacheTTL(t *testing.T) {
+	t.Parallel()
+
+	manifest, err := testutil.LoadManifest()
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+	prs, err := testutil.LoadFixturePRs()
+	if err != nil {
+		t.Fatalf("load fixture prs: %v", err)
+	}
+
+	store := openTestCache(t)
+	start := fixedNow()
+	seedCachedPRs(t, store, manifest.Repo, prs, start)
+
+	staleNow := func() time.Time { return start.Add(2 * time.Hour) }
+	service := Service{
+		now:             staleNow,
+		allowLive:       false,
+		allowForceCache: true,
+		useCacheFirst:   true,
+		cacheStore:      store,
+		cacheTTL:        time.Hour,
+	}
+
+	response, err := service.Cluster(context.Background(), manifest.Repo)
+	if err != nil {
+		t.Fatalf("cluster with force-cache fallback: %v", err)
+	}
+	if response.Repo != manifest.Repo {
+		t.Fatalf("repo = %q, want %q", response.Repo, manifest.Repo)
+	}
+	if len(response.Clusters) == 0 {
+		t.Fatal("expected clusters from stale cache fallback")
+	}
+}
+
 func TestAnalyzeAndPlanIncludeTelemetryContracts(t *testing.T) {
 	t.Parallel()
 

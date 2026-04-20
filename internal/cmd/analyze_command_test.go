@@ -85,6 +85,27 @@ func TestBuildAnalyzeConfigDoesNotInjectHiddenMaxPRsCap(t *testing.T) {
 	}
 }
 
+func TestBuildWorkflowAnalyzeConfigKeepsPostSyncPhasesOnCache(t *testing.T) {
+	t.Parallel()
+
+	cfg := buildWorkflowAnalyzeConfig(true, false, 5000, nil, "token")
+	if !cfg.UseCacheFirst {
+		t.Fatal("expected workflow config to keep cache-first enabled")
+	}
+	if cfg.AllowLive {
+		t.Fatal("expected workflow config to not force live mode by default")
+	}
+	if !cfg.AllowForceCache {
+		t.Fatal("expected workflow config to allow force-cache fallback for post-sync phases")
+	}
+	if cfg.MaxPRs != 5000 {
+		t.Fatalf("expected MaxPRs=5000, got %d", cfg.MaxPRs)
+	}
+	if cfg.Token != "token" {
+		t.Fatalf("expected token to be propagated, got %q", cfg.Token)
+	}
+}
+
 func TestFormatAnalyzeSyncWarningIncludesRecommendedWorkflow(t *testing.T) {
 	t.Parallel()
 
