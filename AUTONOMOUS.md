@@ -1,336 +1,324 @@
-# prATC Autonomous Testing Cycle
+# prATC Autonomous Mode
 
 ## Purpose
 
-This document defines how prATC runs autonomous testing cycles using the TUI monitor as the live dashboard and Hermes subagent delegation as the execution engine. The cycle ingests a corpus, evaluates each GUIDELINE rule against real output, identifies gaps, dispatches subagents to fix them, and iterates until the triage engine produces output that satisfies every non-negotiable rule.
+This document defines the stable operating contract for autonomous improvement of prATC against real corpus outputs.
+
+Autonomous mode is a closed loop:
+1. run the pipeline on a real corpus
+2. audit the outputs against GUIDELINE.md
+3. convert failures into explicit gaps
+4. dispatch subagents to fix those gaps
+5. re-run the pipeline and audit again
+6. stop only on success, true blocker, or stall budget
+
+This document is the normative spec. It should stay stable. Volatile run-specific findings live under `autonomous/`.
+
+## Definition of success
+
+"100%" means audit-green, not "looks better".
 
-This is not a planning document. It is a runtime loop specification.
+Required success conditions:
+- `go test ./...` passes
+- controller/audit tests pass
+- a fresh workflow rerun completes and produces the required artifacts
+- `scripts/audit_guideline.py <run-dir>` has zero required failures
+- report usefulness is represented by passing audit checks, not prose optimism
+- durable docs and repo-local state describe the same system truthfully
+
+## Finding promotion rule
+
+Every new finding must be promoted immediately into exactly one of these buckets:
+- a failing audit check
+- an open gap in `autonomous/GAP_LIST.md`
+- a live todo item with an explicit verification command
+- a documented non-goal or blocker
 
-## Why this exists
+Findings that remain only in chat are not part of the autonomous system.
 
-The overnight run proved the pipeline runs end-to-end but the output does not satisfy GUIDELINE.md. Zero of 4,992 PRs have bucket assignments, reason trails, or confidence scores. The graph has 800K spurious dependency edges. Layers 4-16 are scaffolded but not computed. The PDF renders structurally correct sections filled with empty data.
+## Control model
 
-Manual fix-and-recheck does not scale against 16 layers, 4,992 PRs, and a 28-minute pipeline. The autonomous cycle replaces that manual loop with a structured, repeatable, verifiable process.
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│                TUI Monitor                       │
-│  ┌──────────┬──────────┬──────────┐             │
-│  │  Jobs    │ Timeline │  Rate    │  ← ws://    │
-│  │  Panel   │  Panel   │  Limit   │  localhost  │
-│  ├──────────┴──────────┴──────────┤             │
-│  │       Console / Log Feed       │             │
-│  └────────────────────────────────┘             │
-│         ↑ SSE events from prATC serve           │
-└─────────────────────────────────────────────────┘
+### Roles
+
+- `AUTONOMOUS.md` — policy and loop contract
+- `TODO.md` — durable project backlog for autonomous-mode buildout and remaining milestone work
+- `autonomous/STATE.yaml` — controller checkpoint and resume state
+- `autonomous/GAP_LIST.md` — latest failing audit surface
+- `autonomous/RUNBOOK.md` — exact bootstrap / pause / resume / recovery commands
+- Hermes `/autonomous` skill — execution behavior for the controller session
+- Hermes session todo — live wave queue for the current execution pass
+- TUI monitor — observation surface only, not the source of truth
+- subagents — all non-trivial implementation and review work
 
-┌─────────────────────────────────────────────────┐
-│           Hermes Controller Session              │
-│                                                  │
-│  1. Run pipeline (sync → analyze → report)       │
-│  2. Audit output against GUIDELINE rules         │
-│  3. Generate GAP_LIST for failing rules          │
-│  4. Dispatch fix subagents per gap               │
-│  5. Re-run pipeline on same corpus               │
-│  6. Re-audit. If new gaps, loop to 3.            │
-│  7. If all rules pass or budget exhausted, stop. │
-│                                                  │
-│  Uses: delegate_task for all implementation      │
-│  Uses: TUI monitor for live observation          │
-└─────────────────────────────────────────────────┘
-```
-
-## The cycle
-
-### Phase 0: Bootstrap
-
-1. Start `pratc serve` on port 7400 (or confirm it is running via `/healthz`).
-2. Start the TUI monitor: `pratc monitor` in a separate tmux pane. The controller does not interact with the TUI directly — it watches via the console log feed and WebSocket events for live pipeline progress.
-3. Confirm the corpus exists: check `projects/OpenClaw_OpenClaw/runs/<latest>/sync.json` or trigger a fresh `pratc sync --repo=openclaw/openclaw`.
-4. Record the starting commit hash and test suite status: `go test ./...`.
+### Authority order
+
+On conflicts:
+1. `GUIDELINE.md` wins on rules, buckets, and non-negotiables
+2. `ARCHITECTURE.md` wins on system shape and file ownership
+3. `AUTONOMOUS.md` wins on autonomous loop behavior
+4. `TODO.md` wins on current durable backlog ordering
+5. `autonomous/STATE.yaml` wins on resume point for the active loop
 
-### Phase 1: Run the pipeline
-
-Execute the full workflow against the target corpus:
-
-```bash
-# Step 1: Sync (skip if already cached)
-pratc sync --repo=openclaw/openclaw --use-cache-first
-
-# Step 2: Analyze
-pratc analyze --repo=openclaw/openclaw --use-cache-first --format=json
-
-# Step 3: Cluster
-pratc cluster --repo=openclaw/openclaw --format=json
-
-# Step 4: Graph
-pratc graph --repo=openclaw/openclaw --format=json
-
-# Step 5: Plan
-pratc plan --repo=openclaw/openclaw --target=20 --format=json
-
-# Step 6: Report
-pratc report --repo=openclaw/openclaw --input-dir=projects/OpenClaw_OpenClaw/runs/<latest>
-```
-
-Alternatively, if a `workflow` command exists that chains all steps, use that.
-
-The TUI monitor shows live progress for each step. The controller watches for completion or failure.
-
-### Phase 2: Audit against GUIDELINE rules
-
-After the pipeline completes, run a programmatic audit of the output artifacts. The audit checks every rule from GUIDELINE.md against the actual data.
-
-#### Rule audit matrix
-
-Each rule maps to a concrete, checkable assertion against the output JSON:
-
-| # | GUIDELINE rule | Audit check | Pass condition |
-|---|----------------|-------------|----------------|
-| 1 | Every PR must be accounted for | `len(analyze.json.prs) >= counts.total_prs - cap_delta` | No PRs silently dropped |
-| 2a | Every decision needs a reason: bucket | Every PR in analyze.json has non-empty `bucket` field | 100% coverage |
-| 2b | Every decision needs a reason: reason trail | Every PR has `review.reasons` or `review.bucket_reason` with length > 0 | 100% coverage |
-| 2c | Every decision needs a reason: confidence | Every PR has `review.confidence` as float 0.0-1.0 | 100% coverage, none missing |
-| 3 | Duplicates are collapsed | `counts.duplicate_groups > 0` OR corpus genuinely has < 10 | Reasonable for corpus |
-| 4 | Garbage gets removed early | `counts.garbage_prs > 0` and garbage pass ran before duplicates | Order verified in logs |
-| 5 | Future work stays visible | Some PRs have bucket `future` | Not zero unless corpus is small |
-| 6 | Deeper judgment after obvious layers | Pipeline order: garbage → dup → badness → substance → routing → deep | Verified in code + logs |
-| N1 | No auto-merge | No merge commands emitted | Binary search of output |
-| N2 | No silent exclusion | `len(rejections)` + `len(selected)` + `len(garbage)` + `len(duplicates)` >= `total_prs` | Every PR accounted |
-| N3 | No opaque ranking without reasons | Top-N selected PRs all have reason strings | 100% |
-| N4 | No claiming certainty when confidence is low | No PR with confidence < 0.5 has bucket implying certainty | Cross-check |
-
-#### Additional quantitative checks
-
-| Check | Source | Pass condition |
-|-------|--------|----------------|
-| Conflict pairs < 5,000 | graph.json edges where `edge_type=conflicts_with` | Count < 5,000 |
-| Dependency edges meaningful | graph.json edges where `edge_type=depends_on` | Reason is not "base branch X depends on head branch X" for > 50% |
-| Analysis time < 15 min (cached) | timestamps in artifacts | `step-2-analyze` end - start < 900s on second run |
-| Duplicate groups > 10 | analyze.json `counts.duplicate_groups` | > 10 or documented reason |
-| Garbage classifier catches > 80% | Manual spot-check of 20 non-garbage PRs for false negatives | < 4 missed |
-| PDF renders all 7 sections | report.pdf page count + section headers | Cover, summary, junk, dupes, now/review, future, appendix all present |
-| Test suite green | `go test ./...` | 0 failures |
-
-### Phase 3: Generate GAP_LIST
-
-From the Phase 2 audit, produce a GAP_LIST: a prioritized list of failing rules, each with:
-- The GUIDELINE rule number and text
-- The actual vs expected value from the output
-- The code location(s) most likely responsible
-- A suggested fix approach
-
-GAP_LIST format:
-
-```
-GAP-001: Rule 2a — bucket assignments missing
-  Expected: 100% of PRs have non-empty bucket field
-  Actual: 0/4992 PRs have bucket assignments
-  Location: internal/app/service.go — Analyze() does not assign buckets
-  Fix: Wire the review pipeline output into bucket assignment logic after layer 5
-
-GAP-002: Rule N2 — conflict edges 804K trivial dependencies
-  Expected: depends_on edges reflect real dependency (shared imports, API surface)
-  Actual: 804,678 edges with reason "base branch 'main' depends on head branch 'main'"
-  Location: internal/graph/graph.go — Build() creates edges for all same-target-branch PRs
-  Fix: Remove same-branch dependency edges or require actual file-level dependency signal
-```
-
-### Phase 4: Dispatch fix subagents
-
-For each gap in the GAP_LIST, dispatch a subagent:
-
-**Rules for dispatch:**
-- One gap per subagent (or group closely related gaps if they share the same file).
-- Every subagent gets: the GAP_LIST entry, the relevant source code paths, the GUIDELINE rule text, and the TDD requirement.
-- Every subagent must follow RED-GREEN-REFACTOR: write a failing test that proves the gap, then implement the fix, then verify the test passes.
-- Subagents run against the same corpus (cached). They do not re-sync.
-
-**Wave ordering:**
-
-```
-Wave 1: Data model gaps
-  - Missing fields on types (bucket, confidence, reasons, deep judgment scores)
-  - These are foundation — everything else depends on them
-
-Wave 2: Core logic gaps
-  - Bucket assignment in the pipeline
-  - Dependency edge filtering
-  - Garbage classifier tuning
-  - Conflict noise tuning
-
-Wave 3: Wiring gaps
-  - Review output → analyze response
-  - Deep judgment layer computation
-  - PDF section population
-
-Wave 4: Verification
-  - Full pipeline re-run
-  - GUIDELINE audit pass
-  - Test suite
-  - Doc sync
-```
-
-**Subagent context template:**
-
-```
-GOAL: Fix GAP-XXX: [description]
-
-GUIDELINE RULE:
-[RULE TEXT]
-
-CURRENT BEHAVIOR:
-[What the code does now — include file paths and line numbers]
-
-EXPECTED BEHAVIOR:
-[What the code should do to pass the audit check]
-
-AUDIT ASSERTION:
-[The specific check from Phase 2 that fails]
-
-TDD REQUIREMENT:
-1. Write a failing test that proves the gap exists
-2. Verify the test fails: go test ./internal/.../ -run TestGapXXX -v
-3. Implement the minimal fix
-4. Verify the test passes
-5. Verify no regressions: go test ./...
-
-ENVIRONMENT:
-- Working dir: /home/agent/pratc
-- Build: go build ./...
-- Test: go test ./...
-- Corpus: projects/OpenClaw_OpenClaw/runs/20260419-065654/
-- Cache: ~/.pratc/pratc.db
-```
-
-### Phase 5: Re-run and re-audit
-
-After each wave completes:
-
-1. `go build ./...` — confirm build
-2. `go test ./...` — confirm test suite
-3. Re-run the pipeline (steps 2-6 from Phase 1, skip sync if corpus unchanged)
-4. Re-run the Phase 2 audit
-5. If new gaps appear or old gaps resurface, add them to GAP_LIST and continue
-6. If all rules pass, proceed to Phase 6
-
-### Phase 6: Closeout
-
-1. Final GUIDELINE audit: all rules pass.
-2. Quantitative checks: conflicts < 5K, duplicates > 10, analysis < 15 min cached.
-3. Test suite: `go test ./...` green.
-4. Build: `go build ./...` clean.
-5. Commit all changes with a descriptive message.
-6. Update TODO.md, ROADMAP.md, CHANGELOG.md to reflect the verified state.
-7. Verify the TUI monitor shows the completed run with honest status.
-
-## Controller behavior rules
-
-### What the controller does
-- Orchestrates the cycle (Phase 0 through Phase 6)
-- Runs the pipeline
-- Runs the audit
-- Generates the GAP_LIST
-- Dispatches subagents
-- Verifies subagent output
-- Re-runs the audit
-- Commits when green
-- Updates docs
-
-### What the controller does NOT do
-- Implement code directly (all fixes go through subagents)
-- Modify the GAP_LIST without running the audit
-- Skip the TDD requirement for any gap
-- Mark a gap as fixed without re-running the audit
-- Proceed past a failing test suite
-
-### Turn budget
-- Controller: no hard limit (the cycle may need multiple iterations)
-- Fix subagents: 300 turns each (enough for TDD cycle + debugging)
-- Audit subagents: 100 turns each
-- Doc sync subagent: 100 turns
-
-### Stop conditions
-The cycle stops when one of:
-- All GUIDELINE rules pass the audit (SUCCESS)
-- 3 full iterations without progress on any remaining gap (STALLED)
-- The test suite is red and cannot be repaired in 2 waves (BLOCKED)
-- Token or time budget exhausted (BUDGET)
-
-On STALLED or BLOCKED, record the remaining gaps in TODO.md and report to the operator.
-
-## TUI monitor integration
-
-The TUI is not a control surface — it is an observation surface. The controller uses it to:
-
-1. **Watch pipeline progress.** The Jobs panel shows sync/analyze/cluster/graph/plan/report steps. The controller can see when a step completes or fails without polling the filesystem.
-
-2. **Monitor rate limits.** The RateLimit panel shows remaining GitHub API budget. If the budget drops below 200 during sync, the controller should pause and wait rather than dispatching pipeline steps that will fail.
-
-3. **Read console logs.** The Console panel shows structured log entries. The controller can watch for error-level entries that indicate a pipeline step failed before the step officially exits.
-
-4. **Observe timing.** The Timeline panel shows request activity. Long gaps indicate stalls. Bursts indicate active processing.
-
-The controller connects to the same WebSocket (`ws://127.0.0.1:7400/sync/stream`) that the TUI uses. It can also read the server logs via `journalctl` if the service runs under systemd, or via the HTTP health endpoint.
-
-## Audit script
-
-The audit should be implemented as a standalone script at `scripts/audit-guideline.sh` (or `.py`) that:
-1. Takes the run directory as an argument
-2. Reads all artifact JSON files
-3. Checks every rule in the matrix above
-4. Prints PASS/FAIL for each rule with actual values
-5. Exits 0 if all rules pass, 1 if any fail
-6. Optionally writes results to `AUDIT_RESULTS.json` in the run directory
-
-This makes the audit reproducible outside the controller session and usable in CI.
-
-## File locations
-
-```
+## Observation vs control
+
+The TUI monitor is not a control surface. It exists to expose live truth:
+- job progress
+- request activity
+- rate-limit status
+- structured logs
+
+The controller acts through code, scripts, and delegated subagents. It does not treat visual TUI state as canonical completion proof.
+
+## Required artifacts
+
+Each autonomous cycle must create or update these artifacts:
+
+### Stable artifacts
+
+- `AUTONOMOUS.md`
+- `TODO.md`
+- `autonomous/RUNBOOK.md`
+- `autonomous/STATE.yaml`
+- `autonomous/GAP_LIST.md`
+- `scripts/audit_guideline.py`
+- `scripts/gap_list_from_audit.py`
+- `scripts/autonomous_controller.py`
+
+### Per-run artifacts
+
+Under `autonomous/runs/<timestamp>/`:
+- `AUDIT_RESULTS.json`
+- `controller-log.md`
+- `wave-summary.md`
+- `subagent-results/` directory
+- optional copies or links to run inputs used for the audit
+
+## Controller contract
+
+### What the controller must do
+
+- read governing docs before acting
+- reconcile repo state, latest run artifacts, and controller checkpoint
+- keep the session todo aligned with the current wave
+- generate or refresh the audit result before changing gap status
+- delegate all non-trivial implementation work to subagents
+- verify locally after each subagent wave
+- update durable artifacts after every phase boundary
+- preserve resumability if interrupted
+
+### What the controller must not do
+
+- implement non-trivial fixes directly
+- mark a gap fixed without rerunning the audit
+- overwrite durable state with chat-only summaries
+- skip test/build verification after code changes
+- claim completion from the TUI alone
+- silently drop gaps, blockers, or failed waves
+
+## Phase loop
+
+### Phase 0 — bootstrap
+
+Required checks:
+- repo clean enough to reason about (`git status`)
+- active branch and commit recorded
+- `go test ./...` baseline recorded
+- corpus path chosen and recorded in `autonomous/STATE.yaml`
+- `pratc serve` available or already running
+- TUI monitor available for observation
+
+Outputs:
+- `autonomous/STATE.yaml` initialized or refreshed
+- session todo seeded from current open wave
+
+### Phase 1 — run pipeline
+
+Run the full corpus workflow using the selected cached or fresh corpus.
+
+Minimum expected outputs:
+- sync artifact or explicit cache reuse note
+- `analyze.json`
+- cluster output
+- graph output
+- plan output
+- PDF report output
+
+### Phase 2 — audit
+
+Run `scripts/audit_guideline.py` against the selected run directory.
+
+The audit must:
+- check every GUIDELINE rule that is machine-checkable
+- record actual vs expected values
+- exit non-zero if any required rule fails
+- write `AUDIT_RESULTS.json`
+
+### Phase 3 — gap generation
+
+Run `scripts/gap_list_from_audit.py`.
+
+The gap generator must:
+- read `AUDIT_RESULTS.json`
+- update `autonomous/GAP_LIST.md`
+- preserve stable gap IDs where possible
+- classify severity and likely owner area
+- separate open, fixed, blocked, and deferred gaps
+
+### Phase 4 — fix waves
+
+The controller converts open gaps into implementation waves.
+
+Default wave ordering:
+1. data model / type surface
+2. core decision logic
+3. wiring / report population / artifact flow
+4. verification and doc sync
+
+Rules:
+- independent gaps may run in parallel
+- tightly coupled gaps sharing files may be grouped
+- every non-trivial change goes through a subagent with TDD instructions
+- controller verifies locally after the wave returns
+
+### Phase 5 — re-run and re-audit
+
+After each wave:
+- `go build ./...`
+- `go test ./...`
+- rerun the necessary pipeline steps
+- rerun the audit
+- regenerate the gap list
+- update `autonomous/STATE.yaml`
+
+No wave is complete until the refreshed audit proves progress.
+
+### Phase 6 — closeout
+
+Success requires all of:
+- all required audit checks passing
+- build green
+- test suite green
+- durable docs updated truthfully
+- controller state marked complete
+- final commit made or explicit human hold noted
+
+## Audit contract
+
+The audit layer is deterministic code, not prose.
+
+At minimum it must evaluate:
+- PR accounting coverage
+- bucket coverage
+- reason coverage
+- confidence coverage
+- duplicate handling presence
+- garbage routing presence
+- temporal routing visibility
+- report-readiness / self-describing PR rows
+- no silent exclusion
+- no opaque top-N reasoning
+- graph noise thresholds
+- performance and artifact presence checks
+
+If a rule cannot yet be machine-checked, it must be listed explicitly in `AUTONOMOUS.md` or `RUNBOOK.md` as a manual audit item rather than implied.
+
+## Gap contract
+
+`autonomous/GAP_LIST.md` is the current failure surface.
+
+Each gap entry must include:
+- gap ID
+- governing rule
+- severity
+- expected behavior
+- actual behavior
+- likely code ownership area
+- verification command or artifact check
+- current status
+- notes / blockers
+
+Run-specific findings belong here, not in `AUTONOMOUS.md`.
+
+## State / resume contract
+
+`autonomous/STATE.yaml` is required for true autonomous mode.
+
+Minimum fields:
+- mode
+- repo
+- branch
+- baseline_commit
+- current_run_id
+- corpus_dir
+- phase
+- current_wave
+- open_gaps
+- blocked_gaps
+- completed_gaps
+- last_audit_path
+- last_green_commit
+- paused
+- stop_reason
+- resume_command
+- updated_at
+
+Resume semantics:
+- if interrupted, the next controller session reads `STATE.yaml` first
+- the controller reconstructs the live session todo from the current phase and open gaps
+- no phase restarts from scratch unless artifacts are missing or invalid
+- if artifacts are stale relative to HEAD, the controller records that explicitly and reruns the necessary steps
+
+## Stop conditions
+
+Autonomous mode stops only when one of these is true:
+- `SUCCESS` — all required checks pass
+- `BLOCKED` — a real external blocker prevents further progress
+- `STALLED` — no measurable progress after the configured retry budget
+- `BUDGET` — explicit time/token ceiling reached
+- `HUMAN_HOLD` — operator requested stop
+
+Every non-success stop must update `autonomous/STATE.yaml` and `autonomous/GAP_LIST.md` with the reason.
+
+## Definition of done
+
+Autonomous-mode buildout is done when:
+- the repo has the control-plane structure under `autonomous/`
+- the deterministic audit and controller scripts exist
+- the `/autonomous` skill can resume from repo-local state
+- the session todo can be regenerated from repo-local state
+- the controller can drive at least one full audit → gap → fix-wave → rerun cycle
+- the durable docs describe the same system
+
+## File layout
+
+```text
 pratc/
-├── AUTONOMOUS.md              ← this document
+├── AUTONOMOUS.md
+├── TODO.md
+├── autonomous/
+│   ├── GAP_LIST.md
+│   ├── RUNBOOK.md
+│   ├── STATE.yaml
+│   ├── prompts/
+│   │   ├── audit-gap.md
+│   │   ├── fix-gap.md
+│   │   └── wave-closeout.md
+│   └── runs/
 ├── scripts/
-│   └── audit-guideline.py     ← the audit script (to be created)
-├── projects/
-│   └── OpenClaw_OpenClaw/
-│       └── runs/
-│           └── <timestamp>/
-│               ├── AUDIT_RESULTS.json   ← audit output per run
-│               ├── GAP_LIST.md          ← gaps found in this run
-│               ├── analyze.json
-│               ├── step-3-cluster.json
-│               ├── step-4-graph.json
-│               ├── step-5-plan.json
-│               ├── report.pdf
-│               └── sync.json
+│   ├── audit_guideline.py
+│   ├── gap_list_from_audit.py
+│   └── autonomous_controller.py
 └── internal/
-    └── ... (fixes land here)
+    └── ... product code and tests
 ```
-
-## Known gaps from first audit (2026-04-19 run)
-
-These are the starting gaps the first autonomous cycle should address:
-
-| ID | Rule | Gap | Priority |
-|----|------|-----|----------|
-| G-001 | 2a | Zero bucket assignments on all 4,992 PRs | P0 |
-| G-002 | 2b | Zero reason trails on all PRs | P0 |
-| G-003 | 2c | Zero confidence scores on all PRs | P0 |
-| G-004 | N2 | 804,678 trivial dependency edges | P1 |
-| G-005 | N2 | 380,716 conflict edges (target: < 5,000) | P1 |
-| G-006 | 5 | No temporal routing (now/future/blocked) | P1 |
-| G-007 | — | Layers 6-16 not computed | P2 |
-| G-008 | — | Layers 4-5 (substance score) not computed | P2 |
-| G-009 | — | Duplicate groups only 9 (target: > 10) | P2 |
-| G-010 | — | Garbage PRs only 8 (may be conservative) | P3 |
 
 ## Relationship to other documents
-- **GUIDELINE.md** defines the rules this cycle audits against.
-- **ARCHITECTURE.md** defines the system shape and data flow.
-- **TODO.md** tracks the current work state including any gaps from the last cycle.
-- **ROADMAP.md** defines version milestones.
-- **This document** defines the autonomous testing process.
-- If GUIDELINE.md changes, the audit matrix must be updated before the next cycle.
+
+- `GUIDELINE.md` defines what a compliant output means.
+- `ARCHITECTURE.md` defines where logic and data should live.
+- `TODO.md` tracks the durable backlog and verification targets.
+- `ROADMAP.md` defines milestone framing and release sequencing.
+- `AUTONOMOUS.md` defines how the controller loop operates.
+- `autonomous/*` stores the current execution state for the loop.
+
+If these documents do not describe the same system, autonomous mode is not trustworthy yet.

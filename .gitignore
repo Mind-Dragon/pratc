@@ -69,6 +69,8 @@ monitor-pratc.sh
 pratc-settings.db
 .pratc-tree/
 /projects/
+/autonomous/runs/*
+!/autonomous/runs/.gitkeep
 __pycache__/
 *.py[cod]
 .pytest_cache/

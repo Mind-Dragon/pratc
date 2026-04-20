@@ -25,6 +25,15 @@ type PR struct {
 	Deletions         int               `json:"deletions"`
 	ChangedFilesCount int               `json:"changed_files_count"`
 	Provenance        map[string]string `json:"provenance,omitempty"`
+	// Review fields: populated by the decision engine when IncludeReview is true.
+	// These fields are derived from ReviewResult for each PR.
+	Confidence     float64         `json:"confidence,omitempty"`
+	Reasons       []string        `json:"reasons,omitempty"`
+	SubstanceScore int            `json:"substance_score,omitempty"`
+	TemporalBucket string         `json:"temporal_bucket,omitempty"`
+	DecisionLayers []DecisionLayer `json:"decision_layers,omitempty"`
+	Category       ReviewCategory  `json:"category,omitempty"`
+	PriorityTier   PriorityTier    `json:"priority_tier,omitempty"`
 }
 
 type PRCluster struct {

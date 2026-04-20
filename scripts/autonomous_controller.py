@@ -1,0 +1,417 @@
+#!/usr/bin/env python3
+"""
+Autonomous controller — deterministic control-plane for prATC autonomous mode.
+
+Reads AUTONOMOUS.md for policy, autonomous/STATE.yaml for checkpoint, and
+autonomous/GAP_LIST.md for the current failure surface. All non-trivial
+implementation work is delegated to subagents; this script only manages state.
+"""
+import argparse
+from datetime import datetime, timezone
+from pathlib import Path
+import re
+
+import yaml
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+REPO_ROOT = Path('/home/agent/pratc')
+STATE_PATH = REPO_ROOT / 'autonomous' / 'STATE.yaml'
+GAP_LIST_PATH = REPO_ROOT / 'autonomous' / 'GAP_LIST.md'
+
+# ---------------------------------------------------------------------------
+# YAML state handling — robust, replaces the hand-rolled yamlish parser
+# ---------------------------------------------------------------------------
+
+def _bool_like(value):
+    """Convert YAML-ish string booleans to Python bool."""
+    if isinstance(value, bool):
+        return value
+    if not isinstance(value, str):
+        return value
+    if value.lower() in ('true', 'yes', 'on'):
+        return True
+    if value.lower() in ('false', 'no', 'off'):
+        return False
+    return value
+
+
+def load_state():
+    """Load and validate STATE.yaml using PyYAML."""
+    if not STATE_PATH.exists():
+        raise SystemExit(f'missing state file: {STATE_PATH}')
+    raw = yaml.safe_load(STATE_PATH.read_text())
+    # Convert string booleans that PyYAML left as strings
+    for key in ('paused',):
+        if key in raw:
+            raw[key] = _bool_like(raw[key])
+    return raw
+
+
+def save_state(state):
+    """Write STATE.yaml using PyYAML with a stable field order."""
+    state = dict(state)  # don't mutate caller
+    state['updated_at'] = datetime.now(timezone.utc).isoformat()
+
+    ordered_keys = [
+        'mode', 'repo', 'branch', 'baseline_commit', 'current_run_id',
+        'corpus_dir', 'phase', 'current_wave',
+        'open_gaps', 'blocked_gaps', 'completed_gaps',
+        'last_audit_path', 'last_green_commit',
+        'paused', 'stop_reason', 'resume_command',
+        'notes', 'updated_at',
+    ]
+
+    # Build output with explicit ordering, fill in missing keys with defaults
+    output = {}
+    for key in ordered_keys:
+        if key in state and state[key] not in (None, ''):
+            output[key] = state[key]
+        elif key in ('open_gaps', 'blocked_gaps', 'completed_gaps'):
+            output[key] = state.get(key, [])
+        elif key == 'notes':
+            output[key] = state.get(key, [])
+        elif key == 'paused':
+            output[key] = _bool_like(state.get(key, False))
+        else:
+            output[key] = state.get(key, '')
+
+    STATE_PATH.write_text(yaml.dump(output, default_flow_style=False, sort_keys=False))
+
+
+# ---------------------------------------------------------------------------
+# Gap list parsing
+# ---------------------------------------------------------------------------
+
+_GAP_ENTRY_RE = re.compile(
+    r'^###\s+(?P<id>[A-Z]+-\d+)\s+[—–]\s+(?P<title>[^\n]+)\n'
+    r'(?P<body>(?:(?:  |- ).+\n)*)',
+    re.MULTILINE,
+)
+_SEVERITY_RE = re.compile(r'^- Severity:\s*([^\s]+)', re.MULTILINE)
+_STATUS_RE = re.compile(r'^- Status:\s*([^\s]+)', re.MULTILINE)
+_AUDIT_CHECK_RE = re.compile(r'^- Audit check:\s*`([^`]+)`', re.MULTILINE)
+_EXPECTED_RE = re.compile(r'^- Expected:\s*([^\n]+)', re.MULTILINE)
+_ACTUAL_RE = re.compile(r'^- Actual:\s*([^\n]+)', re.MULTILINE)
+
+
+def parse_gap_list():
+    """
+    Parse autonomous/GAP_LIST.md and return a list of gap dictionaries::
+
+        {
+            'id': 'G-001',
+            'title': 'bucket coverage missing',
+            'severity': 'P0',
+            'status': 'open',
+            'audit_check': 'bucket_coverage',
+            'expected': '4992',
+            'actual': '0',
+        }
+    """
+    if not GAP_LIST_PATH.exists():
+        return []
+    text = GAP_LIST_PATH.read_text()
+    gaps = []
+    for m in _GAP_ENTRY_RE.finditer(text):
+        gid = m.group('id').strip()
+        title = m.group('title').strip()
+        body = m.group('body') or ''
+
+        sev_match = _SEVERITY_RE.search(body)
+        status_match = _STATUS_RE.search(body)
+        check_match = _AUDIT_CHECK_RE.search(body)
+        exp_match = _EXPECTED_RE.search(body)
+        act_match = _ACTUAL_RE.search(body)
+
+        gaps.append({
+            'id': gid,
+            'title': title,
+            'severity': sev_match.group(1).strip() if sev_match else 'P2',
+            'status': status_match.group(1).strip() if status_match else 'unknown',
+            'audit_check': check_match.group(1).strip() if check_match else '',
+            'expected': exp_match.group(1).strip() if exp_match else '',
+            'actual': act_match.group(1).strip() if act_match else '',
+        })
+    return gaps
+
+
+# ---------------------------------------------------------------------------
+# Wave synthesis
+# ---------------------------------------------------------------------------
+
+# Default wave ordering per AUTONOMOUS.md §Phase 4:
+WAVE_ORDER = ['data_model', 'core_logic', 'wiring', 'verification']
+# Owner area → wave group mapping (heuristic, based on audit check prefixes)
+CHECK_TO_WAVE_GROUP = {
+    'bucket_coverage': 'data_model',
+    'reason_coverage': 'data_model',
+    'confidence_coverage': 'data_model',
+    'duplicate_presence': 'core_logic',
+    'conflict_pairs_threshold': 'core_logic',
+    'dependency_edge_quality': 'core_logic',
+    'temporal_routing': 'wiring',
+    'selected_reason_coverage': 'wiring',
+    'artifact_presence': 'verification',
+}
+# Severity priority for tiebreaking
+SEV_PRIORITY = {'P0': 0, 'P1': 1, 'P2': 2, 'P3': 3}
+
+
+def synthesize_wave():
+    """
+    Synthesize wave tasks from open gaps in GAP_LIST.md and STATE.yaml.
+
+    Returns a list of task dictionaries, each containing:
+      - gap_id        : stable gap identifier
+      - title         : human-readable title
+      - wave_group    : data_model | core_logic | wiring | verification
+      - action        : short imperative description
+      - verification_note: how to verify this gap is fixed
+
+    Ordering rules (per AUTONOMOUS.md):
+      1. data_model → core_logic → wiring → verification
+      2. Within same wave_group, P0 before P1 before P2
+      3. Gap IDs are stable across runs (deterministic output)
+    """
+    state = load_state()
+    open_gap_ids = set(state.get('open_gaps', []))
+    if not open_gap_ids:
+        return []
+
+    gaps = parse_gap_list()
+    by_id = {g['id']: g for g in gaps}
+
+    tasks = []
+    for gid in sorted(open_gap_ids):
+        if gid not in by_id:
+            # Gap is listed in STATE.yaml but not parseable from GAP_LIST.md
+            tasks.append({
+                'gap_id': gid,
+                'title': '(unparseable gap)',
+                'wave_group': 'verification',
+                'action': f'Verify gap {gid} manually.',
+                'verification_note': f'Gap {gid} is listed in STATE.yaml but has no entry in {GAP_LIST_PATH}. Manual verification required.',
+            })
+            continue
+
+        gap = by_id[gid]
+        check = gap['audit_check']
+        wave_group = CHECK_TO_WAVE_GROUP.get(check, 'verification')
+        severity = gap['severity']
+
+        verification_note = (
+            f"Gap {gid}: verify via `python3 scripts/audit_guideline.py <run_dir>`; "
+            f"check '{check}' passes (expected={gap['expected']}, actual={gap['actual']})."
+        )
+
+        tasks.append({
+            'gap_id': gid,
+            'title': gap['title'],
+            'wave_group': wave_group,
+            'severity': severity,
+            'audit_check': check,
+            'action': _action_for_gap(gap),
+            'verification_note': verification_note,
+        })
+
+    # Stable sort: wave_group order first, then severity, then gap ID
+    def sort_key(t):
+        wave_idx = WAVE_ORDER.index(t['wave_group']) if t['wave_group'] in WAVE_ORDER else len(WAVE_ORDER)
+        sev = SEV_PRIORITY.get(t.get('severity', 'P2'), 3)
+        return (wave_idx, sev, t['gap_id'])
+
+    tasks.sort(key=sort_key)
+    return tasks
+
+
+def _action_for_gap(gap):
+    """Produce a short imperative action string for a gap."""
+    check = gap['audit_check']
+    title = gap['title']
+    actions = {
+        'bucket_coverage': f'Ensure every PR has a bucket field populated. {title}',
+        'reason_coverage': f'Ensure every PR has a reason trail in review metadata. {title}',
+        'confidence_coverage': f'Ensure every PR has a numeric confidence score. {title}',
+        'duplicate_presence': f'Duplicate detection must run and produce groups. {title}',
+        'conflict_pairs_threshold': f'Conflict graph must have < 5000 conflict edges. {title}',
+        'dependency_edge_quality': f'Dependency edges must not be dominated by trivial same-branch reasons. {title}',
+        'temporal_routing': f'PRs must be routed into temporal buckets (now/future/blocked). {title}',
+        'selected_reason_coverage': f'Every selected plan item must have a reason field. {title}',
+        'artifact_presence': f'All required pipeline artifacts must be produced. {title}',
+    }
+    return actions.get(check, f'Fix gap {gap["id"]}: {title}')
+
+
+def format_wave_synthesis(tasks):
+    """Format synthesized wave tasks as a human-readable text block."""
+    lines = ['# Wave Synthesis', '']
+    if not tasks:
+        lines.append('No open gaps. Wave synthesis complete.')
+        return '\n'.join(lines)
+
+    current_group = None
+    for t in tasks:
+        if t['wave_group'] != current_group:
+            current_group = t['wave_group']
+            lines.append(f'## {current_group.replace("_", " ").title()} Wave')
+            lines.append('')
+        lines.append(f"### {t['gap_id']} — {t['title']}")
+        lines.append(f"- Action: {t['action']}")
+        lines.append(f"- Verification: {t['verification_note']}")
+        lines.append('')
+    return '\n'.join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+def cmd_init(args):
+    """Initialize or refresh STATE.yaml checkpoint."""
+    state = load_state() if STATE_PATH.exists() else {}
+    # Capture git truth at init time
+    import subprocess
+    try:
+        branch = subprocess.check_output(
+            ['git', '-C', str(REPO_ROOT), 'rev-parse', '--abbrev-ref', 'HEAD'],
+            text=True).strip()
+        commit = subprocess.check_output(
+            ['git', '-C', str(REPO_ROOT), 'rev-parse', '--short', 'HEAD'],
+            text=True).strip()
+    except subprocess.CalledProcessError:
+        branch = state.get('branch', 'unknown')
+        commit = state.get('baseline_commit', 'unknown')
+
+    state.update({
+        'mode': 'active',
+        'repo': args.repo,
+        'branch': branch,
+        'baseline_commit': state.get('baseline_commit', commit),
+        'current_run_id': Path(args.corpus_dir).name,
+        'corpus_dir': args.corpus_dir,
+        'phase': state.get('phase', 'bootstrap'),
+        'current_wave': state.get('current_wave', '0'),
+        'paused': False,
+        'stop_reason': '',
+        'resume_command': 'python3 scripts/autonomous_controller.py resume',
+    })
+    save_state(state)
+    print(f'initialized autonomous state at {STATE_PATH}')
+
+
+def cmd_reconcile(_args):
+    """Reconcile repo truth and clear any verification pause."""
+    state = load_state()
+    state['mode'] = 'active'
+    state['paused'] = False
+    if state.get('stop_reason') == 'verification pause':
+        state['stop_reason'] = ''
+    # Refresh git info
+    import subprocess
+    try:
+        state['branch'] = subprocess.check_output(
+            ['git', '-C', str(REPO_ROOT), 'rev-parse', '--abbrev-ref', 'HEAD'],
+            text=True).strip()
+        state['baseline_commit'] = subprocess.check_output(
+            ['git', '-C', str(REPO_ROOT), 'rev-parse', '--short', 'HEAD'],
+            text=True).strip()
+    except subprocess.CalledProcessError:
+        pass
+    save_state(state)
+    print('reconciled state')
+
+
+def cmd_next_wave(_args):
+    """Advance to the next wave number."""
+    state = load_state()
+    wave = int(str(state.get('current_wave', '0')))
+    state['current_wave'] = str(wave + 1)
+    state['phase'] = f'wave_{wave + 1}'
+    save_state(state)
+    print(f"advanced to {state['phase']}")
+
+
+def cmd_pause(args):
+    """Pause the autonomous loop."""
+    state = load_state()
+    state['paused'] = True
+    state['stop_reason'] = args.reason
+    state['mode'] = 'paused'
+    save_state(state)
+    print(f'paused: {args.reason}')
+
+
+def cmd_resume(_args):
+    """Resume from a paused state."""
+    state = load_state()
+    state['paused'] = False
+    state['mode'] = 'active'
+    state['stop_reason'] = ''
+    if state.get('phase') in ('', 'bootstrap'):
+        state['phase'] = 'reconcile'
+    save_state(state)
+    print(f"resume from phase={state.get('phase')} wave={state.get('current_wave')}")
+
+
+def cmd_complete(args):
+    """Mark the autonomous session complete."""
+    state = load_state()
+    state['mode'] = 'complete'
+    state['phase'] = 'complete'
+    state['paused'] = False
+    state['stop_reason'] = args.reason
+    save_state(state)
+    print(f'completed: {args.reason}')
+
+
+def cmd_synthesize_wave(_args):
+    """Synthesize wave tasks from open gaps; print to stdout."""
+    tasks = synthesize_wave()
+    print(format_wave_synthesis(tasks))
+    # Also emit machine-readable YAML for downstream consumption
+    print('--- YAML ---')
+    print(yaml.dump({'wave_tasks': tasks}, default_flow_style=False, sort_keys=False))
+
+
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Autonomous controller for prATC — state management only.')
+    sub = parser.add_subparsers(dest='cmd', required=True)
+
+    p = sub.add_parser('init')
+    p.add_argument('--repo', required=True)
+    p.add_argument('--corpus-dir', required=True)
+    p.set_defaults(func=cmd_init)
+
+    p = sub.add_parser('reconcile')
+    p.set_defaults(func=cmd_reconcile)
+
+    p = sub.add_parser('next-wave')
+    p.set_defaults(func=cmd_next_wave)
+
+    p = sub.add_parser('pause')
+    p.add_argument('--reason', required=True)
+    p.set_defaults(func=cmd_pause)
+
+    p = sub.add_parser('resume')
+    p.set_defaults(func=cmd_resume)
+
+    p = sub.add_parser('complete')
+    p.add_argument('--reason', required=True)
+    p.set_defaults(func=cmd_complete)
+
+    p = sub.add_parser('synthesize-wave')
+    p.set_defaults(func=cmd_synthesize_wave)
+
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == '__main__':
+    main()

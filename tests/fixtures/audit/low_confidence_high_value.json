@@ -1,0 +1,64 @@
+{
+  "repo": "test/repo",
+  "generatedAt": "2026-04-19T12:00:00Z",
+  "analysis_truncated": false,
+  "counts": {
+    "total_prs": 5,
+    "cluster_count": 1,
+    "duplicate_groups": 0,
+    "overlap_groups": 0,
+    "conflict_pairs": 0,
+    "stale_prs": 0,
+    "garbage_prs": 0
+  },
+  "prs": [
+    {
+      "id": "PR_1",
+      "repo": "test/repo",
+      "number": 1,
+      "title": "Low confidence but high value",
+      "bucket": "high_value",
+      "temporal_bucket": "now",
+      "review": {
+        "reasons": ["maybe_important"],
+        "confidence": 0.3
+      }
+    },
+    {
+      "id": "PR_2",
+      "repo": "test/repo",
+      "number": 2,
+      "title": "Low confidence and merge candidate",
+      "bucket": "merge_candidate",
+      "temporal_bucket": "now",
+      "review": {
+        "reasons": ["looks_good"],
+        "confidence": 0.4
+      }
+    },
+    {
+      "id": "PR_3",
+      "repo": "test/repo",
+      "number": 3,
+      "title": "Low confidence but security risk high",
+      "bucket": "security_risk",
+      "temporal_bucket": "now",
+      "review": {
+        "reasons": ["touches_auth"],
+        "confidence": 0.85
+      }
+    },
+    {
+      "id": "PR_4",
+      "repo": "test/repo",
+      "number": 4,
+      "title": "Normal low confidence",
+      "bucket": "needs_review",
+      "temporal_bucket": "now",
+      "review": {
+        "reasons": ["not_sure"],
+        "confidence": 0.35
+      }
+    }
+  ]
+}

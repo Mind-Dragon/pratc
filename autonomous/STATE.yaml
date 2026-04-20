@@ -1,0 +1,28 @@
+mode: active
+repo: openclaw/openclaw
+branch: main
+baseline_commit: 1b84d21
+current_run_id: 20260419-065654
+corpus_dir: projects/OpenClaw_OpenClaw/runs/20260419-065654
+phase: wave_1
+current_wave: 1
+open_gaps:
+  - G-001
+  - G-002
+  - G-003
+  - G-008
+  - G-006
+  - G-007
+  - G-005
+  - G-004
+blocked_gaps: null
+completed_gaps: null
+last_audit_path: projects/OpenClaw_OpenClaw/runs/20260419-065654/AUDIT_RESULTS.json
+last_green_commit: 1b84d21
+paused: false
+stop_reason: ''
+resume_command: python3 scripts/autonomous_controller.py resume
+notes:
+- Initial autonomous control-plane scaffold created.
+- Update baseline_commit and timestamps on first controller reconcile.
+updated_at: 2026-04-20T16:45:21.344280+00:00

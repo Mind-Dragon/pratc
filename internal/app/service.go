@@ -576,6 +576,11 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 
 	response.ReviewPayload = reviewPayload
 
+	// Enrich each PR with decision engine results if review was run.
+	if reviewPayload != nil && len(reviewPayload.Results) > 0 {
+		enrichPRsWithReviewData(response.PRs, reviewPayload.Results)
+	}
+
 	return response, nil
 }
 
@@ -747,6 +752,31 @@ func buildReviewBuckets(categoryCount map[types.ReviewCategory]int) []types.Buck
 		buckets = append(buckets, types.BucketCount{Bucket: label, Count: bucketCounts[label]})
 	}
 	return buckets
+}
+
+// enrichPRsWithReviewData populates decision engine fields on each PR
+// by matching ReviewResult entries to their corresponding PRs by number.
+// This makes bucket/reason/confidence/temporal routing directly visible
+// on each PR in the AnalysisResponse.PRs array.
+func enrichPRsWithReviewData(prs []types.PR, results []types.ReviewResult) {
+	// Build lookup map from PR number to ReviewResult
+	resultByPRNum := make(map[int]types.ReviewResult, len(results))
+	for _, result := range results {
+		resultByPRNum[result.PRNumber] = result
+	}
+
+	// Enrich each PR with its review data if available
+	for i := range prs {
+		if result, ok := resultByPRNum[prs[i].Number]; ok {
+			prs[i].Confidence = result.Confidence
+			prs[i].Reasons = result.Reasons
+			prs[i].SubstanceScore = result.SubstanceScore
+			prs[i].TemporalBucket = result.TemporalBucket
+			prs[i].DecisionLayers = result.DecisionLayers
+			prs[i].Category = result.Category
+			prs[i].PriorityTier = result.PriorityTier
+		}
+	}
 }
 
 func buildRiskBuckets(results []types.ReviewResult) []types.BucketCount {

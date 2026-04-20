@@ -1,0 +1,30 @@
+{
+  "repo": "test/repo",
+  "generatedAt": "2026-04-19T12:00:00Z",
+  "analysis_truncated": true,
+  "truncation_reason": "max_prs_cap",
+  "max_prs_applied": 5000,
+  "counts": {
+    "total_prs": 10000,
+    "cluster_count": 50,
+    "duplicate_groups": 5,
+    "overlap_groups": 100,
+    "conflict_pairs": 1000,
+    "stale_prs": 50,
+    "garbage_prs": 10
+  },
+  "prs": [
+    {
+      "id": "PR_1",
+      "repo": "test/repo",
+      "number": 1,
+      "title": "Test PR",
+      "bucket": "now",
+      "temporal_bucket": "now",
+      "review": {
+        "reasons": ["ci_passing"],
+        "confidence": 0.8
+      }
+    }
+  ]
+}

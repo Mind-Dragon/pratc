@@ -1,82 +1,123 @@
-# prATC TODO — v1.5.0 Live Verification
+# prATC TODO — Autonomous Mode Buildout
 
 ## Goal
-Verify the v1.5.0 triage engine against the full openclaw/openclaw corpus and close out the release.
 
-## Scope
-Active work only. Completed items live in CHANGELOG.md.
+Make prATC operate in a true autonomous mode where Hermes can resume from repo-local state, run an audit-driven controller loop, delegate subagents, and iteratively close GUIDELINE gaps against a real corpus until the required audit surface is green.
+
+## Source of truth
+
+- `GUIDELINE.md` — compliance rules and non-negotiables
+- `ARCHITECTURE.md` — code ownership and system shape
+- `AUTONOMOUS.md` — normative controller-loop contract
+- `autonomous/STATE.yaml` — current checkpoint and resume state
+- `autonomous/GAP_LIST.md` — current failure surface
+- `autonomous/RUNBOOK.md` — exact execution commands
+
+## 100% means
+
+Autonomous mode is not "done enough" when the output looks better. It is done when all of these are true:
+
+- [ ] `go test ./...` passes
+- [ ] `python -m pytest -q tests/test_audit_guideline.py scripts/test_autonomous_controller.py` passes
+- [ ] a fresh workflow rerun completes and produces the required artifacts
+- [ ] `scripts/audit_guideline.py <run-dir>` has zero required failures
+- [ ] the report surface is audit-green because `analyze.json.prs[]` is self-describing enough for appendix/report use
+- [ ] `AUTONOMOUS.md`, `TODO.md`, `autonomous/*`, and the live code describe the same system truthfully
+
+## Promotion rule
+
+Every new finding must be promoted immediately into exactly one of these buckets:
+
+- a failing audit check
+- an open gap in `autonomous/GAP_LIST.md`
+- a live todo item with an explicit verification command
+- a documented non-goal or blocker
+
+If a finding lives only in chat, it is not part of the system.
 
 ## Current status
-- v1.5.0 code complete on main (a7e4e06). All BUG-1 through BUG-6 fixes landed.
-- Full test suite green (27 packages, 0 failures).
-- Overnight production run completed: `20260419-065654` (4,992 PRs, cap at 5,000).
-- `hermes/security-quality-refactor` branch exists (137 files, 2371+/15701-) but is 0 commits ahead of main — already merged or rebased onto main.
-- Version bumped to 1.5.0 in `internal/version/version.go`.
+
+- Autonomous control-plane scaffold exists in-repo.
+- `/autonomous` skill exists in Hermes skills.
+- Deterministic scaffold scripts exist:
+  - `scripts/audit_guideline.py`
+  - `scripts/gap_list_from_audit.py`
+  - `scripts/autonomous_controller.py`
+- The latest audit against `projects/OpenClaw_OpenClaw/runs/20260419-065654` is working and produces `AUDIT_RESULTS.json` plus `autonomous/GAP_LIST.md`.
+- The repo is not yet autonomous-complete because the controller loop has not yet closed the product gaps in the decision engine or the graph/report signal-quality gaps.
 
 ---
 
-## Overnight Run Results (20260419-065654)
+## Workstream 1 — Control-plane hardening
 
-```
-repo:           openclaw/openclaw
-total PRs:      4,992 (capped at 5,000)
-clusters:       69
-duplicate groups: 9
-overlap groups: 741
-conflict pairs: 38,884
-stale PRs:      215
-garbage PRs:    8
-plan selected:  20 / 3,071 candidates
-truncation:     max_prs_cap (5,000)
-precision mode: fast
-```
+- [x] Create stable `AUTONOMOUS.md` with phase loop, state contract, artifact ownership, and stop conditions
+- [x] Create `autonomous/STATE.yaml`
+- [x] Create `autonomous/GAP_LIST.md`
+- [x] Create `autonomous/RUNBOOK.md`
+- [x] Create `autonomous/prompts/` prompt templates
+- [x] Create `scripts/audit_guideline.py` scaffold and verify it emits `AUDIT_RESULTS.json`
+- [x] Create `scripts/gap_list_from_audit.py` scaffold and verify it regenerates `autonomous/GAP_LIST.md`
+- [x] Create `scripts/autonomous_controller.py` scaffold and verify basic state transitions (`reconcile`, `resume`, `pause`, `next-wave`, `complete`)
+- [ ] Harden `autonomous_controller.py` from scaffold into a reliable checkpoint manager; verify repeated resume cycles preserve state truthfully with `python -m pytest -q scripts/test_autonomous_controller.py`
+- [ ] Expand audit coverage from core checks to the full required GUIDELINE/report-readiness matrix; verify every required rule has either a machine check or an explicit `manual` annotation via `python -m pytest -q tests/test_audit_guideline.py`
 
-### Observations
-- Conflict pairs (38,884) still high. BUG-5 fix reduced from 92,911 but the 2+ shared-file threshold + noise file filter didn't cut deep enough for this repo.
-- Duplicate groups (9) — working but low. Threshold fix (0.85) is correct; the corpus may genuinely have few duplicates, or file-overlap signaling needs tuning.
-- Garbage PRs (8) — likely conservative. The classifier may need broader patterns.
-- Truncation at 5,000 PRs — the repo has ~6,632 open PRs. The cap means the last ~1,640 were excluded. This is documented and explicit.
+## Workstream 2 — Session orchestration
 
----
+- [x] Create Hermes `/autonomous` skill
+- [ ] Prove `/autonomous` can rebuild the Hermes session todo entirely from repo-local state and latest audit output; verify by reconciling from `autonomous/STATE.yaml` + `autonomous/GAP_LIST.md` with no hidden chat context
+- [ ] Define wave-generation logic from `autonomous/GAP_LIST.md` into session todo items; verify independent gaps become parallelizable wave items with attached verification commands
+- [ ] Add closeout discipline so `/autonomous` patches `STATE.yaml`, `GAP_LIST.md`, and `TODO.md` truthfully after each verified wave
 
-## Remaining for v1.5.0 close-out
+## Workstream 3 — Product gap closure
 
-### Task 1: Live verification of key metrics
-- [ ] Confirm duplicate groups > 10 by running with `--max-prs=0` (no cap) or raising to 7,000
-- [ ] Confirm conflict count < 5,000 after tuning — current 38,884 is still too high
-- [ ] Confirm analysis completes in < 15 min on second run (intermediate cache should help)
+### Wave 1 — make `analyze.json` truthful
 
-### Task 2: Tune conflict noise filter
-- [ ] Audit the top-20 most-conflicting files in the 38,884 pairs
-- [ ] Add repo-specific noise patterns (this is a JS/TS monorepo — more lockfile/config noise)
-- [ ] Consider raising the shared-file minimum from 2 to 3, or weighting by file depth
+- [ ] Wire per-PR bucket/category visibility into `AnalysisResponse.PRs`; verify audit `bucket_coverage` passes after a fresh rerun
+- [ ] Wire structured reason trails into `AnalysisResponse.PRs`; verify audit `reason_coverage` passes after a fresh rerun
+- [ ] Wire confidence scoring into `AnalysisResponse.PRs`; verify audit `confidence_coverage` passes after a fresh rerun
+- [ ] Expose temporal routing (`now` / `future` / `blocked`) directly on `AnalysisResponse.PRs`; verify audits `temporal_routing` and `future_work_visible` pass after a fresh rerun
+- [ ] Make each PR row self-describing for report/appendix use; verify audit `report_self_describing_prs` passes after a fresh rerun
+- [ ] Make future-work visibility explicit as a first-class auditable outcome rather than an implied side effect; verify audit `future_work_visible` passes after a fresh rerun
 
-### Task 3: Tune garbage classifier
-- [ ] Review the 8 garbage PRs — are they real garbage or false positives?
-- [ ] Spot-check 20 PRs the classifier missed — what patterns should it catch?
-- [ ] Expand abandoned/spam patterns if needed
+### Wave 2 — make graph signal usable
 
-### Task 4: Security refactor branch
-- [ ] Decide: merge `hermes/security-quality-refactor` into main, or keep separate?
-- [ ] Branch is 0 commits ahead of main — if already merged, delete the branch
+- [ ] Remove trivial same-branch dependency edges; verify audit `dependency_edge_quality` passes after a fresh rerun
+- [ ] Reduce conflict noise toward the target threshold with truthful repo-specific filtering; verify audit `conflict_pairs_threshold` improves to pass after a fresh rerun
 
-### Task 5: Update docs for final state
-- [x] Bump version.go to 1.5.0
-- [x] Rewrite TODO.md
-- [ ] Update ARCHITECTURE.md (schema v7, overnight results, version refs)
-- [ ] Update GUIDELINE.md (threshold 0.85, pipeline reality)
-- [ ] Update version1.4.2.md (mark shipped, point to v1.5)
-- [ ] Update ROADMAP.md (v1.5 verification status)
+### Wave 3 — make the report surface truthfully useful
+
+- [ ] Keep report usefulness encoded in audit checks rather than prose; verify report-related checks pass from artifact inspection rather than PDF hand-waving
+- [ ] Remove or replace placeholder-only report sections before calling the report production-ready; verify report generation still passes and the report sections are backed by real artifact data
+
+## Workstream 4 — Autonomous proof cycle
+
+- [ ] Run one full autonomous cycle end-to-end: audit → gap list → subagent fix wave → build/test → rerun audit
+- [ ] Prove interruption recovery by stopping mid-cycle and resuming from `autonomous/STATE.yaml`
+- [ ] Record per-run outputs under `autonomous/runs/<timestamp>/`
+- [ ] Update roadmap/docs after the first truthful autonomous green wave
 
 ---
+
+## Current open gaps from the latest known run
+
+- G-001 bucket coverage missing
+- G-002 reason coverage missing
+- G-003 confidence coverage missing
+- G-004 trivial dependency-edge explosion
+- G-005 conflict noise still too high
+- G-006 temporal routing not visible
+- G-007 report surface not yet self-describing enough for audit-green appendix/report use
+- G-008 future work visibility missing
 
 ## Exit criteria
-- [ ] Full-corpus run (no cap) produces < 5,000 conflict pairs
-- [ ] Full-corpus run completes in < 15 min on cached second pass
-- [ ] Duplicate detection finds > 10 groups (or documented why the corpus has fewer)
-- [ ] `go build ./...` passes
-- [ ] `go test ./...` passes
-- [ ] All docs consistent with v1.5.0
 
-## Post-v1.5 backlog
-See ROADMAP.md v1.6+ for dashboard enhancements, evidence enrichment, multi-repo, and ML feedback.
+Autonomous mode is considered real when all of the following are true:
+
+- [ ] A new controller session can resume from repo-local state without hidden chat context
+- [ ] The session todo can be reconstructed from `STATE.yaml` + `GAP_LIST.md`
+- [ ] `scripts/audit_guideline.py` and `scripts/gap_list_from_audit.py` form a deterministic audit surface
+- [ ] `scripts/autonomous_controller.py` truthfully tracks phase/wave/checkpoint state through pause/resume
+- [ ] Hermes `/autonomous` can run at least one full verified loop using delegated subagents
+- [ ] Build and test verification remain green after control-plane changes
+- [ ] The required audit surface is fully green on a fresh rerun
+- [ ] `AUTONOMOUS.md`, `TODO.md`, and `autonomous/*` describe the same system

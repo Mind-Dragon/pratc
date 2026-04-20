@@ -1,0 +1,130 @@
+{
+  "repo": "test/repo",
+  "generatedAt": "2026-04-19T12:00:00Z",
+  "analysis_truncated": false,
+  "counts": {
+    "total_prs": 10,
+    "cluster_count": 2,
+    "duplicate_groups": 1,
+    "overlap_groups": 0,
+    "conflict_pairs": 5,
+    "stale_prs": 0,
+    "garbage_prs": 0
+  },
+  "prs": [
+    {
+      "id": "PR_1",
+      "repo": "test/repo",
+      "number": 1,
+      "title": "Good PR now",
+      "category": "merge_now",
+      "priority_tier": "fast_merge",
+      "temporal_bucket": "now",
+      "reasons": ["ci_passing", "small_change"],
+      "confidence": 0.8
+    },
+    {
+      "id": "PR_2",
+      "repo": "test/repo",
+      "number": 2,
+      "title": "Good PR future",
+      "category": "merge_after_focused_review",
+      "priority_tier": "review_required",
+      "temporal_bucket": "future",
+      "reasons": ["roadmap_aligned"],
+      "confidence": 0.7
+    },
+    {
+      "id": "PR_3",
+      "repo": "test/repo",
+      "number": 3,
+      "title": "Blocked PR",
+      "category": "problematic_quarantine",
+      "priority_tier": "blocked",
+      "temporal_bucket": "blocked",
+      "reasons": ["depends_on_other"],
+      "confidence": 0.9
+    },
+    {
+      "id": "PR_4",
+      "repo": "test/repo",
+      "number": 4,
+      "title": "High value PR",
+      "bucket": "high_value",
+      "category": "merge_after_focused_review",
+      "priority_tier": "review_required",
+      "temporal_bucket": "now",
+      "reasons": ["strategic_importance"],
+      "confidence": 0.85
+    },
+    {
+      "id": "PR_5",
+      "repo": "test/repo",
+      "number": 5,
+      "title": "Duplicate PR",
+      "category": "duplicate_superseded",
+      "priority_tier": "blocked",
+      "temporal_bucket": "blocked",
+      "reasons": ["similar_to_PR_4"],
+      "confidence": 0.95
+    },
+    {
+      "id": "PR_6",
+      "repo": "test/repo",
+      "number": 6,
+      "title": "Junk PR",
+      "bucket": "junk",
+      "category": "problematic_quarantine",
+      "priority_tier": "blocked",
+      "temporal_bucket": "blocked",
+      "reasons": ["spam_pattern"],
+      "confidence": 0.99
+    },
+    {
+      "id": "PR_7",
+      "repo": "test/repo",
+      "number": 7,
+      "title": "Security risk",
+      "bucket": "security_risk",
+      "category": "problematic_quarantine",
+      "priority_tier": "blocked",
+      "temporal_bucket": "blocked",
+      "reasons": ["touches_auth"],
+      "confidence": 0.75
+    },
+    {
+      "id": "PR_8",
+      "repo": "test/repo",
+      "number": 8,
+      "title": "Needs review",
+      "category": "merge_after_focused_review",
+      "priority_tier": "review_required",
+      "temporal_bucket": "now",
+      "reasons": ["complex_change"],
+      "confidence": 0.6
+    },
+    {
+      "id": "PR_9",
+      "repo": "test/repo",
+      "number": 9,
+      "title": "Merge candidate",
+      "category": "merge_now",
+      "priority_tier": "fast_merge",
+      "temporal_bucket": "now",
+      "reasons": ["approved", "ci_passing"],
+      "confidence": 0.9
+    },
+    {
+      "id": "PR_10",
+      "repo": "test/repo",
+      "number": 10,
+      "title": "Low value",
+      "bucket": "low_value",
+      "category": "merge_after_focused_review",
+      "priority_tier": "review_required",
+      "temporal_bucket": "future",
+      "reasons": ["trivial_change"],
+      "confidence": 0.5
+    }
+  ]
+}
