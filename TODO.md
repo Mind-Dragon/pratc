@@ -89,7 +89,7 @@ If a finding lives only in chat, it is not part of the system.
 ### Wave 3 — make the report surface truthfully useful
 
 - [x] Keep report usefulness encoded in audit checks rather than prose; verified on `projects/openclaw_openclaw/runs/final-wave` with audit-green report surface and generated PDF
-- [ ] Remove or replace placeholder-only report sections before calling the report production-ready; verify report generation still passes and the report sections are backed by real artifact data
+- [x] Remove or replace placeholder-only report sections before calling the report production-ready; verified by `./bin/pratc report --repo openclaw/openclaw --input-dir projects/openclaw_openclaw/runs/final-wave --output /tmp/verify-final-wave-report.pdf`
 
 ## Workstream 4 — Autonomous proof cycle
 

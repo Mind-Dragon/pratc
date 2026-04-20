@@ -18,7 +18,7 @@ func RegisterReportCommand() {
 		inputDir   string
 		outputPath string
 		skipReview bool
-		skipCharts bool
+		skipCharts bool = true // charts are placeholder-only; skip by default
 	)
 
 	cmd := &cobra.Command{
@@ -213,7 +213,7 @@ Example:
 	cmd.Flags().StringVar(&inputDir, "input-dir", "", "Directory containing workflow artifacts (defaults to projects/<repo>/runs/<timestamp>)")
 	cmd.Flags().StringVar(&outputPath, "output", "report.pdf", "Output PDF file path")
 	cmd.Flags().BoolVar(&skipReview, "skip-review", false, "Skip review section")
-	cmd.Flags().BoolVar(&skipCharts, "skip-charts", false, "Skip charts and recommendations sections")
+	cmd.Flags().BoolVar(&skipCharts, "skip-charts", true, "Skip placeholder-only charts by default")
 	_ = cmd.MarkFlagRequired("repo")
 
 	rootCmd.AddCommand(cmd)
