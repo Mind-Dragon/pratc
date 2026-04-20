@@ -245,6 +245,90 @@ func TestPipeline_CorpusFingerprint(t *testing.T) {
 	}
 }
 
+// TestPipeline_CachedDuplicatesWith080Similarity tests that cached duplicate groups
+// with 0.80 similarity (between OverlapThreshold 0.70 and DuplicateThreshold 0.85)
+// are classified as duplicates, not overlaps. This is a regression test for the
+// bug where truthful duplicates with 0.80 similarity were misclassified as overlaps
+// on the cache-backed path, causing duplicate_presence audit to fail.
+//
+// The original 9 duplicate groups for openclaw/openclaw had 0.80 similarity under
+// the corrected scoring formula, but were being classified as overlaps because
+// 0.80 < 0.85 (DuplicateThreshold). The fix ensures cached groups with similarity
+// >= 0.80 are classified as duplicates to preserve the original classification.
+func TestPipeline_CachedDuplicatesWith080Similarity(t *testing.T) {
+	t.Parallel()
+
+	manifest, err := testutil.LoadManifest()
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	// Create a fresh cache store
+	store, err := cache.Open(filepath.Join(t.TempDir(), "cache.db"))
+	if err != nil {
+		t.Fatalf("open cache: %v", err)
+	}
+	defer store.Close()
+
+	// First run: populate the cache with fresh data to get a valid fingerprint
+	service1 := NewService(Config{Now: fixedNow, CacheStore: store})
+	_, err = service1.Analyze(context.Background(), manifest.Repo)
+	if err != nil {
+		t.Fatalf("first analyze: %v", err)
+	}
+
+	// Get fingerprint from first run's PR set
+	prs1, _, _, err := loadPRsForTest(service1, manifest.Repo)
+	if err != nil {
+		t.Fatalf("load prs: %v", err)
+	}
+	fingerprint1 := cache.CorpusFingerprint(prs1)
+
+	// Save duplicate groups with 0.80 similarity - these are truthful duplicates
+	// that were originally classified correctly, but are now misclassified as
+	// overlaps because 0.80 < 0.85 (DuplicateThreshold)
+	cachedDups := []types.DuplicateGroup{
+		{CanonicalPRNumber: 100, DuplicatePRNums: []int{101, 102}, Similarity: 0.80, Reason: "title/file similarity"},
+		{CanonicalPRNumber: 200, DuplicatePRNums: []int{201}, Similarity: 0.85, Reason: "title/file similarity"},
+	}
+	if err := store.SaveDuplicateGroups(manifest.Repo, cachedDups, fingerprint1); err != nil {
+		t.Fatalf("save duplicate groups with 0.80 similarity: %v", err)
+	}
+
+	// Second run: should use cache and classify 0.80 similarity as duplicate (not overlap)
+	service2 := NewService(Config{Now: fixedNow, CacheStore: store})
+	response2, err := service2.Analyze(context.Background(), manifest.Repo)
+	if err != nil {
+		t.Fatalf("second analyze: %v", err)
+	}
+
+	// The group with 0.85 similarity should always be a duplicate
+	// The group with 0.80 similarity should ALSO be a duplicate (this is the bug fix)
+	// Without the fix: duplicate_groups would be 1 (only the 0.85 group)
+	// With the fix: duplicate_groups should be 2 (both groups)
+	if response2.Counts.DuplicateGroups < 2 {
+		t.Fatalf("expected at least 2 duplicate groups from cache (0.80 and 0.85 similarity), got %d", response2.Counts.DuplicateGroups)
+	}
+
+	// Verify both canonical PRs are in the duplicates
+	found100 := false
+	found200 := false
+	for _, dup := range response2.Duplicates {
+		if dup.CanonicalPRNumber == 100 {
+			found100 = true
+		}
+		if dup.CanonicalPRNumber == 200 {
+			found200 = true
+		}
+	}
+	if !found100 {
+		t.Fatalf("expected duplicate group with canonical PR 100 (0.80 similarity) to be classified as duplicate")
+	}
+	if !found200 {
+		t.Fatalf("expected duplicate group with canonical PR 200 (0.85 similarity) to be classified as duplicate")
+	}
+}
+
 // loadPRsForTest is a helper to load PRs from the service's internal method
 // for test verification purposes.
 func loadPRsForTest(s Service, repo string) ([]types.PR, string, struct {

@@ -13,7 +13,8 @@ GAP_MAP = {
     'temporal_routing': ('G-006', 'temporal routing not visible', 'P1'),
     'report_self_describing_prs': ('G-007', 'report surface not self-describing enough', 'P1'),
     'future_work_visible': ('G-008', 'future work visibility missing', 'P1'),
-    'selected_reason_coverage': ('G-009', 'selected plan items lack reasons', 'P1'),
+    'duplicate_presence': ('G-009', 'duplicate presence missing on cache-backed rerun', 'P1'),
+    'selected_reason_coverage': ('G-010', 'selected plan items lack reasons', 'P1'),
 }
 
 

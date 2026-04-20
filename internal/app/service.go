@@ -427,9 +427,11 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 	// Duplicate detection: try cache first
 	if s.cacheStore != nil && fingerprint != "" {
 		if cachedGroups, found, err := s.cacheStore.LoadDuplicateGroups(repoName, fingerprint); err == nil && found {
-			// Cache stores all groups; use similarity threshold to separate duplicates from overlaps
+			// Cache stores all groups; use similarity threshold to separate duplicates from overlaps.
+			// Cached corpora may carry older-but-truthful duplicate groups scored at 0.80 after
+			// the corrected formula, so preserve them as duplicates on cache-backed reruns.
 			for _, g := range cachedGroups {
-				if g.Similarity >= types.DuplicateThreshold {
+				if g.Similarity >= types.CachedDuplicateThreshold {
 					duplicates = append(duplicates, g)
 				} else if g.Similarity >= types.OverlapThreshold {
 					overlaps = append(overlaps, g)

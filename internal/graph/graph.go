@@ -99,21 +99,23 @@ func BuildWithProgress(repo string, prs []types.PR, progress func(processed int,
 			for _, right := range candidates {
 				candidatePairsEvaluated++
 				// right.BaseBranch == left.HeadBranch means right depends on left
-				if right.BaseBranch == left.HeadBranch {
+				// Skip if same BaseBranch (parallel PRs, not stacked)
+				if right.BaseBranch == left.HeadBranch && right.BaseBranch != left.BaseBranch {
 					appendEdge(&edges, seenEdges, types.GraphEdge{
 						FromPR:   left.Number,
 						ToPR:     right.Number,
 						EdgeType: EdgeTypeDependency,
-						Reason:   fmt.Sprintf("base branch %q depends on head branch %q", right.BaseBranch, left.HeadBranch),
+						Reason:   fmt.Sprintf("stacked on %s branch", left.HeadBranch),
 					})
 				}
 				// left.BaseBranch == right.HeadBranch means left depends on right
-				if left.BaseBranch != "" && left.BaseBranch == right.HeadBranch {
+				// Skip if same BaseBranch (parallel PRs, not stacked)
+				if left.BaseBranch != "" && left.BaseBranch == right.HeadBranch && left.BaseBranch != right.BaseBranch {
 					appendEdge(&edges, seenEdges, types.GraphEdge{
 						FromPR:   right.Number,
 						ToPR:     left.Number,
 						EdgeType: EdgeTypeDependency,
-						Reason:   fmt.Sprintf("base branch %q depends on head branch %q", left.BaseBranch, right.HeadBranch),
+						Reason:   fmt.Sprintf("stacked on %s branch", right.HeadBranch),
 					})
 				}
 			}
@@ -281,11 +283,13 @@ func conflictFiles(left, right types.PR) []string {
 	}
 
 	shared := intersectFiles(left.FilesChanged, right.FilesChanged)
-	if len(shared) == 0 && left.Mergeable != "conflicting" && right.Mergeable != "conflicting" {
-		return nil
-	}
 	if len(shared) == 0 {
-		return []string{"mergeability_signal"}
+		// Only flag mergeability conflict when BOTH PRs are in conflicting state
+		// This materially reduces conflict noise for same-branch PRs where only one is marked conflicting
+		if left.Mergeable == "conflicting" && right.Mergeable == "conflicting" {
+			return []string{"mergeability_signal"}
+		}
+		return nil
 	}
 
 	return shared

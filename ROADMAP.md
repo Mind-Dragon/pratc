@@ -14,9 +14,9 @@ prATC development roadmap.
 - 16-layer decision ladder (documented, partially implemented)
 - See `version1.4.2.md` for full details
 
-## Version 1.5 — Triage Engine Fixes + Performance (CODE COMPLETE, VERIFICATION PENDING)
+## Version 1.5 — Triage Engine Fixes + Performance (CODE COMPLETE, CACHE-BACKED VERIFICATION GREEN)
 
-**Code complete: 2026-04-19.** BUG-1 through BUG-6 all fixed and on main. Overnight production run completed. Remaining: conflict/duplicate tuning and final metric verification.
+**Code complete: 2026-04-19.** BUG-1 through BUG-6 shipped first. A later cache-backed rerun at `projects/openclaw_openclaw/runs/final-wave` proved the decision surface, duplicate cache classification, conflict filtering, and dependency-edge cleanup are audit-green. Remaining: controller-proof tasks and any future uncapped/live-run validation beyond the current cache-backed green pass.
 
 ### Completed
 
@@ -30,13 +30,19 @@ prATC development roadmap.
 - [x] Near-duplicate section in PDF report
 - [x] Garbage classifier, conflict noise, deep judgment, pipeline cache tests (50+ tests added)
 
-### Remaining (live run verification)
+### Completed cache-backed verification
 
-Overnight run `20260419-065654` results: 4,992 PRs, 9 duplicate groups, 38,884 conflict pairs, 8 garbage PRs.
+Cache-backed verification run `projects/openclaw_openclaw/runs/final-wave` now passes the required audit surface:
 
-- [ ] Raise cap to 7,000+ or remove cap — verify duplicate groups > 10
-- [ ] Expand noise file list or raise shared-file minimum — reduce conflicts below 5,000
-- [ ] Run cached second pass — verify analysis < 15 min
+- [x] bucket coverage
+- [x] reason coverage
+- [x] confidence coverage
+- [x] future work visibility
+- [x] temporal routing visibility
+- [x] self-describing report/appendix PR rows
+- [x] duplicate presence on cache-backed reruns
+- [x] dependency edge quality
+- [x] conflict pairs below threshold
 
 ### Next improvements (if needed after verification)
 

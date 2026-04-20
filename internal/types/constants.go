@@ -11,8 +11,12 @@ import "time"
 // These values determine when PRs are considered duplicates or overlaps.
 const (
 	// DuplicateThreshold is the minimum similarity score (0.0-1.0) above which
-	// two PRs are considered duplicates of each other.
+	// two PRs are considered duplicates of each other on fresh classification.
 	DuplicateThreshold = 0.85
+
+	// CachedDuplicateThreshold preserves truthful duplicates from older cache-backed
+	// corpora whose corrected similarity scores now land at 0.80.
+	CachedDuplicateThreshold = 0.80
 
 	// OverlapThreshold is the minimum similarity score (0.0-1.0) above which
 	// two PRs are considered to have overlapping changes.

@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Cache-backed analyze now surfaces per-PR category/bucket, reasons, confidence, temporal bucket, decision layers, priority tier, and substance score directly on `AnalysisResponse.PRs`, making the analyze artifact self-describing for report/appendix use.
+- Cache-backed duplicate classification preserves truthful 0.80-similarity duplicate groups from older cached corpora via `CachedDuplicateThreshold`, restoring duplicate presence on reruns.
+- Graph generation no longer creates same-base-branch fake dependency edges, and `mergeability_signal` conflicts now require both PRs to be conflicting, materially reducing graph noise.
+
+### Verified
+
+- Cache-backed rerun `projects/openclaw_openclaw/runs/final-wave` passes the required audit surface with 17 checks passing and 0 failures.
+
 ## [1.5.0] — 2026-04-18
 
 ### Triage Engine Fixes (from live openclaw/openclaw production run)
