@@ -802,6 +802,234 @@ def test_closeout_idempotent(tmp_paths, sample_state):
     assert state['open_gaps'] == ['G-002']
 
 
+# ---------------------------------------------------------------------------
+# Tests: interruption recovery
+# ---------------------------------------------------------------------------
+
+def test_resume_from_mid_wave_interruption_preserves_state(tmp_paths, sample_state):
+    """
+    Simulate a mid-wave interruption: controller is active (not paused),
+    phase=wave_2, current_wave='2', mode=active. The controller process
+    is killed unexpectedly. On restart, resume is called.
+
+    Proof: after resume, wave truth (current_wave, phase) and gap state
+    (open_gaps, completed_gaps) are identical to pre-interruption values.
+    This is the core interruption recovery guarantee.
+    """
+    state_path, _ = tmp_paths
+
+    # Simulate mid-wave-2 state: subagent is fixing G-003, G-004 (G-001, G-002 already closed)
+    sample_state['current_wave'] = '2'
+    sample_state['phase'] = 'wave_2'
+    sample_state['mode'] = 'active'
+    sample_state['paused'] = False  # NOT a deliberate pause — genuine interruption
+    sample_state['open_gaps'] = ['G-003', 'G-004']
+    sample_state['completed_gaps'] = ['G-001', 'G-002']
+    sample_state['stop_reason'] = ''
+    ctrl.save_state(sample_state)
+
+    # Simulate fresh controller process calling resume
+    args = FakeArgs()
+    ctrl.cmd_resume(args)
+
+    state = ctrl.load_state()
+
+    # Phase and wave must be preserved (not clobbered to bootstrap/reconcile)
+    assert state['current_wave'] == '2', \
+        f"current_wave clobbered: got {state['current_wave']!r}, want '2'"
+    assert state['phase'] == 'wave_2', \
+        f"phase clobbered: got {state['phase']!r}, want 'wave_2'"
+    # Gap state must be preserved exactly
+    assert state['open_gaps'] == ['G-003', 'G-004'], \
+        f"open_gaps clobbered: {state['open_gaps']}"
+    assert state['completed_gaps'] == ['G-001', 'G-002'], \
+        f"completed_gaps clobbered: {state['completed_gaps']}"
+    # Mode must be active (not reset to paused)
+    assert state['mode'] == 'active'
+    assert state['paused'] is False
+
+
+def test_resume_from_mid_wave_synthesizes_same_tasks_after_recovery(tmp_paths, sample_state, sample_gap_list):
+    """
+    Prove that synthesize_wave() produces identical output before an
+    interruption and after resume recovery.
+
+    This is the strongest proof that mid-cycle state is fully recoverable:
+    given the same STATE.yaml + GAP_LIST.md, the wave synthesis is identical.
+    """
+    state_path, gap_path = tmp_paths
+
+    # Mid-wave-2 state with partial closeout
+    sample_state['current_wave'] = '2'
+    sample_state['phase'] = 'wave_2'
+    sample_state['mode'] = 'active'
+    sample_state['paused'] = False
+    sample_state['open_gaps'] = ['G-003', 'G-004', 'G-006']  # G-001, G-002 closed
+    sample_state['completed_gaps'] = ['G-001', 'G-002']
+    ctrl.save_state(sample_state)
+
+    # GAP_LIST.md only has G-003, G-004, G-006 as open
+    partial_gap_list = """# Autonomous Gap List
+
+## Open gaps
+
+### G-003 — confidence coverage missing
+- Audit check: `confidence_coverage`
+- Severity: P0
+- Expected: 4992
+- Actual: 0
+- Status: open
+
+### G-004 — trivial dependency edge explosion
+- Audit check: `dependency_edge_quality`
+- Severity: P1
+- Expected: <= 50% trivial depends_on edges
+- Actual: {'depends_on_edges': 804678, 'trivial_dep_edges': 804678}
+- Status: open
+
+### G-006 — temporal routing not visible
+- Audit check: `temporal_routing`
+- Severity: P1
+- Expected: > 0 temporal buckets
+- Actual: 0
+- Status: open
+
+## Update protocol
+
+This file is generated from audit output.
+"""
+    gap_path.write_text(partial_gap_list)
+
+    # Pre-interruption synthesis
+    tasks_before = ctrl.synthesize_wave()
+    gap_ids_before = sorted(t['gap_id'] for t in tasks_before)
+
+    # Simulate fresh controller restart + resume
+    args = FakeArgs()
+    ctrl.cmd_resume(args)
+
+    # Post-recovery synthesis must be identical
+    tasks_after = ctrl.synthesize_wave()
+    gap_ids_after = sorted(t['gap_id'] for t in tasks_after)
+
+    assert gap_ids_before == gap_ids_after, \
+        f"synthesis changed after resume: before={gap_ids_before}, after={gap_ids_after}"
+
+
+def test_resume_from_active_mode_does_not_trigger_spurious_warning(tmp_paths, sample_state):
+    """
+    resume when mode=active and paused=False (mid-cycle) must not
+    reset phase to reconcile or emit a stop_reason.
+
+    This guards against resume accidentally acting like a pause/resume cycle
+    when it should be a transparent mid-cycle recovery.
+    """
+    state_path, _ = tmp_paths
+
+    sample_state['mode'] = 'active'
+    sample_state['paused'] = False
+    sample_state['phase'] = 'wave_3'
+    sample_state['current_wave'] = '3'
+    sample_state['stop_reason'] = ''
+    ctrl.save_state(sample_state)
+
+    args = FakeArgs()
+    ctrl.cmd_resume(args)
+
+    state = ctrl.load_state()
+    assert state['phase'] == 'wave_3', \
+        f"mid-cycle resume must not reset phase: got {state['phase']!r}"
+    assert state['stop_reason'] == '', \
+        f"mid-cycle resume must not set stop_reason: got {state['stop_reason']!r}"
+
+
+def test_verify_state_consistency_detects_orphaned_gap_ids(tmp_paths, sample_state):
+    """
+    verify_state_consistency() must detect when open_gaps contains IDs
+    that do not exist in GAP_LIST.md (orphaned gap references).
+    This can happen if GAP_LIST.md was regenerated from a fresh audit
+    that no longer lists those gaps, but STATE.yaml was not updated.
+    """
+    state_path, gap_path = tmp_paths
+
+    # STATE.yaml says G-001 is still open
+    sample_state['open_gaps'] = ['G-001', 'G-002']
+    ctrl.save_state(sample_state)
+
+    # But GAP_LIST.md only has G-002 (G-001 was closed by audit, gap list regenerated)
+    gap_path.write_text("""# Autonomous Gap List
+
+## Open gaps
+
+### G-002 — reason trail missing
+- Audit check: `reason_coverage`
+- Severity: P0
+- Expected: 4992
+- Actual: 0
+- Status: open
+
+## Update protocol
+""")
+
+    issues = ctrl.verify_state_consistency()
+
+    orphaned = [i for i in issues if i['type'] == 'orphaned_gap_id']
+    assert len(orphaned) > 0, "verify_state_consistency must detect orphaned G-001 in open_gaps"
+    assert orphaned[0]['gap_id'] == 'G-001'
+    assert 'not found in GAP_LIST.md' in orphaned[0]['message']
+
+
+def test_verify_state_consistency_passes_when_state_is_clean(tmp_paths, sample_state, sample_gap_list):
+    """
+    verify_state_consistency() must return an empty issues list when
+    STATE.yaml and GAP_LIST.md are in perfect agreement.
+    """
+    state_path, gap_path = tmp_paths
+
+    sample_state['open_gaps'] = ['G-001', 'G-002', 'G-003']
+    ctrl.save_state(sample_state)
+    gap_path.write_text(sample_gap_list)
+
+    issues = ctrl.verify_state_consistency()
+    assert issues == [], f"expected no issues, got: {issues}"
+
+
+def test_verify_state_consistency_detects_completed_gap_still_in_open(tmp_paths, sample_state):
+    """
+    If a gap ID appears in both completed_gaps and open_gaps, that is
+    inconsistent and must be flagged.
+    """
+    state_path, gap_path = tmp_paths
+
+    # G-001 is marked both completed AND still open — a data anomaly
+    sample_state['open_gaps'] = ['G-001', 'G-002']
+    sample_state['completed_gaps'] = ['G-001']  # G-001 appears in both
+    ctrl.save_state(sample_state)
+
+    gap_path.write_text("""# Autonomous Gap List
+
+## Open gaps
+
+### G-001 — bucket coverage missing
+- Audit check: `bucket_coverage`
+- Severity: P0
+- Expected: 4992
+- Actual: 0
+- Status: open
+
+### G-002 — reason trail missing
+- Audit check: `reason_coverage`
+- Severity: P0
+- Expected: 4992
+- Actual: 0
+- Status: open
+""")
+
+    issues = ctrl.verify_state_consistency()
+    dupes = [i for i in issues if i['type'] == 'duplicate_gap_id']
+    assert len(dupes) > 0, "must detect gap ID in both open_gaps and completed_gaps"
+
+
 def test_closeout_mini_cycle_simulated(tmp_paths, sample_state, sample_gap_list):
     """
     Simulate a mini-cycle: wave starts with open gaps, subagent fixes G-001,

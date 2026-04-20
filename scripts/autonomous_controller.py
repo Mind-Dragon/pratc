@@ -10,6 +10,7 @@ import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 import re
+import sys
 
 import yaml
 
@@ -345,8 +346,74 @@ def cmd_pause(args):
     print(f'paused: {args.reason}')
 
 
+def verify_state_consistency():
+    """
+    Verify that STATE.yaml and GAP_LIST.md are internally consistent.
+
+    Checks:
+      - Every gap ID in open_gaps exists in GAP_LIST.md (no orphaned references)
+      - No gap ID appears in both open_gaps and completed_gaps (duplicate entry)
+
+    Returns a list of issue dictionaries, each with keys:
+      - type: 'orphaned_gap_id' | 'duplicate_gap_id'
+      - gap_id: the problematic gap ID
+      - message: human-readable description
+
+    An empty list means the state is consistent.
+    """
+    state = load_state()
+    gaps = parse_gap_list()
+    gap_ids_in_list = {g['id'] for g in gaps}
+
+    issues = []
+
+    open_gaps = state.get('open_gaps') or []
+    completed_gaps = state.get('completed_gaps') or []
+
+    # Check for orphaned gap IDs in open_gaps
+    for gid in open_gaps:
+        if gid not in gap_ids_in_list:
+            issues.append({
+                'type': 'orphaned_gap_id',
+                'gap_id': gid,
+                'message': f"gap {gid} is in open_gaps but not found in GAP_LIST.md; run 'closeout' or 'audit-state' to reconcile",
+            })
+
+    # Check for orphaned gap IDs in completed_gaps
+    for gid in completed_gaps:
+        if gid not in gap_ids_in_list:
+            issues.append({
+                'type': 'orphaned_gap_id',
+                'gap_id': gid,
+                'message': f"gap {gid} is in completed_gaps but not found in GAP_LIST.md; this is non-fatal but unusual",
+            })
+
+    # Check for gap IDs appearing in both open and completed
+    open_set = set(open_gaps)
+    completed_set = set(completed_gaps)
+    for gid in open_set & completed_set:
+        issues.append({
+            'type': 'duplicate_gap_id',
+            'gap_id': gid,
+            'message': f"gap {gid} appears in both open_gaps and completed_gaps; call 'closeout' to reconcile",
+        })
+
+    return issues
+
+
+def cmd_audit_state(_args):
+    """Check STATE.yaml consistency against GAP_LIST.md and print issues."""
+    issues = verify_state_consistency()
+    if not issues:
+        print('audit-state: STATE.yaml is consistent with GAP_LIST.md — no issues found')
+    else:
+        print(f'audit-state: found {len(issues)} issue(s):')
+        for issue in issues:
+            print(f"  [{issue['type']}] {issue['message']}")
+
+
 def cmd_resume(_args):
-    """Resume from a paused state."""
+    """Resume from a paused state or recover from an interruption."""
     state = load_state()
     # Guard: do not resurrect a completed session
     if state.get('mode') == 'complete':
@@ -359,6 +426,11 @@ def cmd_resume(_args):
         state['phase'] = 'reconcile'
     save_state(state)
     print(f"resume from phase={state.get('phase')} wave={state.get('current_wave')}")
+    # Run post-resume consistency check to detect any state corruption
+    issues = verify_state_consistency()
+    if issues:
+        for issue in issues:
+            print(f"WARNING: {issue['message']}", file=sys.stderr)
 
 
 def cmd_closeout(args):
@@ -555,6 +627,9 @@ def main():
 
     p = sub.add_parser('synthesize-wave')
     p.set_defaults(func=cmd_synthesize_wave)
+
+    p = sub.add_parser('audit-state')
+    p.set_defaults(func=cmd_audit_state)
 
     args = parser.parse_args()
     args.func(args)
