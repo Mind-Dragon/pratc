@@ -834,32 +834,52 @@ func mergeUniqueStrings(parts ...[]string) []string {
 
 // computeSubstanceScore produces a 0-100 composite score for a PR's substance.
 // Higher = more substance. Components:
-//   - File depth (0-25): more source files = more substance
-//   - Test presence (0-25): PRs that add/update tests score higher
-//   - Freshness (0-25): recent PRs score higher than stale ones
-//   - Clean findings (0-25): fewer negative analyzer findings = higher score
+//   - File depth + source impact (0-30)
+//   - Test coverage signal (0-20)
+//   - Freshness (0-20)
+//   - Clean findings (0-20)
+//   - Diff footprint (0-10)
 func computeSubstanceScore(pr types.PR, findings []types.AnalyzerFinding, staleness *types.StalenessReport) int {
 	score := 0
 
-	// File depth: 0-25 points
 	fileCount := len(pr.FilesChanged)
 	if fileCount == 0 {
 		fileCount = pr.ChangedFilesCount
 	}
+	fileDepth := 0
 	switch {
 	case fileCount >= 20:
-		score += 25
+		fileDepth = 20
 	case fileCount >= 10:
-		score += 20
+		fileDepth = 16
 	case fileCount >= 5:
-		score += 15
+		fileDepth = 12
 	case fileCount >= 2:
-		score += 10
+		fileDepth = 8
 	case fileCount >= 1:
-		score += 5
+		fileDepth = 4
 	}
+	sourceFiles := 0
+	for _, f := range pr.FilesChanged {
+		lower := strings.ToLower(f)
+		if strings.HasSuffix(lower, ".go") || strings.HasSuffix(lower, ".py") || strings.HasSuffix(lower, ".ts") ||
+			strings.HasSuffix(lower, ".tsx") || strings.HasSuffix(lower, ".js") || strings.HasSuffix(lower, ".jsx") ||
+			strings.HasSuffix(lower, ".rs") || strings.HasSuffix(lower, ".java") || strings.HasSuffix(lower, ".rb") ||
+			strings.HasSuffix(lower, ".cpp") || strings.HasSuffix(lower, ".c") || strings.HasSuffix(lower, ".h") {
+			sourceFiles++
+		}
+	}
+	sourceBonus := 0
+	switch {
+	case sourceFiles >= 5:
+		sourceBonus = 10
+	case sourceFiles >= 2:
+		sourceBonus = 7
+	case sourceFiles >= 1:
+		sourceBonus = 4
+	}
+	score += min(30, fileDepth+sourceBonus)
 
-	// Test presence: 0-25 points
 	hasTests := false
 	for _, f := range pr.FilesChanged {
 		if strings.Contains(f, "_test.") || strings.Contains(f, ".test.") ||
@@ -870,50 +890,65 @@ func computeSubstanceScore(pr types.PR, findings []types.AnalyzerFinding, stalen
 		}
 	}
 	if hasTests {
-		score += 25
+		score += 20
 	}
 
-	// Freshness: 0-25 points (recent = higher)
 	if pr.UpdatedAt != "" {
 		if t, err := time.Parse(time.RFC3339, pr.UpdatedAt); err == nil {
 			daysSince := time.Since(t).Hours() / 24
 			switch {
 			case daysSince <= 7:
-				score += 25
-			case daysSince <= 30:
 				score += 20
+			case daysSince <= 30:
+				score += 16
 			case daysSince <= 90:
-				score += 15
+				score += 12
 			case daysSince <= 180:
-				score += 10
+				score += 8
 			default:
-				score += 5
+				score += 4
 			}
 		}
 	}
 
-	// Clean findings: 0-25 points (fewer negative findings = better)
 	if staleness != nil && staleness.Score > 50 {
-		score += 0 // stale PRs get no points
+		// stale PRs get no clean-findings credit
 	} else {
 		negativeFindings := 0
 		for _, f := range findings {
-			if f.Confidence > 0.7 {
+			if f.Confidence >= 0.85 {
+				negativeFindings += 2
+			} else if f.Confidence >= 0.7 {
 				negativeFindings++
 			}
 		}
 		switch {
 		case negativeFindings == 0:
-			score += 25
+			score += 20
 		case negativeFindings <= 2:
-			score += 15
-		case negativeFindings <= 5:
-			score += 5
-		default:
-			score += 0
+			score += 12
+		case negativeFindings <= 4:
+			score += 6
 		}
 	}
 
+	diffFootprint := pr.Additions + pr.Deletions
+	switch {
+	case diffFootprint >= 1000:
+		score += 10
+	case diffFootprint >= 300:
+		score += 8
+	case diffFootprint >= 100:
+		score += 6
+	case diffFootprint >= 30:
+		score += 4
+	case diffFootprint >= 10:
+		score += 2
+	}
+
+	if score > 100 {
+		return 100
+	}
 	return score
 }
 

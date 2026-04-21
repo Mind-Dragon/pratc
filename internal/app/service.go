@@ -1914,6 +1914,20 @@ var noiseExtensions = []string{
 	".lock", ".lockb", ".lock.json",
 }
 
+var noisePathPrefixes = []string{
+	"docs/.generated/",
+}
+
+var noisePathExact = map[string]bool{
+	"docs/docs.json": true,
+}
+
+var noisePathSuffixes = []string{
+	"/schema.base.generated.ts",
+	"/schema.help.ts",
+	"/schema.labels.ts",
+}
+
 func filterNoiseFiles(files []string) []string {
 	var signal []string
 	for _, f := range files {
@@ -1922,6 +1936,29 @@ func filterNoiseFiles(files []string) []string {
 			base = f[idx+1:]
 		}
 		if noiseFiles[base] || noiseFiles[f] {
+			continue
+		}
+		if noisePathExact[f] {
+			continue
+		}
+		prefixNoise := false
+		for _, prefix := range noisePathPrefixes {
+			if strings.HasPrefix(f, prefix) {
+				prefixNoise = true
+				break
+			}
+		}
+		if prefixNoise {
+			continue
+		}
+		suffixNoise := false
+		for _, suffix := range noisePathSuffixes {
+			if strings.HasSuffix(f, suffix) {
+				suffixNoise = true
+				break
+			}
+		}
+		if suffixNoise {
 			continue
 		}
 		isNoise := false

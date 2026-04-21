@@ -227,3 +227,56 @@ func TestComputeReversible_AuthPath(t *testing.T) {
 		t.Errorf("auth/ path files should not be reversible")
 	}
 }
+
+// =============================================================================
+// computeSubstanceScore tests
+// =============================================================================
+
+func TestComputeSubstanceScore_HighSubstance(t *testing.T) {
+	t.Parallel()
+	pr := types.PR{
+		Number:            1,
+		FilesChanged:      []string{"src/a.go", "src/b.go", "src/c.go", "src/d.go", "src/e.go", "tests/a_test.go"},
+		ChangedFilesCount: 6,
+		UpdatedAt:         time.Now().Add(-3 * 24 * time.Hour).Format(time.RFC3339),
+		Additions:         220,
+		Deletions:         40,
+	}
+	got := computeSubstanceScore(pr, nil, nil)
+	if got < 70 {
+		t.Fatalf("expected high substance score >= 70, got %d", got)
+	}
+}
+
+func TestComputeSubstanceScore_LowSubstance(t *testing.T) {
+	t.Parallel()
+	pr := types.PR{
+		Number:            1,
+		FilesChanged:      []string{"docs/readme.md"},
+		ChangedFilesCount: 1,
+		UpdatedAt:         time.Now().Add(-220 * 24 * time.Hour).Format(time.RFC3339),
+		Additions:         3,
+		Deletions:         1,
+	}
+	findings := []types.AnalyzerFinding{{Confidence: 0.9}, {Confidence: 0.8}}
+	stale := &types.StalenessReport{Score: 80}
+	got := computeSubstanceScore(pr, findings, stale)
+	if got > 25 {
+		t.Fatalf("expected low substance score <= 25, got %d", got)
+	}
+}
+
+func TestComputeSubstanceScore_ChangedFilesFallback(t *testing.T) {
+	t.Parallel()
+	pr := types.PR{
+		Number:            1,
+		ChangedFilesCount: 12,
+		UpdatedAt:         time.Now().Add(-10 * 24 * time.Hour).Format(time.RFC3339),
+		Additions:         140,
+		Deletions:         10,
+	}
+	got := computeSubstanceScore(pr, nil, nil)
+	if got < 25 {
+		t.Fatalf("expected changed_files_count fallback to contribute meaningfully, got %d", got)
+	}
+}

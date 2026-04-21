@@ -221,3 +221,20 @@ func TestFilterNoiseFiles_MixedBatch_Updated(t *testing.T) {
 		}
 	}
 }
+
+func TestFilterNoiseFiles_LiveOpenClawNoisePatterns(t *testing.T) {
+	t.Parallel()
+	files := []string{
+		"docs/.generated/config-baseline.json",
+		"docs/.generated/config-baseline.jsonl",
+		"docs/docs.json",
+		"src/config/schema.base.generated.ts",
+		"src/config/schema.help.ts",
+		"src/config/schema.labels.ts",
+		"src/gateway/server.impl.ts",
+	}
+	got := filterNoiseFiles(files)
+	if len(got) != 1 || got[0] != "src/gateway/server.impl.ts" {
+		t.Fatalf("expected only gateway implementation to remain, got %v", got)
+	}
+}
