@@ -86,8 +86,8 @@ func TestCorsAllowedOrigins(t *testing.T) {
 		{
 			name:          "default when env not set",
 			envValue:      "",
-			expectedLen:   1,
-			expectedFirst: "http://localhost:3000",
+			expectedLen:   0,
+			expectedFirst: "",
 		},
 		{
 			name:          "single origin",

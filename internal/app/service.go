@@ -316,7 +316,7 @@ type truncationMeta struct {
 }
 
 func (s Service) Health() types.HealthResponse {
-	return types.HealthResponse{Status: "ok", Version: version.Version}
+	return types.HealthResponse{Status: "ok", Version: version.Version, APIVersion: "v1.6"}
 }
 
 // GetActiveSyncJob returns (true, jobID) if there is an active sync job for the given repo.

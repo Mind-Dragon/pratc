@@ -78,7 +78,7 @@ Cache-backed verification run `projects/openclaw_openclaw/runs/final-wave` now p
 
 - [x] API responses expanded with explicit gate-journey, diff-evidence, and duplicate-synthesis fields
 - [x] PDF report reads like a decision packet, not a dashboard export
-- [ ] Remove browser/dashboard assumptions from endpoint naming and docs
+- [x] Remove browser/dashboard assumptions from endpoint naming and docs
 
 ## Version 1.7 — Evidence Enrichment (Q4 2026)
 

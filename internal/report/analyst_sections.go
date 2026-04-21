@@ -23,6 +23,7 @@ type AnalystRow struct {
 	ProblemType    string
 	Score          float64
 	Reasons        []string
+	DecisionLayers []types.DecisionLayer
 }
 
 type AnalystDuplicateEntry struct {
@@ -110,6 +111,7 @@ func loadAnalystDataset(inputDir, repo string) (*analystDataset, error) {
 			ProblemType:    result.ProblemType,
 			Score:          result.Confidence,
 			Reasons:        mergeAnalystReasonLists(reasons, decisionLayerSummaries(result.DecisionLayers)),
+			DecisionLayers: result.DecisionLayers,
 		}
 		rowsByPR[row.PRNumber] = row
 		dataset.Rows = append(dataset.Rows, row)
@@ -360,6 +362,20 @@ func decisionLayerSummaries(layers []types.DecisionLayer) []string {
 	return summaries
 }
 
+// terminalGateFromLayers returns the name of the gate where the PR exited the funnel,
+// or "passed all gates" if the PR made it through all 16 layers.
+func terminalGateFromLayers(layers []types.DecisionLayer) string {
+	if len(layers) == 0 {
+		return "no gate data"
+	}
+	for _, layer := range layers {
+		if layer.Terminal {
+			return fmt.Sprintf("L%d %s", layer.Layer, layer.Name)
+		}
+	}
+	return "passed all gates"
+}
+
 func analystAction(result types.ReviewResult, classification string) string {
 	switch {
 	case result.NextAction == "merge":
@@ -590,6 +606,7 @@ type DecisionTrailRow struct {
 	Action         string
 	Confidence     float64
 	Layers         []string
+	TerminalGate   string
 }
 
 type DecisionTrailSection struct {
@@ -616,6 +633,7 @@ func LoadDecisionTrailSection(inputDir, repo string) (*DecisionTrailSection, err
 			Action:         row.Action,
 			Confidence:     row.Score,
 			Layers:         row.Reasons,
+			TerminalGate:   terminalGateFromLayers(row.DecisionLayers),
 		}
 		allRows = append(allRows, trailRow)
 		grouped[row.Classification] = append(grouped[row.Classification], trailRow)
@@ -743,10 +761,11 @@ func (s *DecisionTrailSection) Render(pdf *fpdf.Fpdf) {
 		pdf.SetFillColor(236, 240, 241)
 		pdf.SetXY(15, y)
 		pdf.CellFormat(14, 6, "PR", "1", 0, "L", true, 0, "")
-		pdf.CellFormat(52, 6, "Title", "1", 0, "L", true, 0, "")
-		pdf.CellFormat(16, 6, "Action", "1", 0, "L", true, 0, "")
-		pdf.CellFormat(12, 6, "Conf", "1", 0, "C", true, 0, "")
-		pdf.CellFormat(86, 6, "Decision Trail", "1", 1, "L", true, 0, "")
+		pdf.CellFormat(44, 6, "Title", "1", 0, "L", true, 0, "")
+		pdf.CellFormat(14, 6, "Action", "1", 0, "L", true, 0, "")
+		pdf.CellFormat(10, 6, "Conf", "1", 0, "C", true, 0, "")
+		pdf.CellFormat(30, 6, "Terminal Gate", "1", 0, "L", true, 0, "")
+		pdf.CellFormat(68, 6, "Decision Trail", "1", 1, "L", true, 0, "")
 		y += 6
 
 		limit := 5
@@ -764,10 +783,11 @@ func (s *DecisionTrailSection) Render(pdf *fpdf.Fpdf) {
 			pdf.SetFont("Arial", "", 7)
 			pdf.SetXY(15, y)
 			pdf.CellFormat(14, 6, fmt.Sprintf("#%d", row.PRNumber), "1", 0, "L", false, 0, "")
-			pdf.CellFormat(52, 6, truncate(row.Title, 34), "1", 0, "L", false, 0, "")
-			pdf.CellFormat(16, 6, truncate(row.Action, 10), "1", 0, "L", false, 0, "")
-			pdf.CellFormat(12, 6, fmt.Sprintf("%.2f", row.Confidence), "1", 0, "C", false, 0, "")
-			pdf.CellFormat(86, 6, truncate(strings.Join(row.Layers, " | "), 75), "1", 1, "L", false, 0, "")
+			pdf.CellFormat(44, 6, truncate(row.Title, 28), "1", 0, "L", false, 0, "")
+			pdf.CellFormat(14, 6, truncate(row.Action, 8), "1", 0, "L", false, 0, "")
+			pdf.CellFormat(10, 6, fmt.Sprintf("%.2f", row.Confidence), "1", 0, "C", false, 0, "")
+			pdf.CellFormat(30, 6, truncate(row.TerminalGate, 25), "1", 0, "L", false, 0, "")
+			pdf.CellFormat(68, 6, truncate(strings.Join(row.Layers, " | "), 55), "1", 1, "L", false, 0, "")
 			y += 6
 			rendered++
 		}

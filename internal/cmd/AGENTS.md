@@ -28,10 +28,10 @@ Backward-compatible query-string style:
 
 **Response helpers:**
 - `writeHTTPJSON(w, status, payload)` — JSON with Content-Type
-- `writeHTTPError(w, status, msg)` — `{"error": "..."}`
+- `writeHTTPError(w, r, status, msg)` — structured machine-readable error with `error`, `message`, `status`, `code`, `request_id`
 
 **Request guards:**
-- `ensureGET(w, r)` / `ensureRepo(w, repo)` — Return bool, write status on fail
+- `ensureGET(w, r)` / `ensureRepo(w, r, repo)` — Return bool, write status on fail
 - `parseRepoActionPath(path)` — Parse `/api/repos/{owner}/{name}/{action}`
 
 **Plan query params:**
@@ -52,17 +52,15 @@ Backward-compatible query-string style:
 
 ## Gotchas
 
-1. **Route mismatch:** API uses `/api/settings?repo=` but web expects `/api/repos/{o}/{n}/settings/{scope}/{key}`. Align before v0.1.
+1. **CORS defaults empty:** No dashboard origin is assumed. Set `PRATC_CORS_ALLOWED_ORIGINS` explicitly to enable CORS.
 
-2. **CORS hardcoded:** Allows `localhost:3000` only. Needs production config.
+2. **Audit DB per call:** `logAuditEntry()` opens/closes SQLite each time. Pool if throughput increases.
 
-3. **Audit DB per call:** `logAuditEntry()` opens/closes SQLite each time. Pool if throughput increases.
+3. **Plan dry_run:** Absent param = true. Must pass `dry_run=false` to disable.
 
-4. **Plan dry_run:** Absent param = true. Must pass `dry_run=false` to disable.
+4. **Import limit:** `http.MaxBytesReader(w, r.Body, 1<<20)` — 1MB max.
 
-5. **Import limit:** `http.MaxBytesReader(w, r.Body, 1<<20)` — 1MB max.
-
-6. **Sync SSE nil check:** `repoSyncAPI` nil returns 500.
+5. **Sync SSE nil check:** `repoSyncAPI` nil returns 500.
 
 ## Environment
 

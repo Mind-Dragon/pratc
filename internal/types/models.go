@@ -374,8 +374,9 @@ type OmniPlanResponse struct {
 }
 
 type HealthResponse struct {
-	Status  string `json:"status"`
-	Version string `json:"version"`
+	Status     string `json:"status"`
+	Version    string `json:"version"`
+	APIVersion string `json:"api_version"`
 }
 
 type AuditEntryResponse struct {

@@ -20,8 +20,6 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/formula"
 	"github.com/jeffersonnunn/pratc/internal/logger"
-	"github.com/jeffersonnunn/pratc/internal/monitor/data"
-	"github.com/jeffersonnunn/pratc/internal/monitor/server"
 	prsync "github.com/jeffersonnunn/pratc/internal/sync"
 	"github.com/jeffersonnunn/pratc/internal/types"
 	"github.com/spf13/cobra"
@@ -95,7 +93,7 @@ Examples:
 			return runServer(ctx, port, repo, useCacheFirst, resync, forceCache)
 		},
 	}
-	command.Flags().IntVar(&port, "port", 8080, "Port to bind the API server to")
+	command.Flags().IntVar(&port, "port", 7400, "Port to bind the API server to")
 	command.Flags().StringVar(&repo, "repo", "", "Optional default repository for API routes")
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch (default, cached-first mode is always on)")
 	command.Flags().BoolVar(&resync, "resync", false, "Force live refresh: skip cache and fetch fresh data from GitHub")
@@ -110,8 +108,18 @@ func writeHTTPJSON(w http.ResponseWriter, status int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func writeHTTPError(w http.ResponseWriter, status int, message string) {
-	writeHTTPJSON(w, status, map[string]string{"error": message})
+func writeHTTPError(w http.ResponseWriter, r *http.Request, status int, message string) {
+	reqID := ""
+	if r != nil {
+		reqID = logger.RequestIDFromContext(r.Context())
+	}
+	writeHTTPJSON(w, status, map[string]any{
+		"error":      message,
+		"message":    message,
+		"status":     status,
+		"request_id": reqID,
+		"code":       http.StatusText(status),
+	})
 }
 
 // sanitizedError returns a user-safe error message based on the error type.
@@ -193,9 +201,9 @@ func ensureGET(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-func ensureRepo(w http.ResponseWriter, repo string) bool {
+func ensureRepo(w http.ResponseWriter, r *http.Request, repo string) bool {
 	if strings.TrimSpace(repo) == "" {
-		writeHTTPError(w, http.StatusBadRequest, "repo is required")
+		writeHTTPError(w, r, http.StatusBadRequest, "repo is required")
 		return false
 	}
 	return true
@@ -224,25 +232,25 @@ func handleSettings(w http.ResponseWriter, r *http.Request, store settingsStore)
 		payload, err := store.Get(r.Context(), repo)
 		if err != nil {
 			log.Error("handleSettings: store.Get failed", "error", err.Error(), "repo", repo)
-			writeHTTPError(w, http.StatusInternalServerError, sanitizedError(err))
+			writeHTTPError(w, r, http.StatusInternalServerError, sanitizedError(err))
 			return
 		}
 		writeHTTPJSON(w, http.StatusOK, payload)
 	case http.MethodPost:
 		var req setSettingRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeHTTPError(w, http.StatusBadRequest, "invalid JSON body")
+			writeHTTPError(w, r, http.StatusBadRequest, "invalid JSON body")
 			return
 		}
 		if strings.TrimSpace(req.Key) == "" {
-			writeHTTPError(w, http.StatusBadRequest, "key is required")
+			writeHTTPError(w, r, http.StatusBadRequest, "key is required")
 			return
 		}
 		validateOnly := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("validateOnly")), "true")
 		if validateOnly {
 			if err := store.ValidateSet(r.Context(), req.Scope, req.Repo, req.Key, req.Value); err != nil {
 				log.Error("handleSettings: ValidateSet failed", "error", err.Error(), "scope", req.Scope, "repo", req.Repo, "key", req.Key)
-				writeHTTPError(w, http.StatusBadRequest, sanitizedError(err))
+				writeHTTPError(w, r, http.StatusBadRequest, sanitizedError(err))
 				return
 			}
 			writeHTTPJSON(w, http.StatusOK, map[string]any{"valid": true})
@@ -250,7 +258,7 @@ func handleSettings(w http.ResponseWriter, r *http.Request, store settingsStore)
 		}
 		if err := store.Set(r.Context(), req.Scope, req.Repo, req.Key, req.Value); err != nil {
 			log.Error("handleSettings: Set failed", "error", err.Error(), "scope", req.Scope, "repo", req.Repo, "key", req.Key)
-			writeHTTPError(w, http.StatusBadRequest, sanitizedError(err))
+			writeHTTPError(w, r, http.StatusBadRequest, sanitizedError(err))
 			return
 		}
 		writeHTTPJSON(w, http.StatusOK, map[string]any{"updated": true})
@@ -259,12 +267,12 @@ func handleSettings(w http.ResponseWriter, r *http.Request, store settingsStore)
 		repo := strings.TrimSpace(r.URL.Query().Get("repo"))
 		key := strings.TrimSpace(r.URL.Query().Get("key"))
 		if key == "" {
-			writeHTTPError(w, http.StatusBadRequest, "key is required")
+			writeHTTPError(w, r, http.StatusBadRequest, "key is required")
 			return
 		}
 		if err := store.Delete(r.Context(), scope, repo, key); err != nil {
 			log.Error("handleSettings: Delete failed", "error", err.Error(), "scope", scope, "repo", repo, "key", key)
-			writeHTTPError(w, http.StatusBadRequest, sanitizedError(err))
+			writeHTTPError(w, r, http.StatusBadRequest, sanitizedError(err))
 			return
 		}
 		writeHTTPJSON(w, http.StatusOK, map[string]any{"deleted": true})
@@ -283,7 +291,7 @@ func handleExportSettings(w http.ResponseWriter, r *http.Request, store settings
 	content, err := store.ExportYAML(r.Context(), scope, repo)
 	if err != nil {
 		log.Error("handleExportSettings: ExportYAML failed", "error", err.Error(), "scope", scope, "repo", repo)
-		writeHTTPError(w, http.StatusBadRequest, sanitizedError(err))
+		writeHTTPError(w, r, http.StatusBadRequest, sanitizedError(err))
 		return
 	}
 	w.Header().Set("Content-Type", "application/x-yaml")
@@ -302,12 +310,12 @@ func handleImportSettings(w http.ResponseWriter, r *http.Request, store settings
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeHTTPError(w, http.StatusBadRequest, "failed to read request body")
+		writeHTTPError(w, r, http.StatusBadRequest, "failed to read request body")
 		return
 	}
 	if err := store.ImportYAML(r.Context(), scope, repo, body); err != nil {
 		log.Error("handleImportSettings: ImportYAML failed", "error", err.Error(), "scope", scope, "repo", repo)
-		writeHTTPError(w, http.StatusBadRequest, sanitizedError(err))
+		writeHTTPError(w, r, http.StatusBadRequest, sanitizedError(err))
 		return
 	}
 	writeHTTPJSON(w, http.StatusOK, map[string]any{"imported": true})
@@ -321,7 +329,7 @@ func handleListSyncJobs(w http.ResponseWriter, r *http.Request) {
 	store, err := cache.Open(analyzeSyncDBPath())
 	if err != nil {
 		log.Error("handleListSyncJobs: cache.Open failed", "error", err.Error())
-		writeHTTPError(w, http.StatusInternalServerError, sanitizedError(err))
+		writeHTTPError(w, r, http.StatusInternalServerError, sanitizedError(err))
 		return
 	}
 	defer store.Close()
@@ -329,7 +337,7 @@ func handleListSyncJobs(w http.ResponseWriter, r *http.Request) {
 	jobs, err := store.ListSyncJobs()
 	if err != nil {
 		log.Error("handleListSyncJobs: ListSyncJobs failed", "error", err.Error())
-		writeHTTPError(w, http.StatusInternalServerError, sanitizedError(err))
+		writeHTTPError(w, r, http.StatusInternalServerError, sanitizedError(err))
 		return
 	}
 	writeHTTPJSON(w, http.StatusOK, jobs)
@@ -343,7 +351,7 @@ func handleListPausedSyncJobs(w http.ResponseWriter, r *http.Request) {
 	store, err := cache.Open(analyzeSyncDBPath())
 	if err != nil {
 		log.Error("handleListPausedSyncJobs: cache.Open failed", "error", err.Error())
-		writeHTTPError(w, http.StatusInternalServerError, sanitizedError(err))
+		writeHTTPError(w, r, http.StatusInternalServerError, sanitizedError(err))
 		return
 	}
 	defer store.Close()
@@ -351,7 +359,7 @@ func handleListPausedSyncJobs(w http.ResponseWriter, r *http.Request) {
 	jobs, err := store.ListPausedSyncJobs()
 	if err != nil {
 		log.Error("handleListPausedSyncJobs: ListPausedSyncJobs failed", "error", err.Error())
-		writeHTTPError(w, http.StatusInternalServerError, sanitizedError(err))
+		writeHTTPError(w, r, http.StatusInternalServerError, sanitizedError(err))
 		return
 	}
 	writeHTTPJSON(w, http.StatusOK, jobs)
@@ -364,7 +372,7 @@ func handleSyncEvents(store *cache.Store) http.HandlerFunc {
 		}
 		log := logger.FromContext(r.Context())
 		repo := r.URL.Query().Get("repo")
-		if !ensureRepo(w, repo) {
+		if !ensureRepo(w, r, repo) {
 			return
 		}
 
@@ -375,17 +383,17 @@ func handleSyncEvents(store *cache.Store) http.HandlerFunc {
 		job, ok, err := store.ResumeSyncJob(repo)
 		if err != nil {
 			log.Error("handleSyncEvents: ResumeSyncJob failed", "error", err.Error(), "repo", repo)
-			writeHTTPError(w, http.StatusInternalServerError, sanitizedError(err))
+			writeHTTPError(w, r, http.StatusInternalServerError, sanitizedError(err))
 			return
 		}
 		if !ok {
-			writeHTTPError(w, http.StatusNotFound, "no active sync job")
+			writeHTTPError(w, r, http.StatusNotFound, "no active sync job")
 			return
 		}
 
 		flusher, ok := w.(http.Flusher)
 		if !ok {
-			writeHTTPError(w, http.StatusInternalServerError, "streaming not supported")
+			writeHTTPError(w, r, http.StatusInternalServerError, "streaming not supported")
 			return
 		}
 
@@ -421,7 +429,7 @@ func mustMarshalJSON(v any) string {
 }
 
 func handleAnalyze(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
-	if !ensureGET(w, r) || !ensureRepo(w, repo) {
+	if !ensureGET(w, r) || !ensureRepo(w, r, repo) {
 		return
 	}
 	log := logger.FromContext(r.Context())
@@ -440,42 +448,42 @@ func handleAnalyze(w http.ResponseWriter, r *http.Request, service app.Service, 
 	result, err := service.Analyze(r.Context(), repo)
 	if err != nil {
 		log.Error("handleAnalyze: service.Analyze failed", "error", err.Error(), "repo", repo)
-		writeHTTPError(w, http.StatusInternalServerError, sanitizedError(err))
+		writeHTTPError(w, r, http.StatusInternalServerError, sanitizedError(err))
 		return
 	}
 	writeHTTPJSON(w, http.StatusOK, result)
 }
 
 func handleCluster(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
-	if !ensureGET(w, r) || !ensureRepo(w, repo) {
+	if !ensureGET(w, r) || !ensureRepo(w, r, repo) {
 		return
 	}
 	log := logger.FromContext(r.Context())
 	result, err := service.Cluster(r.Context(), repo)
 	if err != nil {
 		log.Error("handleCluster: service.Cluster failed", "error", err.Error(), "repo", repo)
-		writeHTTPError(w, http.StatusInternalServerError, sanitizedError(err))
+		writeHTTPError(w, r, http.StatusInternalServerError, sanitizedError(err))
 		return
 	}
 	writeHTTPJSON(w, http.StatusOK, result)
 }
 
 func handleGraph(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
-	if !ensureGET(w, r) || !ensureRepo(w, repo) {
+	if !ensureGET(w, r) || !ensureRepo(w, r, repo) {
 		return
 	}
 	log := logger.FromContext(r.Context())
 	result, err := service.Graph(r.Context(), repo)
 	if err != nil {
 		log.Error("handleGraph: service.Graph failed", "error", err.Error(), "repo", repo)
-		writeHTTPError(w, http.StatusInternalServerError, sanitizedError(err))
+		writeHTTPError(w, r, http.StatusInternalServerError, sanitizedError(err))
 		return
 	}
 	writeHTTPJSON(w, http.StatusOK, result)
 }
 
 func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
-	if !ensureGET(w, r) || !ensureRepo(w, repo) {
+	if !ensureGET(w, r) || !ensureRepo(w, r, repo) {
 		return
 	}
 	log := logger.FromContext(r.Context())
@@ -484,7 +492,7 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 		if parsed, err := strconv.Atoi(t); err == nil && parsed > 0 {
 			target = parsed
 		} else {
-			writeHTTPError(w, http.StatusBadRequest, "target must be a positive integer")
+			writeHTTPError(w, r, http.StatusBadRequest, "target must be a positive integer")
 			return
 		}
 	}
@@ -498,41 +506,41 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 		case "with_replacement":
 			mode = formula.ModeWithReplacement
 		default:
-			writeHTTPError(w, http.StatusBadRequest, "invalid mode")
+			writeHTTPError(w, r, http.StatusBadRequest, "invalid mode")
 			return
 		}
 	}
 	if v := r.URL.Query().Get("exclude_conflicts"); v != "" {
 		if _, err := strconv.ParseBool(v); err != nil {
-			writeHTTPError(w, http.StatusBadRequest, "invalid exclude_conflicts")
+			writeHTTPError(w, r, http.StatusBadRequest, "invalid exclude_conflicts")
 			return
 		}
 	}
 	if v := r.URL.Query().Get("stale_score_threshold"); v != "" {
 		parsed, err := strconv.ParseFloat(v, 64)
 		if err != nil || parsed < 0 || parsed > 1 {
-			writeHTTPError(w, http.StatusBadRequest, "invalid stale_score_threshold")
+			writeHTTPError(w, r, http.StatusBadRequest, "invalid stale_score_threshold")
 			return
 		}
 	}
 	if v := r.URL.Query().Get("candidate_pool_cap"); v != "" {
 		parsed, err := strconv.Atoi(v)
 		if err != nil || parsed < 1 || parsed > 500 {
-			writeHTTPError(w, http.StatusBadRequest, "invalid candidate_pool_cap")
+			writeHTTPError(w, r, http.StatusBadRequest, "invalid candidate_pool_cap")
 			return
 		}
 	}
 	if v := r.URL.Query().Get("score_min"); v != "" {
 		parsed, err := strconv.ParseFloat(v, 64)
 		if err != nil || parsed < 0 || parsed > 100 {
-			writeHTTPError(w, http.StatusBadRequest, "invalid score_min")
+			writeHTTPError(w, r, http.StatusBadRequest, "invalid score_min")
 			return
 		}
 	}
 	result, err := service.Plan(r.Context(), repo, target, mode)
 	if err != nil {
 		log.Error("handlePlan: service.Plan failed", "error", err.Error(), "repo", repo, "target", target, "mode", mode)
-		writeHTTPError(w, http.StatusInternalServerError, sanitizedError(err))
+		writeHTTPError(w, r, http.StatusInternalServerError, sanitizedError(err))
 		return
 	}
 	writeHTTPJSON(w, http.StatusOK, result)
@@ -540,12 +548,12 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 
 // handleReview is not implemented - service.Review does not exist
 // func handleReview(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
-// 	if !ensureGET(w, r) || !ensureRepo(w, repo) {
+// 	if !ensureGET(w, r) || !ensureRepo(w, r, repo) {
 // 		return
 // 	}
 // 	result, err := service.Review(r.Context(), repo)
 // 	if err != nil {
-// 		writeHTTPError(w, http.StatusInternalServerError, err.Error())
+// 		writeHTTPError(w, r, http.StatusInternalServerError, err.Error())
 // 		return
 // 	}
 // 	writeHTTPJSON(w, http.StatusOK, result)
@@ -553,7 +561,7 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 
 // handlePlanOmni handles the omni-batch plan endpoint.
 func handlePlanOmni(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
-	if !ensureGET(w, r) || !ensureRepo(w, repo) {
+	if !ensureGET(w, r) || !ensureRepo(w, r, repo) {
 		return
 	}
 	log := logger.FromContext(r.Context())
@@ -561,7 +569,7 @@ func handlePlanOmni(w http.ResponseWriter, r *http.Request, service app.Service,
 	result, err := service.PlanOmni(r.Context(), repo, selector)
 	if err != nil {
 		log.Error("handlePlanOmni: service.PlanOmni failed", "error", err.Error(), "repo", repo)
-		writeHTTPError(w, http.StatusInternalServerError, sanitizedError(err))
+		writeHTTPError(w, r, http.StatusInternalServerError, sanitizedError(err))
 		return
 	}
 	writeHTTPJSON(w, http.StatusOK, result)
@@ -712,7 +720,7 @@ func handleRepoAction(w http.ResponseWriter, r *http.Request, service app.Servic
 	log := logger.FromContext(r.Context())
 	repo, action, ok := parseRepoActionPath(r.URL.Path)
 	if !ok {
-		writeHTTPError(w, http.StatusNotFound, "route not found")
+		writeHTTPError(w, r, http.StatusNotFound, "route not found")
 		return
 	}
 
@@ -731,38 +739,35 @@ func handleRepoAction(w http.ResponseWriter, r *http.Request, service app.Servic
 			return
 		}
 		if syncAPI == nil {
-			writeHTTPError(w, http.StatusInternalServerError, "sync API unavailable")
+			writeHTTPError(w, r, http.StatusInternalServerError, "sync API unavailable")
 			return
 		}
 		if err := syncAPI.Start(repo); err != nil {
 			log.Error("handleRepoAction: syncAPI.Start failed", "error", err.Error(), "repo", repo)
-			writeHTTPError(w, http.StatusInternalServerError, sanitizedError(err))
+			writeHTTPError(w, r, http.StatusInternalServerError, sanitizedError(err))
 			return
 		}
 		writeHTTPJSON(w, http.StatusAccepted, map[string]any{"started": true, "repo": repo})
 	case "sync/stream":
 		if syncAPI == nil {
-			writeHTTPError(w, http.StatusInternalServerError, "sync API unavailable")
+			writeHTTPError(w, r, http.StatusInternalServerError, "sync API unavailable")
 			return
 		}
 		syncAPI.Stream(repo, w, r)
 	case "sync/status":
 		syncStatus := getSyncStatus(repo)
 		writeHTTPJSON(w, http.StatusOK, syncStatus)
-	// case "review":
-	// handleReview is not implemented
-	case "review":
-		writeHTTPError(w, http.StatusNotImplemented, "review endpoint not implemented")
 	default:
-		writeHTTPError(w, http.StatusNotFound, "route not found")
+		writeHTTPError(w, r, http.StatusNotFound, "route not found")
 	}
 }
 
 // corsAllowedOrigins returns the list of allowed CORS origins from environment.
+// No default dashboard origin is assumed; CORS is disabled unless explicitly configured.
 func corsAllowedOrigins() []string {
 	env := strings.TrimSpace(os.Getenv("PRATC_CORS_ALLOWED_ORIGINS"))
 	if env == "" {
-		return []string{"http://localhost:3000"}
+		return []string{}
 	}
 	parts := strings.Split(env, ",")
 	allowed := make([]string, 0, len(parts))
@@ -770,9 +775,6 @@ func corsAllowedOrigins() []string {
 		if trimmed := strings.TrimSpace(p); trimmed != "" {
 			allowed = append(allowed, trimmed)
 		}
-	}
-	if len(allowed) == 0 {
-		return []string{"http://localhost:3000"}
 	}
 	return allowed
 }
@@ -972,7 +974,7 @@ func rateLimitMiddleware(rl *ipRateLimiter) func(http.Handler) http.Handler {
 				retryAfter := "60"
 				w.Header().Set("Retry-After", retryAfter)
 				w.Header().Set("X-RateLimit-Limit", getRateLimitHeader(rl, r.URL.Path))
-				writeHTTPError(w, http.StatusTooManyRequests, "rate limit exceeded")
+				writeHTTPError(w, r, http.StatusTooManyRequests, "rate limit exceeded")
 				return
 			}
 
@@ -1030,7 +1032,7 @@ func authMiddleware(next http.Handler) http.Handler {
 
 		apiKey, err := getAPIKey()
 		if err != nil {
-			writeHTTPError(w, http.StatusInternalServerError, "API key unavailable")
+			writeHTTPError(w, r, http.StatusInternalServerError, "API key unavailable")
 			return
 		}
 
@@ -1115,20 +1117,6 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst,
 	mux.HandleFunc("/api/sync/jobs", handleListSyncJobs)
 	mux.HandleFunc("/api/sync/jobs/paused", handleListPausedSyncJobs)
 	mux.HandleFunc("/api/sync/events", handleSyncEvents(cacheStore))
-
-	// Monitor WebSocket endpoint
-	monitorBroadcaster := data.NewBroadcaster(
-		data.NewStore(cacheStore),
-		data.NewRateLimitFetcher(githubAccess.Token),
-		data.NewTimelineAggregator(cacheStore),
-	)
-	go monitorBroadcaster.Start(ctx)
-	defer monitorBroadcaster.Stop()
-
-	// Configure WebSocket server with same origin allowlist as CORS
-	server.SetAllowedOrigins(corsAllowedOrigins())
-	websocketServer := server.NewWebSocketServer(monitorBroadcaster)
-	mux.HandleFunc("/monitor/stream", websocketServer.ServeHTTP)
 
 	mux.HandleFunc("/analyze", func(w http.ResponseWriter, r *http.Request) {
 		handleAnalyze(w, r, service, repoFromQuery(r, defaultRepo))

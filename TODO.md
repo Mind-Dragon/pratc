@@ -1,13 +1,10 @@
-# prATC TODO — v1.6 Pipeline-First Reset
+# prATC TODO — v1.6.1 Backlog Surgery
 
 ## Goal
 
-Turn prATC into a pipeline-first system with three primary surfaces only:
-- CLI for humans
-- API for AI systems
-- PDF report for human decision-makers
+Expand the merge plan surface beyond the current top-20 ceiling by recursively collapsing duplicate groups, automatically reclassifying blocked and low_value PRs through deterministic second passes, and scaling the planner target dynamically with corpus health.
 
-The web dashboard is no longer part of the product direction. v1.6 is about making the pipeline sharper, cheaper, more explainable, and more durable for a future 24/7 daemon that continuously ingests and processes PRs.
+v1.6.1 is a surgical release: it does not change the 16-gate funnel, the diff-grounded evidence layer, or the API contract. It adds three post-review passes that unlock hidden value in the two largest buckets (blocked: 50.3%, low_value: 42.6%).
 
 ## Source of truth
 
@@ -15,119 +12,150 @@ The web dashboard is no longer part of the product direction. v1.6 is about maki
 - `ARCHITECTURE.md` — system shape, surfaces, and long-running pipeline model
 - `ROADMAP.md` — release sequencing
 - `CHANGELOG.md` — what has actually shipped
-- `README.md` — current public release surface
+- `docs/plans/2026-04-21-pratc-v1.6.1-backlog-surgery-plan.md` — this release's detailed plan
 - `internal/app/` — pipeline orchestration
-- `internal/review/` — gate logic, analyzers, synthesis, and decision outputs
-- `internal/cmd/serve.go` — AI-facing API surface
+- `internal/review/` — gate logic, second-pass reclassifiers, decision outputs
+- `internal/planner/` — merge plan target calculation and candidate selection
 - `internal/report/` — PDF output contract
 
-## v1.6 contract
+## v1.6.1 contract
 
-v1.6 is done when all of these are true:
+v1.6.1 is done when all of these are true:
 
-- [x] The product surface is CLI + API + PDF only; the web dashboard is removed or explicitly stubbed as non-product
-- [x] All primary docs describe prATC as an AI-centric pipeline with human PDF output, not a dashboard product
-- [x] Every non-garbage PR passes through the same 16 gates in order, with gate outputs recorded explicitly
-- [x] The 16 gates are ordered by cheap outer peel → more expensive inner judgment, and the code matches the guideline
-- [x] Diff-grounded evidence exists in the funnel for at least the first high-value analysis slice
-- [x] Duplicate handling advances from detection into synthesis planning: nominate canonical PRs and define how to derive a merged candidate from related PR sets
-- [ ] API responses are optimized for machine consumption: explicit fields, stable schemas, self-describing reasoning, no dashboard-shaped assumptions
-- [x] PDF output remains first-class and reflects the strengthened funnel truthfully
+- [ ] Recursive duplicate expansion collapses all duplicate/overlap groups to canonical representatives before planning
+- [ ] Flattened chains (A→B→C) resolve to a single canonical with full superseded list
+- [ ] Blocked PRs (3,334 in openclaw) receive an automatic second pass; recoverable PRs are reclassified into viable buckets
+- [ ] Low_value PRs (2,824 in openclaw) receive an automatic second pass; quick wins and hidden high-value PRs are promoted
+- [ ] Stale/abandoned PRs in blocked/low_value are downgraded to junk automatically
+- [ ] Merge plan target is dynamic: `clamp(viable_pool * 0.05, min=20, max=100)`
+- [ ] Report PDF shows collapse impact, reclassification arrows, recovery queue, and quick-win batch tags
+- [ ] All changes are deterministic, auditable, and covered by focused tests
 
-## Workstream 1 — Product surface reset
+## Workstream 1 — Recursive Duplicate Expansion
 
-### 1. Remove dashboard as product surface
-- [x] Identify all code, docs, tests, and build paths that treat `web/` as a first-class product surface
-- [x] Decide final v1.6 treatment for `web/`: remove entirely, quarantine, or leave a clearly marked stub
-- [x] Remove dashboard-first language from README / ARCHITECTURE / CONTRIBUTING / AGENTS / docs
-- [x] Remove or rewrite dashboard docs (`docs/dashboard-user-guide.md`, `docs/ui-wiring.md`, monitor docs as needed)
-- [x] Keep `serve` as an AI-facing API server, not a backing server for a browser dashboard
-- [x] Verify the repo can be understood and operated without any `web/` assumptions
+### 1. Collapse duplicate groups before planning
+- [ ] Implement `CollapsedCorpus` builder in `internal/app/duplicate_synthesis.go`
+- [ ] Map each canonical PR to its full superseded list
+- [ ] Detect and flatten chains (A→B→C becomes canonical A with [B, C] superseded)
+- [ ] Ensure no PR is both canonical and superseded in the final collapsed corpus
+- [ ] Replace superseded PRs in the planning pool with canonical representatives
+- [ ] Mark canonical PRs with `IsCollapsedCanonical = true`
 
-### 2. Make the surfaces explicit
-- [x] CLI surface = concise commands for humans
-- [x] API surface = explicit machine-facing JSON for agents
-- [x] PDF surface = final human handoff artifact
-- [x] Audit all docs and contracts to ensure these three surfaces are the only promoted interfaces
+### 2. Planner integration
+- [ ] Add `plan --collapse-duplicates` flag (default: true in v1.6.1)
+- [ ] Planner runs on collapsed corpus: `len(PRs) - len(superseded)` candidates
+- [ ] Target auto-adjusts when corpus shrinks
 
-## Workstream 2 — Strengthen the 16-gate funnel
+### 3. Report surface
+- [ ] New PDF section: "Duplicate Collapse Impact"
+- [ ] Show original PR count → collapsed PR count, groups collapsed, plan slots freed
+- [ ] List top canonical PRs nominated
 
-### 3. Make the funnel contract mandatory
-- [x] Rewrite the guideline/architecture language so every PR follows the same funnel journey
-- [x] Define each gate as a mandatory stage, not a loose conceptual ladder
-- [x] Record for every PR: gate entered, gate outcome, reason, cost tier, and whether the PR continues inward or exits at that gate
-- [x] Ensure the outer peel removes broad junk fast and the inner gates spend more CPU only on survivors
+## Workstream 2 — Automatic Second Pass: Blocked PR Reclassification
 
-### 4. Gate ordering and semantics
-- [x] Reconcile current code with the intended onion model
-- [x] Separate elimination gates from scoring/judgment gates
-- [x] Make early gates cheap and deterministic
-- [x] Make later gates richer and more expensive only when justified by surviving signal
-- [x] Ensure duplicates, junk, spam, and obvious badness exit early but remain fully visible in output
+### 4. Second pass architecture
+- [ ] Add `RunSecondPass()` to `internal/review/orchestrator.go` (called after main review)
+- [ ] Collect PRs where `Category == blocked`
+- [ ] Implement `ReclassifyBlocked(prData, firstPassResult)` in `internal/review/recovery.go`
+- [ ] Update `ReviewResult` fields on reclassification:
+  - `Category` — needs_review | high_value | merge_candidate | junk | blocked
+  - `DecisionLayers` — append Gate 17: Recovery Assessment
+  - `ReclassifiedFrom` — original category string
+  - `ReclassificationReason` — human-readable path forward
+  - `NextAction` — updated action
 
-### 5. Funnel truthfulness in output
-- [x] Expose gate-by-gate journey in API output for every PR
-- [ ] Reflect gate journey clearly in the PDF report
-- [x] Ensure no PR “teleports” to a final state without an explicit gate trail
+### 5. Recovery rules (deterministic)
+- [ ] CI failing + last push <30d + not draft + <3 conflicts → needs_review
+- [ ] Draft + ≥2 reviews/activity + not stale → high_value
+- [ ] Mergeable=unknown + small size + no risk flags → needs_review
+- [ ] CI failing + last push >90d + no reviews → junk
+- [ ] >10 conflict pairs + stale → junk
+- [ ] Spam/junk markers → junk
+- [ ] All others → blocked (permanent_blocker reason)
 
-## Workstream 3 — Diff-grounded evidence in v1.6
+### 6. Report surface
+- [ ] Decision Trail shows reclassified PRs: `#5649 [blocked → needs_review]`
+- [ ] New PDF subsection: "Reclassified from Blocked" with count and top examples
 
-### 6. Bring real diff evidence into the funnel
-- [x] Add a first diff-aware evidence slice instead of relying only on metadata/path heuristics
-- [x] Define which gates consume diff hunks and which must remain metadata-only
-- [x] Start with high-value patterns: auth, secrets, dangerous config, risky query/perf patterns, test-gap evidence
-- [x] Attach code location / diff evidence to findings so AI consumers and the PDF can explain judgments concretely
+## Workstream 3 — Automatic Second Pass: Low_Value PR Reclassification
 
-### 7. Keep cost discipline
-- [x] Add explicit policy for which PRs get deeper diff analysis and when
-- [x] Keep the outer funnel cheap enough for large corpora
-- [x] Ensure inner diff analysis only runs on PRs that survive outer layers
+### 7. Second pass architecture
+- [ ] Extend `RunSecondPass()` to handle `Category == low_value`
+- [ ] Implement `ReclassifyLowValue(prData, firstPassResult)` in `internal/review/quickwin.go`
+- [ ] Update `ReviewResult` fields on reclassification (same pattern as blocked)
+- [ ] Append Gate 17: Value Reassessment to `DecisionLayers`
 
-## Workstream 4 — Duplicate synthesis beyond detection
+### 8. Re-rank rules (deterministic)
+- [ ] size_XS/S + CI passing + not draft + <3 conflicts + substance >30 → merge_candidate
+- [ ] Docs cluster + CI passing + no conflicts + substance >25 → high_value
+- [ ] Security/reliability/perf findings + substance >40 → needs_review
+- [ ] No activity >90d + CI failing + no reviews + substance <20 → junk
+- [ ] All others → low_value (genuine low_value)
 
-### 8. Canonicalization and synthesis planning
-- [x] Move duplicate handling from “same idea detected” to “best candidate nominated”
-- [x] For each duplicate/near-duplicate group, identify canonical, alternates, and synthesis candidates
-- [x] Define a bot-ready output contract for a future merge/synthesis agent
-- [x] Specify what “best of N PRs” means: quality, completeness, freshness, conflict footprint, evidence quality, tests, mergeability
+### 9. Batch-merge tagging
+- [ ] Add `BatchTag` field to `ReviewResult` for promoted PRs
+- [ ] Derive tags from cluster or file patterns: `docs-batch`, `typo-batch`, `dependency-batch`
+- [ ] Planner optionally batch-selects tagged PRs
 
-### 9. Candidate merge-by-bot plan
-- [x] Design the artifact that a future bot can consume to create a synthetic best-of-group PR
-- [x] Include inputs, ranking, exclusions, and explicit human-readable reasons
-- [x] Keep v1.6 advisory-only: nominate and describe, do not mutate GitHub
+### 10. Report surface
+- [ ] Decision Trail shows reclassified PRs: `#10195 [low_value → merge_candidate]`
+- [ ] New PDF subsection: "Reclassified from Low Value" with count and examples
+- [ ] Batch tags rendered where applicable
 
-## Workstream 5 — API and report tightening
+## Workstream 4 — Expanded Merge Plan Target
 
-### 10. AI-centric API
-- [ ] Audit `serve` endpoints for machine readability and consistency
-- [ ] Remove browser/dashboard assumptions from endpoint naming and docs
-- [ ] Promote stable machine-facing fields for gate journey, evidence, canonicalization, and report artifacts
-- [ ] Decide whether a first-class `/review` style endpoint should exist in v1.6 or whether `analyze` remains the canonical machine entrypoint
+### 11. Dynamic target calculation
+- [ ] Replace hardcoded target-20 with dynamic formula
+- [ ] `target = clamp(viable_pool * 0.05, min_target, max_target)`
+- [ ] Default `min_target = 20`, `max_target = 100`
+- [ ] `viable_pool` = non-junk, non-abandoned PRs after all passes
 
-### 11. PDF as final human artifact
-- [ ] Keep PDF mandatory in the main workflow
-- [x] Ensure the report explains gate journey, canonical duplicate groups, and high-signal evidence clearly
-- [x] Make the report read like a decision packet, not a dashboard export
+### 12. CLI flags
+- [ ] `--target-ratio float` — % of viable pool (default: 0.05)
+- [ ] `--min-target int` — minimum target (default: 20)
+- [ ] `--max-target int` — maximum target (default: 100)
+
+### 13. Planner behavior
+- [ ] Calculate target before candidate selection
+- [ ] Report shows: "Target: X PRs (Y% of viable pool Z)"
+- [ ] Runtime does not degrade when target increases
+
+## Workstream 5 — Operator Packet Report Enhancements
+
+### 14. PDF sections
+- [ ] "Duplicate Collapse Impact" — original vs collapsed counts, slots freed
+- [ ] "Reclassified from Blocked" — count, arrows, reasons
+- [ ] "Reclassified from Low Value" — count, arrows, batch tags
+- [ ] "Expanded Plan Summary" — target formula, pool breakdown
+- [ ] "Before / After" PR counts — original corpus → collapsed → viable pool
+
+### 15. Report integrity
+- [ ] All new sections fit within 30-page limit
+- [ ] Report generation stays under 30 seconds
+- [ ] No overflow or truncation on 6,632-PR corpus
 
 ## Immediate execution order
 
-1. Product surface reset: remove/stub dashboard and clean docs
-2. Funnel contract rewrite: every PR passes the same 16 gates in order
-3. Diff-grounded evidence slice: bring real patch evidence into v1.6
-4. Duplicate synthesis planning: canonical + future merge-by-bot contract
+1. Workstream 1: Recursive duplicate expansion
+2. Workstream 4: Dynamic target calculation (depends on 1 for corpus shrink)
+3. Workstream 2: Blocked second pass (adds recoverable PRs to viable pool)
+4. Workstream 3: Low_value second pass (adds quick wins to viable pool)
+5. Workstream 5: Report enhancements (surfaces all passes in PDF)
 
-## Non-goals for v1.6
+## Non-goals for v1.6.1
 
-- [ ] No web dashboard rebuild
+- [ ] No changes to the 16-gate funnel semantics
+- [ ] No changes to diff-grounded evidence layer
+- [ ] No changes to API response schemas (only additive fields)
 - [ ] No GitHub mutations or auto-merge behavior
-- [ ] No live bot that comments/closes/bans users yet
-- [ ] No attempt to build the full 24/7 daemon in the same slice as the funnel reset
+- [ ] No ML models or probabilistic classification
+- [ ] No dashboard or web surface work
 
 ## Exit note
 
-v1.6 should leave prATC in a simpler state than it started:
-- fewer surfaces
-- clearer funnel semantics
-- stronger machine-readable output
-- better PDF packet
-- a real path to 2.0 continuous operation
+v1.6.1 should leave prATC with a larger actionable merge queue:
+- fewer duplicate PRs competing for plan slots
+- blocked PRs with paths forward re-entering the planning pool
+- low_value PRs with hidden value surfaced and batch-tagged
+- a planner target that scales with corpus health
+- a PDF that tells the full before/after story

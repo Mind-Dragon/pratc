@@ -64,8 +64,8 @@ func TestServeHelpShowsPortFlagDefault(t *testing.T) {
 	if !strings.Contains(output, "--port") {
 		t.Fatalf("serve help missing --port flag; output=%s", output)
 	}
-	if !strings.Contains(output, "default 8080") {
-		t.Fatalf("serve help missing default 8080 text; output=%s", output)
+	if !strings.Contains(output, "default 7400") {
+		t.Fatalf("serve help missing default 7400 text; output=%s", output)
 	}
 }
 

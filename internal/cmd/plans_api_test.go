@@ -240,7 +240,7 @@ func TestHandlePlanInvalidParams(t *testing.T) {
 			}
 
 			// Verify response is valid JSON error
-			var errorResponse map[string]string
+			var errorResponse map[string]any
 			if err := json.Unmarshal(rr.Body.Bytes(), &errorResponse); err != nil {
 				t.Fatalf("expected valid JSON error response, got error: %v", err)
 			}
