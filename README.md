@@ -13,8 +13,6 @@ prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull re
 
 - [CHANGELOG.md](CHANGELOG.md) — Release history
 - [ROADMAP.md](ROADMAP.md) — Current release status and next product phases
-- [TODO.md](TODO.md) — Autonomous-mode buildout record (complete)
-- [version1.4.2.md](version1.4.2.md) — Shipped v1.4.2 operating model
 - [ARCHITECTURE.md](ARCHITECTURE.md) — System shape, data flow, and technical reference
 - [GUIDELINE.md](GUIDELINE.md) — Bucket rules, layer ordering, and non-negotiables
 - [INSTALL.md](INSTALL.md) — Installation and deployment guide
