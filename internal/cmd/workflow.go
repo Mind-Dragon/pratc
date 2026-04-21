@@ -14,7 +14,6 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/app"
 	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/formula"
-	gh "github.com/jeffersonnunn/pratc/internal/github"
 	"github.com/jeffersonnunn/pratc/internal/logger"
 	prsync "github.com/jeffersonnunn/pratc/internal/sync"
 	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
@@ -39,7 +38,7 @@ func RegisterWorkflowCommand() {
 	var outDir string
 	var progress bool
 	var useCacheFirst bool
-	var forceLive bool
+	var resync bool
 	var maxPRs int
 	var rateLimit int
 	var reserveBuffer int
@@ -54,10 +53,14 @@ func RegisterWorkflowCommand() {
 		Long: `Run a full prATC workflow for a repository.
 
 The workflow command performs a blocking sync run, automatically waits through
- rate-limit pauses, then runs analysis once fresh sync data is available.
+rate-limit pauses, then runs analysis once fresh sync data is available.
+
+By default, the analyze step uses cached data when available. Use --resync to
+force a live refresh during the analyze phase. Use --refresh-sync to force a
+fresh sync even when a local snapshot already exists.
 
 The workflow is service-friendly: it does not require a TTY. Use 'pratc monitor
---repo=owner/repo' in another terminal to watch live dashboard updates while the
+--repo=owner/repo' in another terminal to watch live status updates while the
 workflow is running.
 
 Examples:
@@ -66,6 +69,9 @@ Examples:
 
   # Write artifacts to a custom directory
   pratc workflow --repo=owner/repo --out-dir=./projects/owner_repo/runs/latest
+
+  # Force live refresh during analyze phase
+  pratc workflow --repo=owner/repo --resync
 
   # Use a higher max PR limit for large repos
   pratc workflow --repo=owner/repo --max-prs=5000`,
@@ -97,9 +103,17 @@ Examples:
 			}
 			defer lock.Release()
 
-			token, err := gh.ResolveToken(ctx)
+			// Resolve GitHub access using settings-driven config
+			githubAccess, err := ResolveGitHubAccess(ctx, repo)
 			if err != nil {
 				return err
+			}
+			// Emit truthful message about GitHub access state
+			log.Info("github access resolved", "state", githubAccess.State.String(), "message", githubAccess.Message)
+			if githubAccess.Login != "" {
+				fmt.Fprintf(cmd.ErrOrStderr(), "GitHub access: using named login %s\n", githubAccess.Login)
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "GitHub access: %s\n", githubAccess.Message)
 			}
 
 			store, err := openWorkflowCacheStore()
@@ -136,7 +150,7 @@ Examples:
 				log.Info("reusing local sync snapshot", "repo", repo)
 			}
 			if !reused {
-				syncSummary, err = runWorkflowSync(ctx, cmd, store, repo, token, progress, rateLimit, reserveBuffer, resetBuffer, syncMaxPRs)
+				syncSummary, err = runWorkflowSync(ctx, cmd, store, repo, githubAccess.Token, progress, rateLimit, reserveBuffer, resetBuffer, syncMaxPRs)
 				if err != nil {
 					return err
 				}
@@ -145,7 +159,7 @@ Examples:
 				return err
 			}
 
-			cfg := buildWorkflowAnalyzeConfig(useCacheFirst, forceLive, maxPRs, store, token)
+			cfg := buildWorkflowAnalyzeConfig(useCacheFirst, resync, maxPRs, store, githubAccess.Token)
 			cfg.IncludeReview = true
 			cfg.OnAnalyzeProgress = func(phase string, done, total int) {
 				fmt.Fprintf(cmd.ErrOrStderr(), "\r[analyze %s] %d/%d ", phase, done, total)
@@ -213,8 +227,8 @@ Examples:
 	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
 	command.Flags().StringVar(&outDir, "out-dir", "", "Directory for workflow artifacts (defaults to projects/<repo>/runs/<timestamp>)")
 	command.Flags().BoolVar(&progress, "progress", true, "Show sync progress while the workflow runs")
-	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch during analyze")
-	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch during analyze")
+	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch during analyze (default, cached-first mode is always on)")
+	command.Flags().BoolVar(&resync, "resync", false, "Force live refresh during analyze: skip cache and fetch fresh data from GitHub")
 	command.Flags().IntVar(&maxPRs, "max-prs", 0, "Max PRs to analyze (0=no cap)")
 	command.Flags().IntVar(&syncMaxPRs, "sync-max-prs", 0, "Max PRs to sync on the initial pass (0=no cap)")
 	command.Flags().BoolVar(&refreshSync, "refresh-sync", false, "Force a fresh sync even when a local snapshot already exists")
@@ -230,9 +244,9 @@ func defaultWorkflowOutDir(repo string) string {
 	return projectRunDir(repo, time.Now())
 }
 
-func buildWorkflowAnalyzeConfig(useCacheFirst, forceLive bool, maxPRs int, cacheStore *cache.Store, token string) app.Config {
+func buildWorkflowAnalyzeConfig(useCacheFirst, resync bool, maxPRs int, cacheStore *cache.Store, token string) app.Config {
 	return app.Config{
-		AllowLive:       forceLive,
+		AllowLive:       resync,
 		AllowForceCache: true,
 		UseCacheFirst:   useCacheFirst,
 		CacheStore:      cacheStore,
@@ -262,11 +276,8 @@ func runWorkflowSync(ctx context.Context, cmd *cobra.Command, store *cache.Store
 	}
 
 	for {
-		budget := ratelimit.NewBudgetManager(
-			ratelimit.WithRateLimit(rateLimit),
-			ratelimit.WithReserveBuffer(reserveBuffer),
-			ratelimit.WithResetBuffer(resetBuffer),
-		)
+		// Build budget manager from settings policy when available
+		budget := BuildBudgetManagerFromPolicy(ctx, repo, rateLimit, reserveBuffer, resetBuffer)
 		metrics := ratelimit.NewMetrics()
 		innerRunner := prsync.NewDefaultRunner(nil, job.ID, store, syncMaxPRs, token)
 		guard := prsync.NewRateLimitGuard(budget, metrics, store, job.ID)

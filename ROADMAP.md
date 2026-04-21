@@ -51,39 +51,34 @@ Cache-backed verification run `projects/openclaw_openclaw/runs/final-wave` now p
 - [x] Expand noise file list further based on live run results; added OpenClaw-derived generated docs/schema filters (`docs/.generated/*`, `docs/docs.json`, `schema.base.generated.ts`, `schema.help.ts`, `schema.labels.ts`)
 - [x] Tune substance scoring weights based on operator feedback / observed output spread; widened the score using source-file impact and diff-footprint weighting with regression tests in `internal/review/deep_judgment_test.go`
 
-## Version 1.6 — Dashboard Enhancements (Q3 2026)
+## Version 1.6 — Pipeline-First Reset (CURRENT TARGET)
 
-**Goal:** Transform the web dashboard from a monitoring tool into a full PR triage interface.
+**Goal:** Remove dashboard as product surface, strengthen the 16-gate funnel, and make CLI/API/PDF the only promoted interfaces.
 
-### Triage Inbox
+### Product Surface Reset
 
-- Filterable PR list with analyzer findings displayed inline
-- Bulk actions: approve for merge, request changes, mark as duplicate
-- Keyboard shortcuts for rapid triage (vim-style navigation)
+- [x] Web dashboard removed from active product contract
+- [x] CLI + API + PDF are the only first-class surfaces
+- [x] `serve` is an AI-facing API server, not a backing server for browser dashboard
+- [x] Verify repo can be understood and operated without `web/` assumptions
 
-### Merge Execution
+### Funnel Contract
 
-- **Read-only merge planning** (no auto-merge)
-- Generate merge instructions with conflict warnings
-- Copy-to-clipboard merge commands for operators
-- Integration with GitHub CLI for one-click merge execution
+- [x] Every non-garbage PR passes through all 16 gates in order
+- [x] Gate outputs recorded explicitly (gate entered, outcome, reason, cost tier)
+- [x] Outer peel removes junk fast; inner gates spend more CPU only on survivors
+- [x] Duplicates advance from detection to synthesis planning
 
-### Real-Time Collaboration
+### Evidence and Synthesis
 
-- WebSocket-based live updates for multi-operator workflows
-- Operator presence indicators
-- Comment threads on PRs (stored locally, not pushed to GitHub)
+- [x] First diff-grounded evidence slice lands in review/analyze output
+- [x] Duplicate groups emit synthesis-ready advisory artifacts with nominated canonical candidates
 
-### Mobile Responsiveness
+### API and Output
 
-- Full-featured mobile interface for on-call operators
-- Push notifications for high-priority PRs (via Telegram integration)
-- Offline mode with local cache
-
-### Guardrails
-
-- No auto-merge or auto-approve behavior (read-only planning only)
-- All merge execution requires explicit operator confirmation
+- [x] API responses expanded with explicit gate-journey, diff-evidence, and duplicate-synthesis fields
+- [x] PDF report reads like a decision packet, not a dashboard export
+- [ ] Remove browser/dashboard assumptions from endpoint naming and docs
 
 ## Version 1.7 — Evidence Enrichment (Q4 2026)
 

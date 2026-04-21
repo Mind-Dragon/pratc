@@ -336,3 +336,153 @@ func mergeAnalyzerConfig(base, override AnalyzerConfig) AnalyzerConfig {
 
 	return result
 }
+
+// GetGitHubRuntimeConfig loads the GitHub runtime configuration.
+// It merges global and repo-specific settings, with repo settings overriding global.
+func (s *Store) GetGitHubRuntimeConfig(ctx context.Context, repo string) (GitHubRuntimeConfig, error) {
+	cfg := DefaultGitHubRuntimeConfig()
+
+	globalSettings, err := s.List(ctx, ScopeGlobal, "")
+	if err != nil {
+		return cfg, fmt.Errorf("load global github_runtime config: %w", err)
+	}
+	if raw, ok := globalSettings["github_runtime"]; ok {
+		if globalCfg, err := parseGitHubRuntimeConfig(raw); err == nil {
+			cfg = mergeGitHubRuntimeConfig(cfg, globalCfg)
+		}
+	}
+
+	if repo != "" {
+		repoSettings, err := s.List(ctx, ScopeRepo, repo)
+		if err != nil {
+			return cfg, fmt.Errorf("load repo github_runtime config: %w", err)
+		}
+		if raw, ok := repoSettings["github_runtime"]; ok {
+			if repoCfg, err := parseGitHubRuntimeConfig(raw); err == nil {
+				cfg = mergeGitHubRuntimeConfig(cfg, repoCfg)
+			}
+		}
+	}
+
+	return cfg, nil
+}
+
+// SetGitHubRuntimeConfig saves the GitHub runtime configuration.
+func (s *Store) SetGitHubRuntimeConfig(ctx context.Context, repo string, cfg GitHubRuntimeConfig) error {
+	scope := ScopeGlobal
+	if repo != "" {
+		scope = ScopeRepo
+	}
+	return s.Set(ctx, scope, repo, "github_runtime", cfg)
+}
+
+// GetGitHubRatePolicy loads the GitHub rate policy configuration.
+// It merges global and repo-specific settings, with repo settings overriding global.
+func (s *Store) GetGitHubRatePolicy(ctx context.Context, repo string) (GitHubRatePolicy, error) {
+	cfg := DefaultGitHubRatePolicy()
+
+	globalSettings, err := s.List(ctx, ScopeGlobal, "")
+	if err != nil {
+		return cfg, fmt.Errorf("load global github_rate_policy config: %w", err)
+	}
+	if raw, ok := globalSettings["github_rate_policy"]; ok {
+		if globalCfg, err := parseGitHubRatePolicy(raw); err == nil {
+			cfg = mergeGitHubRatePolicy(cfg, globalCfg)
+		}
+	}
+
+	if repo != "" {
+		repoSettings, err := s.List(ctx, ScopeRepo, repo)
+		if err != nil {
+			return cfg, fmt.Errorf("load repo github_rate_policy config: %w", err)
+		}
+		if raw, ok := repoSettings["github_rate_policy"]; ok {
+			if repoCfg, err := parseGitHubRatePolicy(raw); err == nil {
+				cfg = mergeGitHubRatePolicy(cfg, repoCfg)
+			}
+		}
+	}
+
+	return cfg, nil
+}
+
+// SetGitHubRatePolicy saves the GitHub rate policy configuration.
+func (s *Store) SetGitHubRatePolicy(ctx context.Context, repo string, cfg GitHubRatePolicy) error {
+	scope := ScopeGlobal
+	if repo != "" {
+		scope = ScopeRepo
+	}
+	return s.Set(ctx, scope, repo, "github_rate_policy", cfg)
+}
+
+func parseGitHubRuntimeConfig(raw any) (GitHubRuntimeConfig, error) {
+	var cfg GitHubRuntimeConfig
+	switch v := raw.(type) {
+	case GitHubRuntimeConfig:
+		return v, nil
+	case map[string]any:
+		data, err := json.Marshal(v)
+		if err != nil {
+			return cfg, fmt.Errorf("marshal github_runtime config: %w", err)
+		}
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return cfg, fmt.Errorf("unmarshal github_runtime config: %w", err)
+		}
+		return cfg, nil
+	default:
+		return cfg, fmt.Errorf("unexpected github_runtime config type: %T", raw)
+	}
+}
+
+func mergeGitHubRuntimeConfig(base, override GitHubRuntimeConfig) GitHubRuntimeConfig {
+	result := base
+	if len(override.SelectedLogins) > 0 {
+		result.SelectedLogins = override.SelectedLogins
+	}
+	if override.FailoverIfUnavailable != base.FailoverIfUnavailable {
+		result.FailoverIfUnavailable = override.FailoverIfUnavailable
+	}
+	if override.AllowUnauthenticated != base.AllowUnauthenticated {
+		result.AllowUnauthenticated = override.AllowUnauthenticated
+	}
+	return result
+}
+
+func parseGitHubRatePolicy(raw any) (GitHubRatePolicy, error) {
+	var cfg GitHubRatePolicy
+	switch v := raw.(type) {
+	case GitHubRatePolicy:
+		return v, nil
+	case map[string]any:
+		data, err := json.Marshal(v)
+		if err != nil {
+			return cfg, fmt.Errorf("marshal github_rate_policy config: %w", err)
+		}
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return cfg, fmt.Errorf("unmarshal github_rate_policy config: %w", err)
+		}
+		return cfg, nil
+	default:
+		return cfg, fmt.Errorf("unexpected github_rate_policy config type: %T", raw)
+	}
+}
+
+func mergeGitHubRatePolicy(base, override GitHubRatePolicy) GitHubRatePolicy {
+	result := base
+	if override.RateLimit != 0 {
+		result.RateLimit = override.RateLimit
+	}
+	if override.ReserveBuffer != 0 {
+		result.ReserveBuffer = override.ReserveBuffer
+	}
+	if override.ResetBuffer != 0 {
+		result.ResetBuffer = override.ResetBuffer
+	}
+	if override.UnauthenticatedRateLimit != 0 {
+		result.UnauthenticatedRateLimit = override.UnauthenticatedRateLimit
+	}
+	if override.UnauthenticatedReserveBuffer != 0 {
+		result.UnauthenticatedReserveBuffer = override.UnauthenticatedReserveBuffer
+	}
+	return result
+}

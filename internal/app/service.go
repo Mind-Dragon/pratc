@@ -581,6 +581,17 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 
 	response.ReviewPayload = reviewPayload
 
+	// Build duplicate synthesis plans using review results and conflict data.
+	if len(response.Duplicates) > 0 || len(response.Overlaps) > 0 {
+		response.DuplicateSynthesis = buildDuplicateSynthesis(
+			response.Duplicates,
+			response.Overlaps,
+			response.PRs,
+			reviewPayload,
+			response.Conflicts,
+		)
+	}
+
 	// Enrich each PR with decision engine results if review was run.
 	if reviewPayload != nil && len(reviewPayload.Results) > 0 {
 		enrichPRsWithReviewData(response.PRs, reviewPayload.Results)
@@ -589,7 +600,7 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 	return response, nil
 }
 
-func (s Service) buildReviewPayload(ctx context.Context, repo string, response types.AnalysisResponse) (*types.ReviewResponse, error) {
+func (s Service) buildReviewPayload(ctx context.Context, repoName string, response types.AnalysisResponse) (*types.ReviewResponse, error) {
 	nowFn := s.now
 	if nowFn == nil {
 		nowFn = func() time.Time { return time.Now().UTC() }
@@ -625,6 +636,35 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 
 	cfg := settings.DefaultAnalyzerConfig()
 	orchestrator := review.NewOrchestrator(cfg, settingsStore)
+
+	// Fetch diff evidence for all PRs if mirror is available
+	diffEvidence := make(map[int]struct {
+		Files []types.PRFile
+		Hunks []types.DiffHunk
+	})
+	if s.mirrorAvailable && s.mirrorBaseDir != "" {
+		remoteURL := fmt.Sprintf(types.GitHubURLPrefix+"%s.git", repoName)
+		if m, err := repo.OpenOrCreate(ctx, s.mirrorBaseDir, repoName, remoteURL); err == nil {
+			// Fetch all PR refs to ensure we have them
+			prNumbers := make([]int, len(response.PRs))
+			for i, pr := range response.PRs {
+				prNumbers[i] = pr.Number
+			}
+			if len(prNumbers) > 0 {
+				_ = m.FetchAll(ctx, prNumbers, nil)
+			}
+			// Fetch diff patches for each PR
+			for _, pr := range response.PRs {
+				baseBranch := pr.BaseBranch
+				if files, hunks, err := m.GetDiffPatch(ctx, pr.Number, baseBranch); err == nil {
+					diffEvidence[pr.Number] = struct {
+						Files []types.PRFile
+						Hunks []types.DiffHunk
+					}{Files: files, Hunks: hunks}
+				}
+			}
+		}
+	}
 
 	clusterMap := make(map[string]types.PRCluster)
 	for _, cluster := range response.Clusters {
@@ -681,7 +721,7 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 
 		prData := review.PRData{
 			PR:              pr,
-			Repo:            repo,
+			Repo:            repoName,
 			ClusterID:       pr.ClusterID,
 			ClusterLabel:    clusterLabel,
 			RelatedPRs:      relatedPRs,
@@ -692,6 +732,12 @@ func (s Service) buildReviewPayload(ctx context.Context, repo string, response t
 		}
 		if stale, ok := staleMap[pr.Number]; ok {
 			prData.Staleness = &stale
+		}
+
+		// Populate diff evidence if available
+		if evidence, ok := diffEvidence[pr.Number]; ok {
+			prData.Files = evidence.Files
+			prData.DiffHunks = evidence.Hunks
 		}
 
 		result, err := orchestrator.Review(ctx, prData)
@@ -2133,6 +2179,335 @@ func buildStaleness(prs []types.PR, duplicates []types.DuplicateGroup, now time.
 	})
 
 	return reports
+}
+
+// buildDuplicateSynthesis creates synthesis plans for duplicate and near-duplicate groups.
+// It examines each group's PRs using available review signals and nominates
+// the best candidate for future merge-by-bot use.
+func buildDuplicateSynthesis(
+	duplicates []types.DuplicateGroup,
+	overlaps []types.DuplicateGroup,
+	prs []types.PR,
+	reviewPayload *types.ReviewResponse,
+	conflicts []types.ConflictPair,
+) []types.DuplicateSynthesisPlan {
+	if len(prs) == 0 {
+		return nil
+	}
+
+	// Build PR lookup map
+	prByNumber := make(map[int]types.PR, len(prs))
+	for _, pr := range prs {
+		prByNumber[pr.Number] = pr
+	}
+
+	// Build review results lookup
+	reviewByNumber := make(map[int]types.ReviewResult, len(reviewPayload.Results))
+	for _, r := range reviewPayload.Results {
+		reviewByNumber[r.PRNumber] = r
+	}
+
+	// Build conflict footprint: count conflicts per PR
+	conflictFootprint := make(map[int]int)
+	for _, c := range conflicts {
+		conflictFootprint[c.SourcePR]++
+		conflictFootprint[c.TargetPR]++
+	}
+
+	// Process duplicate groups
+	var plans []types.DuplicateSynthesisPlan
+
+	for _, dup := range duplicates {
+		plan := buildSynthesisPlanForGroup(
+			dup.CanonicalPRNumber,
+			dup.DuplicatePRNums,
+			dup.Similarity,
+			dup.Reason,
+			"duplicate",
+			prByNumber,
+			reviewByNumber,
+			conflictFootprint,
+		)
+		plans = append(plans, plan)
+	}
+
+	// Process overlap groups
+	for _, ov := range overlaps {
+		plan := buildSynthesisPlanForGroup(
+			ov.CanonicalPRNumber,
+			ov.DuplicatePRNums,
+			ov.Similarity,
+			ov.Reason,
+			"overlap",
+			prByNumber,
+			reviewByNumber,
+			conflictFootprint,
+		)
+		plans = append(plans, plan)
+	}
+
+	// Sort plans by group ID for stable output
+	sort.Slice(plans, func(i, j int) bool {
+		return plans[i].GroupID < plans[j].GroupID
+	})
+
+	return plans
+}
+
+// synthesisScoredCandidate is a helper type for ranking synthesis candidates.
+type synthesisScoredCandidate struct {
+	prNumber   int
+	score     float64
+	candidate types.DuplicateSynthesisCandidate
+}
+
+// buildSynthesisPlanForGroup creates a synthesis plan for a single duplicate/near-duplicate group.
+func buildSynthesisPlanForGroup(
+	canonicalPR int,
+	duplicatePRs []int,
+	similarity float64,
+	reason string,
+	groupType string,
+	prByNumber map[int]types.PR,
+	reviewByNumber map[int]types.ReviewResult,
+	conflictFootprint map[int]int,
+) types.DuplicateSynthesisPlan {
+	// Collect all PR numbers in this group
+	allPRs := make([]int, 0, 1+len(duplicatePRs))
+	allPRs = append(allPRs, canonicalPR)
+	for _, d := range duplicatePRs {
+		if d > 0 { // Skip negative merged PR numbers
+			allPRs = append(allPRs, d)
+		}
+	}
+
+	// Score each candidate
+	var scored []synthesisScoredCandidate
+
+	for _, prNum := range allPRs {
+		pr, ok := prByNumber[prNum]
+		if !ok {
+			continue
+		}
+		candidate, score := scoreSynthesisCandidate(pr, reviewByNumber[prNum], conflictFootprint[prNum])
+		scored = append(scored, synthesisScoredCandidate{prNumber: prNum, score: score, candidate: candidate})
+	}
+
+	// Sort by synthesis score descending, then by PR number ascending as tiebreaker
+	sort.Slice(scored, func(i, j int) bool {
+		if scored[i].score != scored[j].score {
+			return scored[i].score > scored[j].score
+		}
+		return scored[i].prNumber < scored[j].prNumber
+	})
+
+	// Assign roles based on ranking
+	candidates := make([]types.DuplicateSynthesisCandidate, len(scored))
+	nominatedCanonical := 0
+	if len(scored) > 0 {
+		nominatedCanonical = scored[0].prNumber
+		for i := range scored {
+			c := scored[i].candidate
+			switch {
+			case i == 0:
+				c.Role = "canonical"
+			case i == 1 && scored[0].score > 0 && scored[0].score-scored[i].score < 0.15:
+				// Within 0.15 of top score → alternate
+				c.Role = "alternate"
+			default:
+				if scored[i].score > 0.3 {
+					c.Role = "contributor"
+				} else {
+					c.Role = "excluded"
+				}
+			}
+			c.SynthesisScore = scored[i].score
+			candidates[i] = c
+		}
+	}
+
+	// Build synthesis notes
+	notes := buildSynthesisNotes(scored, candidates)
+
+	return types.DuplicateSynthesisPlan{
+		GroupID:               fmt.Sprintf("grp_%d_%s", canonicalPR, groupType),
+		GroupType:             groupType,
+		OriginalCanonicalPR:    canonicalPR,
+		NominatedCanonicalPR:   nominatedCanonical,
+		Similarity:            similarity,
+		Reason:                reason,
+		Candidates:            candidates,
+		SynthesisNotes:        notes,
+	}
+}
+
+// scoreSynthesisCandidate computes a synthesis score for a PR based on available signals.
+// Score is 0.0-1.0, higher is better for merge-by-bot candidacy.
+func scoreSynthesisCandidate(
+	pr types.PR,
+	review types.ReviewResult,
+	conflictCount int,
+) (types.DuplicateSynthesisCandidate, float64) {
+	var factors []string
+	score := 0.0
+
+	// Base quality signals
+	substanceScore := 0.0
+	if review.SubstanceScore > 0 {
+		substanceScore = float64(review.SubstanceScore) / 100.0
+		score += substanceScore * 0.25
+		factors = append(factors, fmt.Sprintf("substance=%.2f", substanceScore))
+	}
+
+	// Confidence signal
+	confidenceScore := review.Confidence
+	if confidenceScore > 0 {
+		score += confidenceScore * 0.20
+		factors = append(factors, fmt.Sprintf("confidence=%.2f", confidenceScore))
+	}
+
+	// Mergeability signal
+	switch pr.Mergeable {
+	case "yes":
+		score += 0.20
+		factors = append(factors, "mergeable=yes")
+	case "no":
+		// Heavily penalize but don't exclude
+		score += 0.05
+		factors = append(factors, "mergeable=no")
+	default:
+		factors = append(factors, "mergeable=unknown")
+	}
+
+	// Draft penalty
+	if pr.IsDraft {
+		score *= 0.7
+		factors = append(factors, "draft=true")
+	}
+
+	// Conflict footprint: penalize PRs with many conflicts
+	conflictPenalty := math.Min(float64(conflictCount)*0.03, 0.15)
+	score -= conflictPenalty
+	if conflictCount > 0 {
+		factors = append(factors, fmt.Sprintf("conflicts=%d", conflictCount))
+	}
+
+	// Test evidence bonus
+	hasTestEvidence := false
+	for _, finding := range review.AnalyzerFindings {
+		if strings.Contains(strings.ToLower(finding.AnalyzerName), "test") ||
+			strings.Contains(strings.ToLower(finding.Finding), "test") {
+			hasTestEvidence = true
+			break
+		}
+	}
+	if hasTestEvidence {
+		score += 0.10
+		factors = append(factors, "has_test_evidence=true")
+	}
+
+	// Signal quality bonus
+	signalQuality := "medium"
+	if review.SignalQuality == "high" || review.Confidence >= 0.8 {
+		signalQuality = "high"
+		score += 0.10
+	} else if review.SignalQuality == "low" || review.Confidence < 0.4 {
+		signalQuality = "low"
+		score -= 0.05
+	}
+	factors = append(factors, fmt.Sprintf("signal_quality=%s", signalQuality))
+
+	// Ensure score is bounded
+	score = math.Max(0, math.Min(1.0, score))
+
+	// Build rationale
+	rationale := fmt.Sprintf(
+		"Synthesis candidacy based on: substance %.0f%%, confidence %.0f%%, mergeable=%s, conflicts=%d, test_evidence=%v, signal=%s",
+		substanceScore*100, confidenceScore*100, pr.Mergeable, conflictCount, hasTestEvidence, signalQuality,
+	)
+
+	return types.DuplicateSynthesisCandidate{
+		PRNumber:           pr.Number,
+		Title:              pr.Title,
+		Author:             pr.Author,
+		Role:               "canonical", // default, will be overwritten
+		SynthesisScore:     score,
+		Confidence:         review.Confidence,
+		SubstanceScore:     review.SubstanceScore,
+		Mergeable:          pr.Mergeable,
+		HasTestEvidence:    hasTestEvidence,
+		ConflictFootprint:  conflictCount,
+		IsDraft:            pr.IsDraft,
+		SignalQuality:      signalQuality,
+		ScoringFactors:     factors,
+		Rationale:          rationale,
+	}, score
+}
+
+// buildSynthesisNotes generates human-readable guidance for a future merge bot.
+func buildSynthesisNotes(scored []synthesisScoredCandidate, candidates []types.DuplicateSynthesisCandidate) []string {
+	var notes []string
+
+	if len(scored) == 0 {
+		return notes
+	}
+
+	// Note about canonical selection
+	if len(scored) > 0 {
+		notes = append(notes, fmt.Sprintf(
+			"Canonical PR #%d nominated with synthesis score %.2f",
+			scored[0].prNumber, scored[0].score,
+		))
+	}
+
+	// Check if original and nominated canonical differ
+	// (this would require knowing original, passed separately if needed)
+
+	// Note about alternates
+	alternateCount := 0
+	for i, c := range candidates {
+		if c.Role == "alternate" {
+			alternateCount++
+			notes = append(notes, fmt.Sprintf(
+				"Alternate candidate: PR #%d (score %.2f) should be preserved as backup",
+				scored[i].prNumber, scored[i].score,
+			))
+		}
+	}
+	if alternateCount == 0 && len(scored) > 1 {
+		notes = append(notes, "No strong alternate candidates identified; canonical PR is the clear best-of-group")
+	}
+
+	// Note about conflicts
+	maxConflicts := 0
+	maxConflictPR := 0
+	for i, c := range candidates {
+		if c.ConflictFootprint > maxConflicts {
+			maxConflicts = c.ConflictFootprint
+			maxConflictPR = scored[i].prNumber
+		}
+	}
+	if maxConflicts > 0 {
+		notes = append(notes, fmt.Sprintf(
+			"PR #%d has the highest conflict footprint (%d conflicts); conflict resolution may be needed before synthesis",
+			maxConflictPR, maxConflicts,
+		))
+	}
+
+	// Note about test coverage
+	hasTestEvidenceCount := 0
+	for _, c := range candidates {
+		if c.HasTestEvidence {
+			hasTestEvidenceCount++
+		}
+	}
+	if hasTestEvidenceCount == 0 {
+		notes = append(notes, "Warning: no PR in this group has test evidence; synthesized PR may need test coverage added")
+	} else {
+		notes = append(notes, fmt.Sprintf("%d of %d candidates have test evidence", hasTestEvidenceCount, len(candidates)))
+	}
+
+	return notes
 }
 
 func orderSelection(repo string, selected []types.PR) []types.PR {

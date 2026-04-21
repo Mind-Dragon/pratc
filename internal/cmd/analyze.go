@@ -12,9 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jeffersonnunn/pratc/internal/app"
 	"github.com/jeffersonnunn/pratc/internal/cache"
-	"github.com/jeffersonnunn/pratc/internal/github"
 	"github.com/jeffersonnunn/pratc/internal/logger"
-	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
 	"github.com/jeffersonnunn/pratc/internal/types"
 	"github.com/spf13/cobra"
 )
@@ -157,11 +155,11 @@ func startAnalyzeBackgroundSync(repo string) (string, error) {
 		return "", fmt.Errorf("create sync job: %w", err)
 	}
 
-	if _, err := github.ResolveToken(context.Background()); err != nil {
+		if _, err := ResolveGitHubAccess(context.Background(), repo); err != nil {
 		return "", err
 	}
 
-	manager := newRepoSyncManager(dbPath, job.ID)
+	manager := newRepoSyncManager(dbPath, job.ID, repo)
 	if err := manager.Start(repo); err != nil {
 		if markErr := store.MarkSyncJobFailed(job.ID, err.Error()); markErr != nil {
 			return "", fmt.Errorf("start background sync: %w (mark failed job: %v)", err, markErr)
@@ -176,7 +174,7 @@ func RegisterAnalyzeCommand() {
 	var repo string
 	var format string
 	var useCacheFirst bool
-	var forceLive bool
+	var resync bool
 	var forceCache bool
 	var force bool
 	var maxPRs int
@@ -188,6 +186,20 @@ func RegisterAnalyzeCommand() {
 	command := &cobra.Command{
 		Use:   "analyze",
 		Short: "Analyze pull requests for a repository",
+		Long: `Analyze pull requests for a repository.
+
+By default, analyze uses cached data when available and only fetches live
+data when the cache is stale or missing. Use --resync to force a live refresh.
+
+Examples:
+  # Default: use cache if available, fetch live data if needed
+  pratc analyze --repo=owner/repo
+
+  # Force live refresh of all data
+  pratc analyze --repo=owner/repo --resync
+
+  # Work offline with stale cache (never contact GitHub)
+  pratc analyze --repo=owner/repo --force-cache`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
@@ -212,14 +224,11 @@ func RegisterAnalyzeCommand() {
 			}
 			defer lock.Release()
 
-			budget := ratelimit.NewBudgetManager(
-				ratelimit.WithRateLimit(rateLimit),
-				ratelimit.WithReserveBuffer(reserveBuffer),
-				ratelimit.WithResetBuffer(resetBuffer),
-			)
+			// Build budget manager from settings policy when available
+			budget := BuildBudgetManagerFromPolicy(ctx, repo, rateLimit, reserveBuffer, resetBuffer)
 			log.Info("analyze budget initialized", "budget", budget.String())
 
-			cfg := buildAnalyzeConfig(useCacheFirst, forceLive, forceCache, maxPRs)
+			cfg := buildAnalyzeConfig(useCacheFirst, resync, forceCache, maxPRs)
 			cfg.OnAnalyzeProgress = func(phase string, done, total int) {
 				log.Info("analyze progress", "phase", phase, "done", done, "total", total)
 				fmt.Fprintf(cmd.ErrOrStderr(), "\r[analyze %s] %d/%d ", phase, done, total)
@@ -229,7 +238,7 @@ func RegisterAnalyzeCommand() {
 			}
 			service := app.NewService(cfg)
 
-			if shouldWarnAnalyzeSync(useCacheFirst, force, forceLive, forceCache) {
+			if shouldWarnAnalyzeSync(useCacheFirst, force, resync, forceCache) {
 				if openPRCount, hasOpenPRCount, shouldWarn := checkAnalyzeSyncWarningData(repo); shouldWarn {
 					fmt.Fprint(os.Stderr, formatAnalyzeSyncWarning(repo, openPRCount, hasOpenPRCount))
 					jobID, err := startAnalyzeBackgroundSync(repo)
@@ -258,9 +267,9 @@ func RegisterAnalyzeCommand() {
 	}
 	command.Flags().StringVar(&repo, "repo", "", "Repository in owner/repo format")
 	command.Flags().StringVar(&format, "format", "json", "Output format: json|text")
-	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch")
-	command.Flags().BoolVar(&forceCache, "force-cache", false, "Use stale cached data without triggering a live sync (for offline analysis)")
-	command.Flags().BoolVar(&forceLive, "force-live", false, "Skip cache check and force live fetch")
+	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch (default, cached-first mode is always on)")
+	command.Flags().BoolVar(&resync, "resync", false, "Force live refresh: skip cache and fetch fresh data from GitHub")
+	command.Flags().BoolVar(&forceCache, "force-cache", false, "Offline mode: use stale cached data, never contact GitHub")
 	command.Flags().BoolVar(&force, "force", false, "Compatibility flag to skip sync warning")
 	command.Flags().IntVar(&maxPRs, "max-prs", 0, "Max PRs to analyze (0=no cap)")
 	command.Flags().IntVar(&rateLimit, "rate-limit", 5000, "GitHub API rate limit per hour")
@@ -268,20 +277,25 @@ func RegisterAnalyzeCommand() {
 	command.Flags().IntVar(&resetBuffer, "reset-buffer", 15, "Seconds to wait after rate limit reset")
 	command.Flags().BoolVar(&enableReview, "review", false, "Legacy compatibility flag; review output is always included in v1.3")
 	_ = command.Flags().MarkHidden("force")
+	_ = command.Flags().MarkHidden("force-cache")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
 }
 
-func buildAnalyzeConfig(useCacheFirst, forceLive, forceCache bool, maxPRs int) app.Config {
-	return app.Config{AllowLive: forceLive, AllowForceCache: forceCache, UseCacheFirst: useCacheFirst, MaxPRs: maxPRs, IncludeReview: true}
+func buildAnalyzeConfig(useCacheFirst, resync, forceCache bool, maxPRs int) app.Config {
+	return app.Config{AllowLive: resync, AllowForceCache: forceCache, UseCacheFirst: useCacheFirst, MaxPRs: maxPRs, IncludeReview: true}
 }
 
-func buildCacheFirstConfig(useCacheFirst, forceCache bool, cacheStore *cache.Store) app.Config {
-	return app.Config{AllowForceCache: forceCache, UseCacheFirst: useCacheFirst, CacheStore: cacheStore}
+func buildCacheFirstConfig(useCacheFirst, resync, forceCache bool, cacheStore *cache.Store) app.Config {
+	return app.Config{AllowLive: resync, AllowForceCache: forceCache, UseCacheFirst: useCacheFirst, CacheStore: cacheStore}
 }
 
-func shouldWarnAnalyzeSync(useCacheFirst, force, forceLive, forceCache bool) bool {
-	return !force && !forceLive && !forceCache && useCacheFirst
+func buildClusterConfig(useCacheFirst, resync, forceCache bool) app.Config {
+	return app.Config{AllowLive: resync, AllowForceCache: forceCache, UseCacheFirst: useCacheFirst}
+}
+
+func shouldWarnAnalyzeSync(useCacheFirst, force, resync, forceCache bool) bool {
+	return !force && !resync && !forceCache && useCacheFirst
 }
 
 func estimateAnalyzeSyncAPICalls(openPRCount int) int {

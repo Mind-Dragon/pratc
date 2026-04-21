@@ -84,7 +84,7 @@ func generatePDFReport(repo, inputDir, outputPath string, skipReview, skipCharts
 		Title:       fmt.Sprintf("PR Analysis Report: %s", repo),
 		GeneratedAt: analyzeTimestamp,
 		Summary:     fmt.Sprintf("Automated PR analysis and merge planning report for %s", repo),
-		CacheNote:   "Cluster, graph, and plan steps used --force-cache and may reflect a subset of the full corpus. Analyze step covers all PRs in the snapshot.",
+		CacheNote:   "Cluster, graph, and plan steps used cached-first mode and may reflect a subset of the full corpus. Analyze step covers all PRs in the snapshot.",
 	})
 
 	if summary, err := report.LoadSummarySection(resolvedInputDir, repo); err == nil {
@@ -101,6 +101,12 @@ func generatePDFReport(repo, inputDir, outputPath string, skipReview, skipCharts
 		exporter.AddSection(analystSummary)
 	} else {
 		fmt.Fprintf(stderr, "Warning: could not load analyst summary section: %v\n", err)
+	}
+	// Add decision trail early to make gate-journey prominent in the report
+	if decisionTrail, err := report.LoadDecisionTrailSection(resolvedInputDir, repo); err == nil {
+		exporter.AddSection(decisionTrail)
+	} else {
+		fmt.Fprintf(stderr, "Warning: could not load decision trail section: %v\n", err)
 	}
 	if junk, err := report.LoadSpamJunkSection(resolvedInputDir, repo); err == nil {
 		exporter.AddSection(junk)
@@ -123,11 +129,6 @@ func generatePDFReport(repo, inputDir, outputPath string, skipReview, skipCharts
 		} else {
 			fmt.Fprintf(stderr, "Warning: could not load review section: %v\n", err)
 		}
-	}
-	if decisionTrail, err := report.LoadDecisionTrailSection(resolvedInputDir, repo); err == nil {
-		exporter.AddSection(decisionTrail)
-	} else {
-		fmt.Fprintf(stderr, "Warning: could not load decision trail section: %v\n", err)
 	}
 	if recs, err := report.LoadAnalystRecommendationsSection(resolvedInputDir, repo); err == nil {
 		exporter.AddSection(recs)

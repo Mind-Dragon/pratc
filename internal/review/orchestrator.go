@@ -476,13 +476,56 @@ func buildDecisionLayers(prData PRData, safetyResult MergeSafetyResult, problemR
 	relatedCount := len(prData.RelatedPRs)
 	filesTouched := len(pr.FilesChanged)
 	changeFootprint := pr.Additions + pr.Deletions
+
+	// Determine terminal gate based on disposal buckets.
+	// A PR exits early if it lands in junk, duplicate, or blocked.
+	isTerminal := isDisposalCategory(category, problemResult, pr)
+	exitGate := 0
+	if isTerminal {
+		exitGate = terminalGateNumber(pr, problemResult)
+	}
+
+	// costTier returns the computational cost tier for a gate number.
+	costTier := func(gate int) string {
+		switch {
+		case gate <= 3:
+			return "cheap"
+		case gate <= 5:
+			return "medium"
+		default:
+			return "expensive"
+		}
+	}
+
+	// terminalAndContinued sets Terminal and Continued flags based on gate position.
+	terminalAndContinued := func(gate int) (terminal, continued bool) {
+		if isTerminal {
+			if gate == exitGate {
+				return true, false // this gate is where PR exits
+			}
+			if gate > exitGate {
+				return false, false // gates after exit
+			}
+			return false, true // gates before exit gate that PR passed through
+		}
+		// PR passes all gates; only gate 16 is terminal
+		if gate == 16 {
+			return true, false
+		}
+		return false, true
+	}
+
 	layer := func(num int, name, bucket, status string, reasons ...string) types.DecisionLayer {
+		isTerm, isCont := terminalAndContinued(num)
 		return types.DecisionLayer{
-			Layer:   num,
-			Name:    name,
-			Bucket:  bucket,
-			Status:  status,
-			Reasons: mergeUniqueStrings(reasons),
+			Layer:     num,
+			Name:      name,
+			CostTier:  costTier(num),
+			Bucket:    bucket,
+			Status:    status,
+			Reasons:   mergeUniqueStrings(reasons),
+			Continued: isCont,
+			Terminal:  isTerm,
 		}
 	}
 
@@ -506,6 +549,50 @@ func buildDecisionLayers(prData PRData, safetyResult MergeSafetyResult, problemR
 	}
 
 	return layers
+}
+
+// isDisposalCategory returns true if the PR exits early due to being
+// classified as junk, duplicate, or blocked.
+func isDisposalCategory(category types.ReviewCategory, problemResult ProblematicPRResult, pr types.PR) bool {
+	// Junk: spam, malware, malformed PRs
+	if problemResult.IsProblematic && problemResult.ProblemType == "spam" {
+		return true
+	}
+	// Blocked: broken, suspicious, or structurally problematic
+	if problemResult.IsProblematic && (problemResult.ProblemType == "broken" || problemResult.ProblemType == "suspicious") {
+		return true
+	}
+	// Blocked: duplicate superseded
+	if category == types.ReviewCategoryDuplicateSuperseded {
+		return true
+	}
+	// Blocked: garbage/junk at layer 1
+	if pr.IsDraft || pr.IsBot || strings.TrimSpace(pr.Title) == "" || strings.TrimSpace(pr.Body) == "" {
+		return true
+	}
+	return false
+}
+
+// terminalGateNumber returns the gate number where the PR exits the funnel.
+func terminalGateNumber(pr types.PR, problemResult ProblematicPRResult) int {
+	// Garbage exit at layer 1
+	if pr.IsDraft || pr.IsBot || strings.TrimSpace(pr.Title) == "" || strings.TrimSpace(pr.Body) == "" {
+		return 1
+	}
+	// Spam exits at layer 3 (Obvious badness)
+	if problemResult.IsProblematic && problemResult.ProblemType == "spam" {
+		return 3
+	}
+	// Broken/suspicious exits at layer 3
+	if problemResult.IsProblematic && (problemResult.ProblemType == "broken" || problemResult.ProblemType == "suspicious") {
+		return 3
+	}
+	// Duplicate/superseded PRs: current implementation continues through all 16 gates
+	// rather than exiting early at layer 2. This means duplicate/superseded PRs are
+	// tracked all the way to gate 16 (Signal quality) for observability purposes.
+	// The Terminal=true flag is set at the appropriate disposal gate in buildDecisionLayers
+	// based on the category. To add early duplicate exit, set exit gate to 2 here.
+	return 16
 }
 
 

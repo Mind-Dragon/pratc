@@ -1,119 +1,133 @@
-# prATC TODO — Autonomous Mode Buildout
+# prATC TODO — v1.6 Pipeline-First Reset
 
 ## Goal
 
-Make prATC operate in a true autonomous mode where Hermes can resume from repo-local state, run an audit-driven controller loop, delegate subagents, and iteratively close GUIDELINE gaps against a real corpus until the required audit surface is green.
+Turn prATC into a pipeline-first system with three primary surfaces only:
+- CLI for humans
+- API for AI systems
+- PDF report for human decision-makers
+
+The web dashboard is no longer part of the product direction. v1.6 is about making the pipeline sharper, cheaper, more explainable, and more durable for a future 24/7 daemon that continuously ingests and processes PRs.
 
 ## Source of truth
 
-- `GUIDELINE.md` — compliance rules and non-negotiables
-- `ARCHITECTURE.md` — code ownership and system shape
-- `AUTONOMOUS.md` — normative controller-loop contract
-- `autonomous/STATE.yaml` — current checkpoint and resume state
-- `autonomous/GAP_LIST.md` — current failure surface
-- `autonomous/RUNBOOK.md` — exact execution commands
+- `GUIDELINE.md` — non-negotiable product rules and the mandatory 16-gate funnel contract
+- `ARCHITECTURE.md` — system shape, surfaces, and long-running pipeline model
+- `ROADMAP.md` — release sequencing
+- `CHANGELOG.md` — what has actually shipped
+- `README.md` — current public release surface
+- `internal/app/` — pipeline orchestration
+- `internal/review/` — gate logic, analyzers, synthesis, and decision outputs
+- `internal/cmd/serve.go` — AI-facing API surface
+- `internal/report/` — PDF output contract
 
-## 100% means
+## v1.6 contract
 
-Autonomous mode is not "done enough" when the output looks better. It is done when all of these are true:
+v1.6 is done when all of these are true:
 
-- [x] `go test ./...` passes
-- [x] `python -m pytest -q tests/test_audit_guideline.py scripts/test_autonomous_controller.py` passes
-- [x] a fresh cache-backed rerun of analyze/cluster/graph/plan/report completes and produces the required artifacts
-- [x] `scripts/audit_guideline.py <run-dir>` has zero required failures
-- [x] the report surface is audit-green because `analyze.json.prs[]` is self-describing enough for appendix/report use
-- [x] `AUTONOMOUS.md`, `TODO.md`, `autonomous/*`, and the live code describe the same system truthfully
+- [x] The product surface is CLI + API + PDF only; the web dashboard is removed or explicitly stubbed as non-product
+- [x] All primary docs describe prATC as an AI-centric pipeline with human PDF output, not a dashboard product
+- [x] Every non-garbage PR passes through the same 16 gates in order, with gate outputs recorded explicitly
+- [x] The 16 gates are ordered by cheap outer peel → more expensive inner judgment, and the code matches the guideline
+- [x] Diff-grounded evidence exists in the funnel for at least the first high-value analysis slice
+- [x] Duplicate handling advances from detection into synthesis planning: nominate canonical PRs and define how to derive a merged candidate from related PR sets
+- [ ] API responses are optimized for machine consumption: explicit fields, stable schemas, self-describing reasoning, no dashboard-shaped assumptions
+- [x] PDF output remains first-class and reflects the strengthened funnel truthfully
 
-## Promotion rule
+## Workstream 1 — Product surface reset
 
-Every new finding must be promoted immediately into exactly one of these buckets:
+### 1. Remove dashboard as product surface
+- [x] Identify all code, docs, tests, and build paths that treat `web/` as a first-class product surface
+- [x] Decide final v1.6 treatment for `web/`: remove entirely, quarantine, or leave a clearly marked stub
+- [x] Remove dashboard-first language from README / ARCHITECTURE / CONTRIBUTING / AGENTS / docs
+- [x] Remove or rewrite dashboard docs (`docs/dashboard-user-guide.md`, `docs/ui-wiring.md`, monitor docs as needed)
+- [x] Keep `serve` as an AI-facing API server, not a backing server for a browser dashboard
+- [x] Verify the repo can be understood and operated without any `web/` assumptions
 
-- a failing audit check
-- an open gap in `autonomous/GAP_LIST.md`
-- a live todo item with an explicit verification command
-- a documented non-goal or blocker
+### 2. Make the surfaces explicit
+- [x] CLI surface = concise commands for humans
+- [x] API surface = explicit machine-facing JSON for agents
+- [x] PDF surface = final human handoff artifact
+- [x] Audit all docs and contracts to ensure these three surfaces are the only promoted interfaces
 
-If a finding lives only in chat, it is not part of the system.
+## Workstream 2 — Strengthen the 16-gate funnel
 
-## Current status
+### 3. Make the funnel contract mandatory
+- [x] Rewrite the guideline/architecture language so every PR follows the same funnel journey
+- [x] Define each gate as a mandatory stage, not a loose conceptual ladder
+- [x] Record for every PR: gate entered, gate outcome, reason, cost tier, and whether the PR continues inward or exits at that gate
+- [x] Ensure the outer peel removes broad junk fast and the inner gates spend more CPU only on survivors
 
-- Autonomous control-plane scaffold exists in-repo.
-- `/autonomous` skill exists in Hermes skills.
-- Deterministic scaffold scripts exist:
-  - `scripts/audit_guideline.py`
-  - `scripts/gap_list_from_audit.py`
-  - `scripts/autonomous_controller.py`
-- The latest audit against `projects/openclaw_openclaw/runs/final-wave` is green and produces `AUDIT_RESULTS.json` plus a no-open-gap `autonomous/GAP_LIST.md`.
-- Product/output gaps are closed on the current canonical cache-backed rerun.
-- Controller-proof / hardening work is now verified: repo-local resume, todo reconstruction, wave synthesis, closeout discipline, interruption recovery, per-run artifact discipline, and report placeholder cleanup.
-- The repo is autonomous-complete on the current canonical cache-backed verification path.
+### 4. Gate ordering and semantics
+- [x] Reconcile current code with the intended onion model
+- [x] Separate elimination gates from scoring/judgment gates
+- [x] Make early gates cheap and deterministic
+- [x] Make later gates richer and more expensive only when justified by surviving signal
+- [x] Ensure duplicates, junk, spam, and obvious badness exit early but remain fully visible in output
 
----
+### 5. Funnel truthfulness in output
+- [x] Expose gate-by-gate journey in API output for every PR
+- [ ] Reflect gate journey clearly in the PDF report
+- [x] Ensure no PR “teleports” to a final state without an explicit gate trail
 
-## Workstream 1 — Control-plane hardening
+## Workstream 3 — Diff-grounded evidence in v1.6
 
-- [x] Create stable `AUTONOMOUS.md` with phase loop, state contract, artifact ownership, and stop conditions
-- [x] Create `autonomous/STATE.yaml`
-- [x] Create `autonomous/GAP_LIST.md`
-- [x] Create `autonomous/RUNBOOK.md`
-- [x] Create `autonomous/prompts/` prompt templates
-- [x] Create `scripts/audit_guideline.py` scaffold and verify it emits `AUDIT_RESULTS.json`
-- [x] Create `scripts/gap_list_from_audit.py` scaffold and verify it regenerates `autonomous/GAP_LIST.md`
-- [x] Create `scripts/autonomous_controller.py` scaffold and verify basic state transitions (`reconcile`, `resume`, `pause`, `next-wave`, `complete`)
-- [x] Harden `autonomous_controller.py` from scaffold into a reliable checkpoint manager; verified by `python -m pytest -q scripts/test_autonomous_controller.py` (30 passed) and combined audit/controller python suite (69 passed)
-- [x] Expand audit coverage from core checks to the full required GUIDELINE/report-readiness matrix; verified by `python -m pytest -q tests/test_audit_guideline.py` and final-wave audit-green run
+### 6. Bring real diff evidence into the funnel
+- [x] Add a first diff-aware evidence slice instead of relying only on metadata/path heuristics
+- [x] Define which gates consume diff hunks and which must remain metadata-only
+- [x] Start with high-value patterns: auth, secrets, dangerous config, risky query/perf patterns, test-gap evidence
+- [x] Attach code location / diff evidence to findings so AI consumers and the PDF can explain judgments concretely
 
-## Workstream 2 — Session orchestration
+### 7. Keep cost discipline
+- [x] Add explicit policy for which PRs get deeper diff analysis and when
+- [x] Keep the outer funnel cheap enough for large corpora
+- [x] Ensure inner diff analysis only runs on PRs that survive outer layers
 
-- [x] Create Hermes `/autonomous` skill
-- [x] Prove `/autonomous` can rebuild the Hermes session todo entirely from repo-local state and latest audit output; verified by `python -m pytest -q scripts/test_autonomous_controller.py` (repo-local rebuild tests) and `python3 scripts/autonomous_controller.py synthesize-wave`
-- [x] Define wave-generation logic from `autonomous/GAP_LIST.md` into session todo items; verified by `python -m pytest -q scripts/test_autonomous_controller.py -k 'synthesize_wave or rebuild_session_todo'` and `python3 scripts/autonomous_controller.py synthesize-wave`
-- [x] Add closeout discipline so `/autonomous` patches `STATE.yaml`, `GAP_LIST.md`, and `TODO.md` truthfully after each verified wave; verified by 8 closeout tests in `scripts/test_autonomous_controller.py` and simulated mini-cycle test
+## Workstream 4 — Duplicate synthesis beyond detection
 
-## Workstream 3 — Product gap closure
+### 8. Canonicalization and synthesis planning
+- [x] Move duplicate handling from “same idea detected” to “best candidate nominated”
+- [x] For each duplicate/near-duplicate group, identify canonical, alternates, and synthesis candidates
+- [x] Define a bot-ready output contract for a future merge/synthesis agent
+- [x] Specify what “best of N PRs” means: quality, completeness, freshness, conflict footprint, evidence quality, tests, mergeability
 
-### Wave 1 — make `analyze.json` truthful
+### 9. Candidate merge-by-bot plan
+- [x] Design the artifact that a future bot can consume to create a synthetic best-of-group PR
+- [x] Include inputs, ranking, exclusions, and explicit human-readable reasons
+- [x] Keep v1.6 advisory-only: nominate and describe, do not mutate GitHub
 
-- [x] Wire per-PR bucket/category visibility into `AnalysisResponse.PRs`; verified on `projects/openclaw_openclaw/runs/20260420-193647-wave1` via audit `bucket_coverage`
-- [x] Wire structured reason trails into `AnalysisResponse.PRs`; verified on `projects/openclaw_openclaw/runs/20260420-193647-wave1` via audit `reason_coverage`
-- [x] Wire confidence scoring into `AnalysisResponse.PRs`; verified on `projects/openclaw_openclaw/runs/20260420-193647-wave1` via audit `confidence_coverage`
-- [x] Expose temporal routing (`now` / `future` / `blocked`) directly on `AnalysisResponse.PRs`; verified on `projects/openclaw_openclaw/runs/20260420-193647-wave1` via audits `temporal_routing` and `future_work_visible`
-- [x] Make each PR row self-describing for report/appendix use; verified on `projects/openclaw_openclaw/runs/20260420-193647-wave1` via audit `report_self_describing_prs`
-- [x] Make future-work visibility explicit as a first-class auditable outcome rather than an implied side effect; verified on `projects/openclaw_openclaw/runs/20260420-193647-wave1` via audit `future_work_visible`
-- [x] Restore duplicate detection on the current cache-backed analyze path; verified by `duplicate_presence` passing on `projects/openclaw_openclaw/runs/final-wave`
+## Workstream 5 — API and report tightening
 
-### Wave 2 — make graph signal usable
+### 10. AI-centric API
+- [ ] Audit `serve` endpoints for machine readability and consistency
+- [ ] Remove browser/dashboard assumptions from endpoint naming and docs
+- [ ] Promote stable machine-facing fields for gate journey, evidence, canonicalization, and report artifacts
+- [ ] Decide whether a first-class `/review` style endpoint should exist in v1.6 or whether `analyze` remains the canonical machine entrypoint
 
-- [x] Remove trivial same-branch dependency edges; verified by audit `dependency_edge_quality` passing on `projects/openclaw_openclaw/runs/final-wave`
-- [x] Reduce conflict noise toward the target threshold with truthful repo-specific filtering; verified by audit `conflict_pairs_threshold` passing on `projects/openclaw_openclaw/runs/final-wave`
+### 11. PDF as final human artifact
+- [ ] Keep PDF mandatory in the main workflow
+- [x] Ensure the report explains gate journey, canonical duplicate groups, and high-signal evidence clearly
+- [x] Make the report read like a decision packet, not a dashboard export
 
-### Wave 3 — make the report surface truthfully useful
+## Immediate execution order
 
-- [x] Keep report usefulness encoded in audit checks rather than prose; verified on `projects/openclaw_openclaw/runs/final-wave` with audit-green report surface and generated PDF
-- [x] Remove or replace placeholder-only report sections before calling the report production-ready; verified by `./bin/pratc report --repo openclaw/openclaw --input-dir projects/openclaw_openclaw/runs/final-wave --output /tmp/verify-final-wave-report.pdf`
+1. Product surface reset: remove/stub dashboard and clean docs
+2. Funnel contract rewrite: every PR passes the same 16 gates in order
+3. Diff-grounded evidence slice: bring real patch evidence into v1.6
+4. Duplicate synthesis planning: canonical + future merge-by-bot contract
 
-## Workstream 4 — Autonomous proof cycle
+## Non-goals for v1.6
 
-- [x] Run one full autonomous cycle end-to-end: audit → gap list → subagent fix wave → build/test → rerun audit; verified on `projects/openclaw_openclaw/runs/final-wave`
-- [x] Prove interruption recovery by stopping mid-cycle and resuming from `autonomous/STATE.yaml`; verified by interruption-recovery tests in `scripts/test_autonomous_controller.py` and `python3 scripts/autonomous_controller.py audit-state`
-- [x] Record per-run outputs under `autonomous/runs/<timestamp>/`; verified by `autonomous/runs/20260420-final-wave/{controller-log.md,wave-summary.md}` and `python3 scripts/autonomous_controller.py new-run --timestamp 20990101-proof ...`
-- [x] Update roadmap/docs after the first truthful autonomous green wave
+- [ ] No web dashboard rebuild
+- [ ] No GitHub mutations or auto-merge behavior
+- [ ] No live bot that comments/closes/bans users yet
+- [ ] No attempt to build the full 24/7 daemon in the same slice as the funnel reset
 
----
+## Exit note
 
-## Current open gaps from the latest known run
-
-No required open gaps remain on `projects/openclaw_openclaw/runs/final-wave`; the controller-proof phase is complete.
-
-## Exit criteria
-
-Autonomous mode is considered real when all of the following are true:
-
-- [x] A new controller session can resume from repo-local state without hidden chat context
-- [x] The session todo can be reconstructed from `STATE.yaml` + `GAP_LIST.md`
-- [x] `scripts/audit_guideline.py` and `scripts/gap_list_from_audit.py` form a deterministic audit surface
-- [x] `scripts/autonomous_controller.py` truthfully tracks phase/wave/checkpoint state through pause/resume
-- [x] Hermes `/autonomous` can run at least one full verified loop using delegated subagents
-- [x] Build and test verification remain green after control-plane changes
-- [x] The required audit surface is fully green on `projects/openclaw_openclaw/runs/final-wave`
-- [x] `AUTONOMOUS.md`, `TODO.md`, and `autonomous/*` describe the same system
+v1.6 should leave prATC in a simpler state than it started:
+- fewer surfaces
+- clearer funnel semantics
+- stronger machine-readable output
+- better PDF packet
+- a real path to 2.0 continuous operation

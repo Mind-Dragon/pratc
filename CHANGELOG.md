@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.6.0] — In Progress
+
 ### Fixed
 
 - Workflow now carries a full artifact contract end-to-end: `sync.json`, `analyze.json`, step-numbered artifacts, and a real `report.pdf` generated before workflow completion.

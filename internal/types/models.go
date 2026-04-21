@@ -53,6 +53,78 @@ type DuplicateGroup struct {
 	Reason            string  `json:"reason"`
 }
 
+// DuplicateSynthesisCandidate represents one PR within a duplicate/near-duplicate group
+// evaluated for synthesis candidacy. It captures the signals used to rank candidates
+// and the outcome of that evaluation.
+type DuplicateSynthesisCandidate struct {
+	// PRNumber identifies the PR this candidate represents.
+	PRNumber int `json:"pr_number"`
+	// Title is the PR title for quick reference.
+	Title string `json:"title"`
+	// Author is the PR author for follow-up routing.
+	Author string `json:"author"`
+	// Role describes this candidate's role within the group:
+	// "canonical" - nominated best-of-group candidate for merge
+	// "alternate" - viable alternative, supports canonical
+	// "contributor" - partial but incomplete, not standalone material
+	// "excluded" - not recommended for synthesis
+	Role string `json:"role"`
+	// SynthesisScore is a 0.0-1.0 composite score of how well this PR
+	// represents the best material from the group for merge-by-bot use.
+	// Higher is better.
+	SynthesisScore float64 `json:"synthesis_score"`
+	// Confidence is the review confidence in this candidate's quality assessment.
+	Confidence float64 `json:"confidence"`
+	// SubstanceScore is the PR's substance score (0-100).
+	SubstanceScore int `json:"substance_score"`
+	// Mergeable indicates whether the PR can merge cleanly: "yes", "no", or "unknown".
+	Mergeable string `json:"mergeable"`
+	// HasTestEvidence is true if analyzer findings include test-gap evidence.
+	HasTestEvidence bool `json:"has_test_evidence"`
+	// ConflictFootprint is the number of conflicts this PR has with other PRs
+	// in the corpus. Lower is better for synthesis candidacy.
+	ConflictFootprint int `json:"conflict_footprint"`
+	// IsDraft is true if the PR is in draft state.
+	IsDraft bool `json:"is_draft"`
+	// SignalQuality describes the overall signal quality: "high", "medium", "low".
+	SignalQuality string `json:"signal_quality"`
+	// ScoringFactors breakdown the synthesis score components for transparency.
+	ScoringFactors []string `json:"scoring_factors"`
+	// Rationale explains why this candidate received its role and score.
+	Rationale string `json:"rationale"`
+}
+
+// DuplicateSynthesisPlan captures the synthesis recommendation for a single
+// duplicate/near-duplicate group. It is advisory-only: it nominates a canonical
+// candidate and describes how a future bot could produce a merged artifact.
+//
+// v1.6 contract: no GitHub mutations are performed based on this artifact.
+// It exists to make duplicate group resolution machine-readable and auditable.
+type DuplicateSynthesisPlan struct {
+	// GroupID is a stable identifier for this group derived from the canonical PR number
+	// and the group's similarity threshold classification.
+	GroupID string `json:"group_id"`
+	// GroupType classifies the group: "duplicate" (≥DuplicateThreshold similarity)
+	// or "overlap" (≥OverlapThreshold but below DuplicateThreshold).
+	GroupType string `json:"group_type"`
+	// OriginalCanonicalPR is the PR number that was originally selected as canonical
+	// by the pair-ordering heuristic in classifyDuplicates.
+	OriginalCanonicalPR int `json:"original_canonical_pr"`
+	// NominatedCanonicalPR is the PR number nominated by synthesis scoring as the best
+	// candidate for merge-by-bot use. May differ from OriginalCanonicalPR.
+	NominatedCanonicalPR int `json:"nominated_canonical_pr"`
+	// Similarity is the group's pairwise similarity score.
+	Similarity float64 `json:"similarity"`
+	// Reason is the human-readable reason for the group relationship.
+	Reason string `json:"reason"`
+	// Candidates contains all PRs evaluated in this group, ranked by synthesis score.
+	Candidates []DuplicateSynthesisCandidate `json:"candidates"`
+	// SynthesisNotes contains free-text guidance for a future merge bot,
+	// including which alternates to preserve, what conflicts need resolution,
+	// and what test coverage gaps exist.
+	SynthesisNotes []string `json:"synthesis_notes"`
+}
+
 // GarbagePR represents a PR classified as junk by the outer peel (Layer 1).
 type GarbagePR struct {
 	PRNumber int    `json:"pr_number"`
@@ -244,9 +316,14 @@ type AnalysisResponse struct {
 	Telemetry  *OperationTelemetry `json:"telemetry,omitempty"`
 	// ReviewPayload contains agentic review results for the analysis snapshot.
 	// v1.3 pipelines populate this field by default so review buckets are first-class
-	// output in the primary API, dashboard, and report surfaces.
+	// output in the primary API and report surfaces.
 	// The pointer is retained for compatibility with older callers.
 	ReviewPayload *ReviewResponse `json:"review_payload,omitempty"`
+	// DuplicateSynthesis contains synthesis plans for duplicate and near-duplicate groups.
+	// Each plan nominates a canonical candidate and describes how a future bot could
+	// produce a merged artifact from the group. This is advisory-only: no GitHub
+	// mutations are performed based on this field.
+	DuplicateSynthesis []DuplicateSynthesisPlan `json:"duplicate_synthesis,omitempty"`
 }
 
 type GraphResponse struct {
@@ -444,20 +521,38 @@ type AnalyzerFinding struct {
 	EvidenceHash string `json:"evidence_hash,omitempty"`
 }
 
-// ReviewResult represents the outcome of an agentic PR review.
-// It aggregates findings from multiple analyzers to produce a final classification
-// and priority recommendation for the PR.
+// DecisionLayer represents one gate in the 16-layer PR review funnel.
+// It captures the gate number, name, cost tier, outcome, and whether
+// the PR continued inward or exited the funnel at this gate.
+//
+// Gate journey semantics:
+//   - Every PR starts at Gate 1 and progresses through Gate 16 in order.
+//   - A PR may exit the funnel early at a terminal gate (junk, duplicate, blocked).
+//   - Gates after an early exit have Continued=false and Terminal=false.
+//   - The terminal gate has Terminal=true.
+//   - PRs that pass all gates have Terminal=true at Gate 16.
 type DecisionLayer struct {
-	// Layer is the decision ladder number, from 1 to 16.
+	// Layer is the gate number, from 1 to 16.
 	Layer int `json:"layer"`
-	// Name is the human-readable layer name from GUIDELINE.md.
+	// Name is the human-readable gate name from GUIDELINE.md.
 	Name string `json:"name"`
-	// Bucket names the visible bucket or outcome associated with the layer, when relevant.
+	// CostTier classifies the computational cost of this gate:
+	// "cheap" for outer peel gates (1-3),
+	// "medium" for substance gates (4-5),
+	// "expensive" for deep judgment gates (6-16).
+	CostTier string `json:"cost_tier"`
+	// Bucket names the visible bucket or outcome associated with the gate, when relevant.
 	Bucket string `json:"bucket,omitempty"`
-	// Status describes whether the layer peeled, routed, or judged the PR.
+	// Status describes whether the gate observed/clear/peeled/routed/judged the PR.
 	Status string `json:"status"`
-	// Reasons records the reason trail for this layer.
+	// Reasons records the reason trail for this gate.
 	Reasons []string `json:"reasons"`
+	// Continued indicates the PR moved inward to the next gate.
+	// false when the PR exited at this gate (Terminal=true) or after an early exit.
+	Continued bool `json:"continued"`
+	// Terminal indicates the PR exited the funnel at this gate.
+	// When true, Continued is false and this gate records the exit reason.
+	Terminal bool `json:"terminal"`
 }
 
 // ReviewResult represents the outcome of an agentic PR review.

@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
+	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
 var repoPartPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
@@ -339,6 +340,240 @@ type PRFiles struct {
 	PRNumber int
 	Files    []string
 	Err      error
+}
+
+// GetDiffPatch returns the full diff patch data for a PR, including file metadata
+// (additions, deletions, status) and parsed diff hunks. This is used by the
+// review analyzers to emit findings with concrete code/diff evidence.
+func (m *Mirror) GetDiffPatch(ctx context.Context, prNumber int, baseBranch string) ([]types.PRFile, []types.DiffHunk, error) {
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+	prRef := fmt.Sprintf("refs/pull/%d/head", prNumber)
+	baseRef := fmt.Sprintf("refs/heads/%s", baseBranch)
+
+	mergeBase, err := m.runOutput(ctx, "merge-base", baseRef, prRef)
+	if err != nil {
+		return nil, nil, fmt.Errorf("git merge-base: %w", err)
+	}
+
+	// Get diff with patch content
+	out, err := m.runner.Run(ctx, "diff", "-p", "--stat", mergeBase, prRef)
+	if err != nil {
+		return nil, nil, fmt.Errorf("git diff -p: %w", err)
+	}
+
+	return parseDiffOutput(string(out), prNumber)
+}
+
+// parseDiffOutput parses unified diff output into PRFile and DiffHunk slices.
+// The input is the output of `git diff -p --stat`.
+func parseDiffOutput(output string, prNumber int) ([]types.PRFile, []types.DiffHunk, error) {
+	var files []types.PRFile
+	var hunks []types.DiffHunk
+
+	// Split into file sections by "diff --git"
+	sections := strings.Split(output, "diff --git a/")
+	if len(sections) < 2 {
+		return files, hunks, nil
+	}
+
+	for _, section := range sections[1:] {
+		lines := strings.Split(section, "\n")
+		if len(lines) < 2 {
+			continue
+		}
+
+		// Parse the "a/path b/path" header line
+		// The split removed "diff --git a/" so we need to add it back
+		headerLine := "a/" + lines[0]
+		oldPath, newPath, additions, deletions := parseDiffHeader(headerLine)
+
+		// Collect patch content (everything between the header and the next diff)
+		var patchLines []string
+		var currentHunk *types.DiffHunk
+		var hunkLines []string
+
+		for i := 1; i < len(lines); i++ {
+			line := lines[i]
+
+			// Skip empty lines at the start of patch
+			if len(patchLines) == 0 && strings.TrimSpace(line) == "" {
+				continue
+			}
+
+			// Check if we've hit the next diff section
+			if strings.HasPrefix(line, "diff --git") || strings.HasPrefix(line, "Binary files") {
+				// Save any pending hunk
+				if currentHunk != nil && len(hunkLines) > 0 {
+					currentHunk.Content = strings.Join(hunkLines, "\n")
+					hunks = append(hunks, *currentHunk)
+					currentHunk = nil
+					hunkLines = nil
+				}
+				// This line starts the next file, so put it back for next section
+				// by NOT adding it to patchLines
+				break
+			}
+
+			patchLines = append(patchLines, line)
+
+			// Parse hunk headers
+			if strings.HasPrefix(line, "@@") {
+				// Save previous hunk if exists
+				if currentHunk != nil && len(hunkLines) > 0 {
+					currentHunk.Content = strings.Join(hunkLines, "\n")
+					hunks = append(hunks, *currentHunk)
+				}
+
+				// Parse new hunk header
+				hdr := parseHunkHeader(line)
+				if hdr != nil {
+					currentHunk = &types.DiffHunk{
+						OldPath:  oldPath,
+						NewPath:  newPath,
+						OldStart: hdr.OldStart,
+						OldLines: hdr.OldLines,
+						NewStart: hdr.NewStart,
+						NewLines: hdr.NewLines,
+						Section:  hdr.Section,
+					}
+					hunkLines = []string{line}
+				}
+			} else if currentHunk != nil {
+				hunkLines = append(hunkLines, line)
+			}
+		}
+
+		// Save last hunk of this file
+		if currentHunk != nil && len(hunkLines) > 0 {
+			currentHunk.Content = strings.Join(hunkLines, "\n")
+			hunks = append(hunks, *currentHunk)
+		}
+
+		// Determine status from patch lines
+		status := "modified"
+		for _, pl := range patchLines {
+			if strings.HasPrefix(pl, "new file") {
+				status = "added"
+				break
+			}
+			if strings.HasPrefix(pl, "deleted file") {
+				status = "removed"
+				break
+			}
+		}
+
+		files = append(files, types.PRFile{
+			Path:      newPath,
+			Status:    status,
+			Additions: additions,
+			Deletions: deletions,
+			Patch:     strings.Join(patchLines, "\n"),
+		})
+	}
+
+	return files, hunks, nil
+}
+
+// diffHeader holds parsed header information from a unified diff.
+type diffHeader struct {
+	OldPath  string
+	NewPath  string
+	Additions int
+	Deletions int
+}
+
+// parseDiffHeader parses a "a/path b/path" diff header line and stat info.
+// Example: "a/internal/auth.go b/internal/auth.go (new)"
+func parseDiffHeader(headerLine string) (oldPath, newPath string, additions, deletions int) {
+	// Format: "a/path b/path" or "a/path b/path (new)" or "a/path b/path (deleted)"
+	parts := strings.Fields(headerLine)
+	if len(parts) < 2 {
+		return "", "", 0, 0
+	}
+
+	oldPath = parts[0]
+	newPath = parts[1]
+
+	// Try to extract additions/deletions from trailing stat
+	// Example: "... (new), 42 insertions(+), 0 deletions(-)"
+	addRe := regexp.MustCompile(`(\d+) insertion`)
+	delRe := regexp.MustCompile(`(\d+) deletion`)
+	if matches := addRe.FindStringSubmatch(headerLine); len(matches) > 1 {
+		if n, err := strconv.Atoi(matches[1]); err == nil {
+			additions = n
+		}
+	}
+	if matches := delRe.FindStringSubmatch(headerLine); len(matches) > 1 {
+		if n, err := strconv.Atoi(matches[1]); err == nil {
+			deletions = n
+		}
+	}
+
+	return oldPath, newPath, additions, deletions
+}
+
+// hunkHeader holds parsed hunk header information.
+type hunkHeader struct {
+	OldStart int
+	OldLines int
+	NewStart int
+	NewLines int
+	Section  string
+}
+
+// parseHunkHeader parses a hunk header line.
+// Format: "@@ -oldStart,oldLines +newStart,newLines @@ optional section header"
+func parseHunkHeader(line string) *hunkHeader {
+	// Format: "@@ -10,5 +20,7 @@ func Foo()"
+	re := regexp.MustCompile(`@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)`)
+	matches := re.FindStringSubmatch(line)
+	if len(matches) < 4 {
+		// Try simpler format without line counts
+		re2 := regexp.MustCompile(`@@ -(\d+) \+(\d+) @@ ?(.*)`)
+		matches2 := re2.FindStringSubmatch(line)
+		if len(matches2) < 3 {
+			return nil
+		}
+		oldStart, _ := strconv.Atoi(matches2[1])
+		newStart, _ := strconv.Atoi(matches2[2])
+		section := strings.TrimSpace(matches2[3])
+		return &hunkHeader{
+			OldStart: oldStart,
+			OldLines: 1,
+			NewStart: newStart,
+			NewLines: 1,
+			Section:  section,
+		}
+	}
+
+	oldStart, _ := strconv.Atoi(matches[1])
+	oldLines := 1
+	if matches[2] != "" {
+		if n, err := strconv.Atoi(matches[2]); err == nil {
+			oldLines = n
+		}
+	}
+	newStart, _ := strconv.Atoi(matches[3])
+	newLines := 1
+	if matches[4] != "" {
+		if n, err := strconv.Atoi(matches[4]); err == nil {
+			newLines = n
+		}
+	}
+	section := ""
+	if len(matches) > 5 {
+		section = strings.TrimSpace(matches[5])
+	}
+
+	return &hunkHeader{
+		OldStart: oldStart,
+		OldLines: oldLines,
+		NewStart: newStart,
+		NewLines: newLines,
+		Section:  section,
+	}
 }
 
 func (m *Mirror) GetChangedFilesBatch(ctx context.Context, prNumbers []int, baseBranch string, workers int) ([]PRFiles, error) {

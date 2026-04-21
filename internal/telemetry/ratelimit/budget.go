@@ -97,6 +97,13 @@ func (b *BudgetManager) ResetAt() time.Time {
 	return b.ResetTime
 }
 
+// ResetBufferSeconds returns the reset buffer duration in seconds.
+func (b *BudgetManager) ResetBufferSeconds() int {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return int(b.resetBuffer.Seconds())
+}
+
 // ShouldPause returns true if the budget is exhausted and operations should pause.
 // Returns true if Remaining() <= reserveBuffer.
 // When returning true, increments the budgetPauses metrics counter if metrics are configured.

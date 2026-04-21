@@ -209,7 +209,7 @@ verify_installation() {
         echo "  1. Set your GitHub token: export GITHUB_TOKEN=ghp_..."
         echo "  2. Sync a repo: pratc sync --repo=owner/repo"
         echo "  3. Analyze: pratc analyze --repo=owner/repo"
-        echo "  4. Start dashboard: pratc monitor"
+        echo "  4. Monitor status: pratc monitor"
         echo ""
         echo "Documentation: https://github.com/${REPO}/blob/main/README.md"
         echo "Rate Limits:   https://github.com/${REPO}/blob/main/RATELIMITS.md"

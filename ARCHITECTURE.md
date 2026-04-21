@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document describes the system shape for the v1.5.0 full-corpus triage engine.
+This document describes the system shape for the v1.6.0 full-corpus triage engine.
 
 The point is not to make the system clever in one shot. The point is to make it honest, layered, and complete: every PR enters, every decision is explainable, and the system keeps separating the obvious from the subtle until what remains is worth human attention.
 
@@ -21,16 +21,17 @@ The system has five broad parts:
 
 2. Layered decision engine
    - run cheap outer layers first (garbage, duplicates, obvious badness)
-   - score substance (security, reliability, performance, roadmap alignment)
-   - route now versus future
-   - apply deeper judgment layers (confidence through signal quality)
+   - record an explicit 16-gate journey for every reviewed PR
+   - score substance, route now versus future, and apply deeper judgment only after the outer peel
+   - consume diff-grounded evidence where available without making the outer peel expensive
+   - emit duplicate-synthesis plans that nominate a best candidate for future merge-by-bot work
    - existing components: internal/filter/ (pre-filter pipeline), internal/planning/ (pool selector, hierarchy, pairwise, time decay), internal/review/ (security, reliability, quality analyzers), internal/analysis/ (bot detection)
 - duplicate detection now defaults to a Go cache-first path with MinHash/LSH candidate generation plus exact rescoring; the Python ML service remains optional for enrichment/alternate backends
 
 3. Reason ledger
    - store the reason trail for every PR
-   - record bucket changes over time
-   - keep confidence, evidence, and explanation together
+   - record gate journey, bucket changes, confidence, evidence, and explanation together
+   - keep diff-grounded findings and duplicate-synthesis recommendations visible in machine-readable form
    - implementation: extends the existing audit log (internal/audit/) with per-PR bucket and reason tracking
 
 4. Output composer
@@ -40,10 +41,9 @@ The system has five broad parts:
    - full appendix for complete corpus coverage
 
 5. Operator interface
-   - web dashboard (web/ — Next.js 15 + React 19)
-   - let humans inspect the corpus through layers
-   - make priority changes visible
-   - preserve auditability
+   - CLI for humans running the tool directly
+   - API for AI systems and external integrations
+   - PDF report for human decision-makers
 
 ## Data flow
 
@@ -66,13 +66,13 @@ Layer 2: duplicate collapse (Go MinHash/LSH candidate generation + exact rescori
 Layer 3: obvious badness (spam/malware/junk classification)
     │
     ▼
-Layer 4: substance scoring (internal/review/ analyzers)
+Layer 4: substance scoring + diff-grounded evidence (internal/review/ analyzers)
     │
     ▼
 Layer 5: now vs future routing
     │
     ▼
-Layers 6–16: deep judgment (confidence, dependency, blast radius,
+Layers 6–16: explicit gate journey + deep judgment (confidence, dependency, blast radius,
              leverage, ownership, stability, mergeability,
              strategic weight, attention cost, reversibility,
              signal quality)
@@ -81,10 +81,13 @@ Layers 6–16: deep judgment (confidence, dependency, blast radius,
 Pool selection + planning (internal/planning/ + internal/formula/)
     │
     ▼
+Duplicate synthesis planning (best-of-group nomination, advisory-only)
+    │
+    ▼
 Report composition (internal/report/)
     │
     ▼
-Operator view (web/ dashboard, CLI output, PDF)
+Operator view (CLI output, API responses, PDF report)
 ```
 
 That flow is intentional.
@@ -104,11 +107,11 @@ These layers remove obvious noise before deeper computation:
 
 ### 2. Substance assessment
 These layers judge whether the PR is good in a meaningful way:
-- security (extends internal/review/ security analyzer)
-- reliability (extends internal/review/ reliability analyzer)
-- performance (extends internal/review/ quality analyzer)
-- roadmap alignment (new)
-- current vs future priority (new)
+- security (includes diff-grounded risky file and auth-change evidence)
+- reliability (metadata-first today, with room for deeper diff evidence later)
+- performance (metadata-first today, with room for deeper diff evidence later)
+- quality (includes test-gap evidence tied to changed files)
+- current vs future priority
 
 ### 3. Deep judgment
 These layers refine priority and readiness:
@@ -126,11 +129,16 @@ These layers refine priority and readiness:
 
 ## Output contract
 
+The output surfaces must make the full corpus understandable in layers:
+- API responses expose gate journey, evidence, duplicate groups, and duplicate-synthesis plans for AI consumers.
+- PDF remains the human-facing packet and should summarize the same underlying truth.
+
 The report must make the full corpus understandable in layers:
 - executive summary
 - now queue
 - future queue
 - duplicate chains
+- nominated canonical / synthesis candidates
 - junk/noise bucket
 - blocked items
 - risk-focused items (security, reliability, performance)
@@ -287,4 +295,4 @@ The architecture exists to answer those questions without flattening them into o
 - **GUIDELINE.md** is the authority on bucket definitions, layer ordering, and non-negotiables.
 - **ROADMAP.md** defines what gets built and when.
 - **This document** defines the system shape, data flow, technical reference details, and design philosophy.
-- **version1.4.2.md** is the v1.4.2 milestone summary (shipped). See CHANGELOG.md for v1.5.0 changes.
+- **version1.4.2.md** is the v1.4.2 milestone summary (shipped). See CHANGELOG.md for v1.6.0 changes.

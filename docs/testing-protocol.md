@@ -9,11 +9,10 @@ Tests not listed here are excluded from the default merge gate.
 Run in order. All must exit 0:
 
 ```bash
-make verify-env    # Check toolchain (go, python3.11+, uv, node, bun, docker)
+make verify-env    # Check toolchain (go, python3.11+, uv, docker)
 make build         # Compile Go binary to ./bin/pratc
-make test          # Run all tests (go + python + web)
+make test          # Run all tests (go + python; web tests skipped if web/package.json absent)
 make lint          # go vet ./...
-cd web && bun run build   # Web dashboard build
 ```
 
 ## Evidence Format

@@ -265,9 +265,12 @@ export interface AnalyzerMetadata {
 export interface DecisionLayer {
   layer: number;
   name: string;
+  cost_tier: string;
   bucket: string;
   status: string;
   reasons: string[];
+  continued: boolean;
+  terminal: boolean;
 }
 
 export interface ReviewResult {

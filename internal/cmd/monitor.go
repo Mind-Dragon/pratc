@@ -12,7 +12,6 @@ import (
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/jeffersonnunn/pratc/internal/cache"
-	"github.com/jeffersonnunn/pratc/internal/github"
 	"github.com/jeffersonnunn/pratc/internal/logger"
 	"github.com/jeffersonnunn/pratc/internal/monitor/data"
 	"github.com/jeffersonnunn/pratc/internal/monitor/tui"
@@ -26,10 +25,10 @@ func RegisterMonitorCommand() {
 
 	command := &cobra.Command{
 		Use:   "monitor",
-		Short: "Start the TUI monitor dashboard",
-		Long: `Start the TUI monitor dashboard for real-time sync job monitoring.
+		Short: "Start the TUI monitor",
+		Long: `Start the TUI monitor for real-time sync job monitoring.
 
-The monitor dashboard displays:
+The monitor displays:
 - Active sync jobs and their progress
 - GitHub API rate limit status
 - Activity timeline
@@ -81,11 +80,19 @@ Examples:
 
 			store := data.NewStore(cacheStore)
 
-			token, err := github.ResolveToken(ctx)
+			// Resolve GitHub access using settings-driven config
+			githubAccess, err := ResolveGitHubAccess(ctx, repo)
 			if err != nil {
 				return err
 			}
-			rateLimitFetcher := data.NewRateLimitFetcher(token)
+			// Emit truthful message about GitHub access state
+			log.Info("github access resolved", "state", githubAccess.State.String(), "message", githubAccess.Message)
+			if githubAccess.Login != "" {
+				fmt.Fprintf(cmd.ErrOrStderr(), "GitHub access: using named login %s\n", githubAccess.Login)
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "GitHub access: %s\n", githubAccess.Message)
+			}
+			rateLimitFetcher := data.NewRateLimitFetcher(githubAccess.Token)
 
 			timelineAgg := data.NewTimelineAggregator(cacheStore)
 

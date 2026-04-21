@@ -29,7 +29,7 @@ This will:
 | Python 3.11+ | Optional | Local ML clustering service |
 | uv | Optional | Python package management |
 | Docker | Optional | Containerized deployment |
-| Bun | Optional | Web dashboard development |
+| Bun | Optional | Optional: web UI development only (deprecated in v1.6) |
 
 ### Install Prerequisites
 
@@ -78,7 +78,7 @@ pratc --help | sed -n '1,2p'
 
 Expected output begins with:
 ```text
-Harness Optimizer v1.5.0 built on <timestamp>
+Harness Optimizer v1.6.0 built on <timestamp>
 Using Config from: settings=... | cache=...
 ```
 
@@ -135,10 +135,11 @@ prATC requires a GitHub personal access token (PAT) with `repo` scope:
 # Start API server
 pratc serve --port=7400
 
-# In another terminal, start web dashboard
-cd web && bun run dev
+# In another terminal, run the CLI for human operators
+pratc analyze --repo=owner/repo --format=json
 
-# Open http://localhost:3000/monitor
+# Or query the API directly
+curl http://localhost:7400/api/health
 ```
 
 ### Production Deployment
@@ -232,7 +233,7 @@ After installation:
 
 1. **Read [RATELIMITS.md](RATELIMITS.md)** — Understand GitHub API rate limits and cache-first defaults
 2. **Run your first full workflow**: `pratc workflow --repo=owner/repo --progress`
-3. **Open the dashboard**: `pratc monitor` or `http://localhost:7400/api/health`
+3. **Query the API**: `curl http://localhost:7400/api/health` or use `pratc audit`
 4. **Read [README.md](README.md)** — Feature overview, CLI commands, and architecture
 
 For usage examples, see [README.md](README.md).

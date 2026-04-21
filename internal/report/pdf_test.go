@@ -16,9 +16,9 @@ func TestPDFComposer_Compose(t *testing.T) {
 		Summary:     "This is a test summary for the report.",
 	})
 
-	// Add metrics section
-	composer.AddSection(&MetricsSection{
-		Dashboard: MetricsDashboard{
+	// Add gate context section
+	composer.AddSection(&GateContextSection{
+		Data: GateContextData{
 			TotalPRs:       100,
 			ClusterCount:   8,
 			DuplicateCount: 3,

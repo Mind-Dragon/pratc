@@ -3,7 +3,7 @@
 **Generated:** 2026-03-23 | **Commit:** a9864d3 | **Branch:** main
 
 ## Overview
-prATC (PR Air Traffic Control) — self-hostable, repo-agnostic system for large-scale PR triage and merge planning. Go CLI + Python ML service + TypeScript dashboard.
+prATC (PR Air Traffic Control) — self-hostable, repo-agnostic system for large-scale PR triage and merge planning. Go CLI + Python ML service + HTTP API.
 
 ## Structure
 ```
@@ -30,7 +30,7 @@ pratc/
 │   └── testutil/       # Fixture loading helpers
 ├── ml-service/         # Python ML service (see ml-service/AGENTS.md)
 │   └── src/pratc_ml/   # Clustering, duplicates, overlap, providers
-├── web/                # Next.js dashboard (see web/AGENTS.md)
+├── web/                # Next.js dashboard (deprecated — not part of v1.6 product surface)
 │   └── src/            # Pages, components, lib, types, styles
 ├── fixtures/           # Test data (~5,500 PR snapshot)
 ├── contracts/          # API contract definitions

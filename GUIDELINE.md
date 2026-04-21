@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document sets the operating rules for the v1.5.0 full-corpus triage engine.
+This document sets the operating rules for the v1.6.0 full-corpus triage engine.
 
 The system does not get to ignore PRs. It does not get to hide uncertainty. It does not get to collapse the world into a single score and pretend that is enough.
 
@@ -13,33 +13,51 @@ The system does not get to ignore PRs. It does not get to hide uncertainty. It d
    - No hidden cap may silently remove PRs from consideration.
    - If something is deferred, discarded, or folded into something else, that decision must be visible.
 
-2. Every decision needs a reason.
+2. Every PR follows the same funnel.
+   - The 16-gate ladder is not optional metadata or a best-effort summary.
+   - Every non-garbage PR must traverse the same ordered gates.
+   - A PR may exit the funnel early, but it must still record where it exited and why.
+
+3. Every decision needs a reason.
    - Each PR gets a bucket, a score, and a reason trail.
    - Unknowns and weak confidence must be recorded, not erased.
-   - A human should be able to ask, "why did this land here?" and get a straight answer.
+   - A human or agent should be able to ask, "why did this land here?" and get a straight answer.
 
-3. Duplicates are not separate problems.
+4. Duplicates are not separate problems.
    - If two PRs are the same idea, one becomes canonical and the rest become linked duplicates.
    - Duplicate handling should reduce noise, not hide information.
+   - The system should advance toward synthesis-ready duplicate groups, not stop at mere detection.
 
-4. Garbage gets removed early.
+5. Garbage gets removed early.
    - Obvious spam, junk, malformed PRs, and low-integrity noise should not be allowed to consume deep review.
    - Bad actors and obvious trash should be classified quickly and visibly.
+   - The outer peel should remove broad junk cheaply before the inner layers spend real CPU.
 
-5. Future work stays visible.
+6. Future work stays visible.
    - A PR can be good and still not belong in the current pile.
    - "Later" is a valid outcome.
    - Deferral is not failure.
 
-6. Deeper judgment comes after the obvious layers.
-   - First remove garbage.
-   - Then collapse duplicates.
-   - Then handle obvious badness.
-   - Then score substance.
-   - Then route now versus future.
-   - Then apply the deeper judgment layers.
+7. The cost of judgment must rise inward.
+   - Outer layers should be cheap, broad, and aggressive.
+   - Inner layers should be more expensive, more precise, and reserved for surviving PRs.
+   - The system must not spend diff-level or synthesis-level effort on obvious trash.
+
+8. The product surface is CLI + API + PDF.
+   - CLI exists for humans operating the system.
+   - API exists for AI systems consuming structured outputs.
+   - PDF exists as the final human-facing report artifact.
+   - Browser/dashboard surfaces are not part of the v1.6 product contract.
 
 ## The 16-layer decision ladder
+
+Every PR is processed as a funnel.
+
+- Every PR enters at Gate 1.
+- Each gate emits an explicit outcome.
+- A PR either exits at a gate with a recorded reason or advances inward to the next gate.
+- Gate order is fixed in v1.6 and must run from cheaper outer judgment to more expensive inner judgment.
+- The ladder is therefore both a decision model and a cost-control model.
 
 ### Outer peel
 1. Garbage — is this worth looking at at all?
@@ -47,7 +65,7 @@ The system does not get to ignore PRs. It does not get to hide uncertainty. It d
 3. Obvious badness — is it junk, spam, malware, or structurally broken?
 
 ### Substance
-4. Substance score — is it secure, reliable, performant, and aligned with the roadmap?
+4. Substance score — does this change appear substantial enough to justify deeper work?
 5. Now vs future — does this belong in current priorities, or later?
 
 ### Truthfulness and context
@@ -61,7 +79,7 @@ The system does not get to ignore PRs. It does not get to hide uncertainty. It d
 11. Stability — is it settled enough to act on?
 12. Mergeability — can it land cleanly?
 13. Strategic weight — does it move the project in the right direction?
-14. Attention cost — how expensive is it for a human to understand?
+14. Attention cost — how expensive is it for a human or agent to understand?
 15. Reversibility — if we act and regret it, can we undo it safely?
 16. Signal quality — is this real signal, or noise with good packaging?
 

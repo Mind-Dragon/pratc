@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -498,5 +499,309 @@ func TestAttemptWithTokenFallback_NoTokens(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("AttemptWithTokenFallback() with no tokens = nil, want error")
+	}
+}
+
+// TestAccessState_String verifies AccessState String() method.
+func TestAccessState_String(t *testing.T) {
+	tests := []struct {
+		state   AccessState
+		wantStr string
+	}{
+		{AccessStateUnknown, "unknown"},
+		{AccessStateReachableAuthenticated, "reachable_authenticated"},
+		{AccessStateReachableUnauthenticated, "reachable_unauthenticated"},
+		{AccessStateUnreachable, "unreachable"},
+		{AccessState(99), "invalid"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.wantStr, func(t *testing.T) {
+			if got := tc.state.String(); got != tc.wantStr {
+				t.Errorf("AccessState.String() = %v, want %v", got, tc.wantStr)
+			}
+		})
+	}
+}
+
+// TestCheckAccessState_Unreachable verifies that CheckAccessState returns
+// AccessStateUnreachable when gh is not available or can't be executed.
+func TestCheckAccessState_Unreachable(t *testing.T) {
+	// Set gh to a non-existent path that will fail to execute
+	dir := t.TempDir()
+	// Create a file named gh that is NOT executable - this simulates gh not being found
+	script := filepath.Join(dir, "gh")
+	// Create a fake gh that fails with exit code 2 (not 1 - exit code 1 means "not logged in")
+	contents := `#!/bin/sh
+exit 2`
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on windows")
+	}
+	if err := os.WriteFile(script, []byte(contents), 0o755); err != nil {
+		t.Fatalf("write fake gh: %v", err)
+	}
+	t.Setenv("PATH", dir)
+
+	state := CheckAccessState(context.Background())
+	// exit code 2 is not a known state, so should fall through to unreachable
+	if state != AccessStateUnreachable {
+		t.Errorf("CheckAccessState() = %v, want AccessStateUnreachable", state)
+	}
+}
+
+// TestCheckAccessState_ReachableAuthenticated verifies that CheckAccessState returns
+// AccessStateReachableAuthenticated when gh is logged in.
+func TestCheckAccessState_ReachableAuthenticated(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "gh")
+	// Fake gh that succeeds with status showing a logged in account
+	contents := `#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  echo '{"accounts":[{"login":"test-login","active":true}]}'
+  exit 0
+fi
+exit 1`
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on windows")
+	}
+	if err := os.WriteFile(script, []byte(contents), 0o755); err != nil {
+		t.Fatalf("write fake gh: %v", err)
+	}
+	t.Setenv("PATH", dir)
+
+	state := CheckAccessState(context.Background())
+	if state != AccessStateReachableAuthenticated {
+		t.Errorf("CheckAccessState() = %v, want AccessStateReachableAuthenticated", state)
+	}
+}
+
+// TestDiscoverAccounts_MultipleAccounts verifies that multiple gh accounts can be discovered.
+func TestDiscoverAccounts_MultipleAccounts(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "gh")
+	contents := `#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  if [ "$3" = "--json" ] && [ "$4" = "account" ]; then
+    echo '{"accounts":[{"login":"Mind-Dragon","active":true},{"login":"avirweb","active":false}]}'
+    exit 0
+  fi
+  echo '{"accounts":[{"login":"Mind-Dragon","active":true},{"login":"avirweb","active":false}]}'
+  exit 0
+fi
+exit 1`
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on windows")
+	}
+	if err := os.WriteFile(script, []byte(contents), 0o755); err != nil {
+		t.Fatalf("write fake gh: %v", err)
+	}
+	t.Setenv("PATH", dir)
+
+	accounts, err := DiscoverAccounts(context.Background())
+	if err != nil {
+		t.Fatalf("DiscoverAccounts() error = %v", err)
+	}
+	if len(accounts) != 2 {
+		t.Fatalf("DiscoverAccounts() got %d accounts, want 2", len(accounts))
+	}
+	if accounts[0] != "Mind-Dragon" || accounts[1] != "avirweb" {
+		t.Errorf("DiscoverAccounts() = %v, want [Mind-Dragon, avirweb]", accounts)
+	}
+}
+
+// TestDiscoverAccounts_TextFallback verifies text fallback when JSON parsing fails.
+func TestDiscoverAccounts_TextFallback(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "gh")
+	// Output that doesn't parse as JSON properly, forcing text fallback
+	contents := `#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  echo '  ✓ Logged in to github.com account Mind-Dragon (/home/user/.config/gh/hosts.yml)'
+  echo '  ✓ Logged in to github.com account avirweb (/home/user/.config/gh/hosts.yml)'
+  echo '  - Active account: true'
+  exit 0
+fi
+exit 1`
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on windows")
+	}
+	if err := os.WriteFile(script, []byte(contents), 0o755); err != nil {
+		t.Fatalf("write fake gh: %v", err)
+	}
+	t.Setenv("PATH", dir)
+
+	accounts, err := DiscoverAccounts(context.Background())
+	if err != nil {
+		t.Fatalf("DiscoverAccounts() error = %v", err)
+	}
+	// Text fallback should still find the accounts
+	if len(accounts) < 1 {
+		t.Fatalf("DiscoverAccounts() got %d accounts, want >= 1", len(accounts))
+	}
+}
+
+// TestResolveNamedLogin_NoLoginsConfigured verifies fallback to default when no logins configured.
+func TestResolveNamedLogin_NoLoginsConfigured(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "env-token-default")
+	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_PAT", "")
+	t.Setenv("PRATC_GITHUB_TOKENS", "")
+
+	result, err := ResolveNamedLogin(context.Background(), nil, true)
+	if err != nil {
+		t.Fatalf("ResolveNamedLogin() error = %v", err)
+	}
+	if result.State != AccessStateReachableAuthenticated {
+		t.Errorf("ResolveNamedLogin().State = %v, want AccessStateReachableAuthenticated", result.State)
+	}
+	if result.Token != "env-token-default" {
+		t.Errorf("ResolveNamedLogin().Token = %q, want env-token-default", result.Token)
+	}
+	if result.Login != "" {
+		t.Errorf("ResolveNamedLogin().Login = %q, want empty (default)", result.Login)
+	}
+}
+
+// TestResolveNamedLogin_SelectedLogin verifies that a specific configured login is selected.
+func TestResolveNamedLogin_SelectedLogin(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "gh")
+	// Fake gh that returns a token for the specified login
+	contents := `#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "token" ]; then
+  printf '%s' "token-for-Mind-Dragon"
+  exit 0
+fi
+exit 1`
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on windows")
+	}
+	if err := os.WriteFile(script, []byte(contents), 0o755); err != nil {
+		t.Fatalf("write fake gh: %v", err)
+	}
+	t.Setenv("PATH", dir)
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_PAT", "")
+
+	result, err := ResolveNamedLogin(context.Background(), []string{"Mind-Dragon"}, true)
+	if err != nil {
+		t.Fatalf("ResolveNamedLogin() error = %v", err)
+	}
+	if result.State != AccessStateReachableAuthenticated {
+		t.Errorf("ResolveNamedLogin().State = %v, want AccessStateReachableAuthenticated", result.State)
+	}
+	if result.Token != "token-for-Mind-Dragon" {
+		t.Errorf("ResolveNamedLogin().Token = %q, want token-for-Mind-Dragon", result.Token)
+	}
+	if result.Login != "Mind-Dragon" {
+		t.Errorf("ResolveNamedLogin().Login = %q, want Mind-Dragon", result.Login)
+	}
+	if !strings.Contains(result.Message, "Mind-Dragon") {
+		t.Errorf("ResolveNamedLogin().Message = %q, should contain Mind-Dragon", result.Message)
+	}
+}
+
+// TestResolveNamedLogin_LoginNotAvailable verifies behavior when configured login is not available.
+func TestResolveNamedLogin_LoginNotAvailable(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "gh")
+	// Fake gh that fails for the configured login
+	contents := `#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "token" ]; then
+  exit 1
+fi
+exit 1`
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on windows")
+	}
+	if err := os.WriteFile(script, []byte(contents), 0o755); err != nil {
+		t.Fatalf("write fake gh: %v", err)
+	}
+	t.Setenv("PATH", dir)
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_PAT", "")
+	t.Setenv("PRATC_GITHUB_TOKENS", "")
+
+	// Without failover, should return unauthenticated state
+	result, _ := ResolveNamedLogin(context.Background(), []string{"NonExistentLogin"}, false)
+	if result.State != AccessStateReachableUnauthenticated {
+		t.Errorf("ResolveNamedLogin().State = %v, want AccessStateReachableUnauthenticated", result.State)
+	}
+	if !strings.Contains(result.Message, "no login available") {
+		t.Errorf("ResolveNamedLogin().Message = %q, should mention no login available", result.Message)
+	}
+}
+
+// TestResolveNamedLogin_WithFailover verifies failover to default when configured login fails.
+func TestResolveNamedLogin_WithFailover(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "gh")
+	// The script handles:
+	// - "auth token" (ResolveToken fallback) -> returns fallback-token, exit 0
+	// - "auth token --hostname github.com" (ResolveTokenForLogin) -> exit 1
+	contents := `#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "token" ]; then
+  if [ "$3" = "--hostname" ]; then
+    exit 1
+  fi
+  printf '%s' "fallback-token"
+  exit 0
+fi
+exit 1`
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on windows")
+	}
+	if err := os.WriteFile(script, []byte(contents), 0o755); err != nil {
+		t.Fatalf("write fake gh: %v", err)
+	}
+	t.Setenv("PATH", dir)
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_PAT", "")
+
+	result, err := ResolveNamedLogin(context.Background(), []string{"UnavailableLogin"}, true)
+	if err != nil {
+		t.Fatalf("ResolveNamedLogin() error = %v", err)
+	}
+	if result.State != AccessStateReachableAuthenticated {
+		t.Errorf("ResolveNamedLogin().State = %v, want AccessStateReachableAuthenticated", result.State)
+	}
+	if result.Token != "fallback-token" {
+		t.Errorf("ResolveNamedLogin().Token = %q, want fallback-token", result.Token)
+	}
+	if !strings.Contains(result.Message, "unavailable") {
+		t.Errorf("ResolveNamedLogin().Message = %q, should mention unavailable", result.Message)
+	}
+}
+
+// TestGetActiveLogin verifies that the active gh login is detected correctly.
+func TestGetActiveLogin(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "gh")
+	contents := `#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  if [ "$3" = "--json" ] && [ "$4" = "account" ]; then
+    echo '{"accounts":[{"login":"Mind-Dragon","active":true},{"login":"avirweb","active":false}]}'
+    exit 0
+  fi
+  exit 1
+fi
+exit 1`
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on windows")
+	}
+	if err := os.WriteFile(script, []byte(contents), 0o755); err != nil {
+		t.Fatalf("write fake gh: %v", err)
+	}
+	t.Setenv("PATH", dir)
+
+	login, err := GetActiveLogin(context.Background())
+	if err != nil {
+		t.Fatalf("GetActiveLogin() error = %v", err)
+	}
+	if login != "Mind-Dragon" {
+		t.Errorf("GetActiveLogin() = %q, want Mind-Dragon", login)
 	}
 }

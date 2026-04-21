@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-1.5.0-1BC3F3?style=for-the-badge" alt="Release 1.5.0"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-1.6.0-1BC3F3?style=for-the-badge" alt="Release 1.6.0"></a>
   <a href="RATELIMITS.md"><img src="https://img.shields.io/badge/status-audit--green-1F9D55?style=for-the-badge" alt="Audit green"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-FSL--1.1--Apache--2.0-4B5563?style=for-the-badge" alt="License"></a>
   <a href="INSTALL.md"><img src="https://img.shields.io/badge/port-7400-0F172A?style=for-the-badge" alt="Default port 7400"></a>
@@ -35,7 +35,7 @@ Use it when "just open the PR list" has stopped being a serious plan.
 
 ## Project Status
 
-- **Current release line:** `1.5.0`
+- **Current release line:** `1.6.0`
 - **Validation status:** cache-first and explicit live full-corpus workflows are audit-green against `openclaw/openclaw` (`6,632` PRs, `17` required checks passing, `0` failures)
 - **Default execution model:** cache-first local snapshot reuse; fresh sync happens only when you explicitly request `--refresh-sync` or `--force-live`
 - **Default API port:** `7400` (reserved prATC range: `7400-7500`)
@@ -65,7 +65,7 @@ Use it when "just open the PR list" has stopped being a serious plan.
 - **Singleton Lock**: Prevents concurrent prATC instances against the same repo
 - **Repo Normalization**: Case-insensitive repo names (OpenClaw/openclaw → openclaw/openclaw)
 - **Rate-Limit Aware**: Built-in retry, budget management, and auto-resume
-- **Web Dashboard**: ATC overview, triage inbox, dependency graphs, and merge planning
+- **API Server**: HTTP API for AI agents and external integrations (port 7400)
 
 ## Quick Start
 
@@ -228,7 +228,7 @@ internal/
   sync/             Background sync, rate-limit guard, bootstrap streaming
   types/            Shared types, constants, repo normalization
 ml-service/         Python ML service
-web/                TypeScript Next.js dashboard
+web/                TypeScript Next.js dashboard (deprecated — not part of v1.6 product surface)
 fixtures/           Test fixtures
 projects/           Persistent workflow runs and PDF reports
 ```

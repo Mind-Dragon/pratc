@@ -8,7 +8,7 @@ import (
 )
 
 // Store provides read-only access to sync job data from the SQLite cache.
-// It wraps the cache.Store and exposes simplified views for the monitor dashboard.
+// It wraps the cache.Store and exposes simplified views for the monitor.
 type Store struct {
 	cache *cache.Store
 }
@@ -73,7 +73,7 @@ func (s *Store) GetAllJobs() []SyncJobView {
 	return views
 }
 
-// jobToView converts a cache.SyncJob to a SyncJobView for dashboard display.
+// jobToView converts a cache.SyncJob to a SyncJobView for monitor display.
 func jobToView(job cache.SyncJob) SyncJobView {
 	progress := 0
 	if job.Progress.TotalPRs > 0 {
@@ -97,7 +97,7 @@ func jobToView(job cache.SyncJob) SyncJobView {
 	}
 }
 
-// mapCacheStatus maps cache job statuses to dashboard view statuses.
+// mapCacheStatus maps cache job statuses to monitor view statuses.
 func mapCacheStatus(status cache.SyncJobStatus) string {
 	switch status {
 	case cache.SyncJobStatusQueued:

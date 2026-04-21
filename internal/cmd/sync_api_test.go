@@ -64,7 +64,7 @@ func (testMirror) Drift(_ context.Context, _ map[int]string) (map[int]string, er
 	return map[int]string{}, nil
 }
 
-func withRepoSyncManager(t *testing.T, factory func(jobDBPath, jobID string) *prsync.Manager) {
+func withRepoSyncManager(t *testing.T, factory func(jobDBPath, jobID, repo string) *prsync.Manager) {
 	t.Helper()
 	original := newRepoSyncManager
 	newRepoSyncManager = factory

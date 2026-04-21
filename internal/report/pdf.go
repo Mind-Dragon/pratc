@@ -107,8 +107,8 @@ func (s *CoverSection) Render(pdf *fpdf.Fpdf) {
 	}
 }
 
-// MetricsDashboard holds all metrics from analyze, graph, and plan artifacts.
-type MetricsDashboard struct {
+// GateContextData holds structured context for the gate-journey decision packet.
+type GateContextData struct {
 	// From analyze.json
 	TotalPRs       int
 	ClusterCount   int
@@ -129,15 +129,15 @@ type MetricsDashboard struct {
 	CandidateCount int
 }
 
-// MetricsSection renders a visual dashboard of key metrics.
-type MetricsSection struct {
-	Dashboard   MetricsDashboard
+// GateContextSection renders the gate-journey decision context for operators.
+type GateContextSection struct {
+	Data        GateContextData
 	Repo        string
 	GeneratedAt time.Time
 }
 
-// Render draws the metrics dashboard section.
-func (s *MetricsSection) Render(pdf *fpdf.Fpdf) {
+// Render draws the gate-journey context section.
+func (s *GateContextSection) Render(pdf *fpdf.Fpdf) {
 	pdf.AddPage()
 
 	// Header with gradient-style background
@@ -147,7 +147,7 @@ func (s *MetricsSection) Render(pdf *fpdf.Fpdf) {
 	pdf.SetTextColor(255, 255, 255)
 	pdf.SetFont("Arial", "B", 20)
 	pdf.SetXY(15, 12)
-	pdf.Cell(180, 12, "Metrics Dashboard")
+	pdf.Cell(180, 12, "Gate Journey Context")
 
 	// Repository info below header
 	pdf.SetTextColor(0, 0, 0)
@@ -155,24 +155,24 @@ func (s *MetricsSection) Render(pdf *fpdf.Fpdf) {
 	pdf.SetXY(15, 38)
 	pdf.Cell(180, 6, fmt.Sprintf("Repository: %s | Generated: %s", s.Repo, s.GeneratedAt.Format(time.RFC1123)))
 
-	// Main metrics grid (3 columns)
-	s.renderMainMetrics(pdf)
+	// Main gate signals grid (3 columns)
+	s.renderGateSignals(pdf)
 
-	// Secondary metrics section
-	s.renderSecondaryMetrics(pdf)
+	// Gate connectivity section
+	s.renderGateConnectivity(pdf)
 
-	// Plan summary box
-	s.renderPlanSummary(pdf)
+	// Gate outcome summary
+	s.renderGateOutcome(pdf)
 }
 
-// renderMainMetrics draws the primary metrics in a 3-column grid.
-func (s *MetricsSection) renderMainMetrics(pdf *fpdf.Fpdf) {
+// renderGateSignals draws the primary gate signals in a 3-column grid.
+func (s *GateContextSection) renderGateSignals(pdf *fpdf.Fpdf) {
 	y := 55.0
 
-	// Header for main metrics
+	// Header for gate signals
 	pdf.SetFont("Arial", "B", 14)
 	pdf.SetXY(15, y)
-	pdf.Cell(180, 8, "Key Metrics")
+	pdf.Cell(180, 8, "Gate Signals")
 
 	y += 12
 
@@ -183,44 +183,44 @@ func (s *MetricsSection) renderMainMetrics(pdf *fpdf.Fpdf) {
 	startX := 15.0
 
 	// Row 1: Total PRs, Clusters, Conflicts
-	metrics1 := []struct {
+	signals1 := []struct {
 		label string
 		value int
 		color struct{ r, g, b int }
 	}{
-		{"Total PRs", s.Dashboard.TotalPRs, struct{ r, g, b int }{52, 152, 219}},
-		{"PR Clusters", s.Dashboard.ClusterCount, struct{ r, g, b int }{155, 89, 182}},
-		{"Conflict Pairs", s.Dashboard.ConflictCount, struct{ r, g, b int }{231, 76, 60}},
+		{"Total PRs", s.Data.TotalPRs, struct{ r, g, b int }{52, 152, 219}},
+		{"PR Clusters", s.Data.ClusterCount, struct{ r, g, b int }{155, 89, 182}},
+		{"Conflict Pairs", s.Data.ConflictCount, struct{ r, g, b int }{231, 76, 60}},
 	}
 
-	for i, m := range metrics1 {
+	for i, m := range signals1 {
 		x := startX + float64(i)*(boxWidth+gap)
-		s.renderMetricBox(pdf, x, y, boxWidth, boxHeight, m.label, m.value, m.color.r, m.color.g, m.color.b)
+		s.renderGateSignalBox(pdf, x, y, boxWidth, boxHeight, m.label, m.value, m.color.r, m.color.g, m.color.b)
 	}
 
 	y += boxHeight + 10
 
 	// Row 2: Duplicates, Overlaps, Stale, Garbage
-	metrics2 := []struct {
+	signals2 := []struct {
 		label string
 		value int
 		color struct{ r, g, b int }
 	}{
-		{"Duplicate Groups", s.Dashboard.DuplicateCount, struct{ r, g, b int }{241, 196, 15}},
-		{"Overlap Groups", s.Dashboard.OverlapCount, struct{ r, g, b int }{230, 126, 34}},
-		{"Stale PRs", s.Dashboard.StalePRCount, struct{ r, g, b int }{127, 140, 141}},
-		{"Garbage PRs", s.Dashboard.GarbagePRCount, struct{ r, g, b int }{192, 57, 43}},
+		{"Duplicate Groups", s.Data.DuplicateCount, struct{ r, g, b int }{241, 196, 15}},
+		{"Overlap Groups", s.Data.OverlapCount, struct{ r, g, b int }{230, 126, 34}},
+		{"Stale PRs", s.Data.StalePRCount, struct{ r, g, b int }{127, 140, 141}},
+		{"Garbage PRs", s.Data.GarbagePRCount, struct{ r, g, b int }{192, 57, 43}},
 	}
 
-	metrics2BoxWidth := boxWidth - 20 // slightly smaller to fit 4 boxes
-	for i, m := range metrics2 {
-		x := startX + float64(i)*(metrics2BoxWidth+gap)
-		s.renderMetricBox(pdf, x, y, metrics2BoxWidth, boxHeight, m.label, m.value, m.color.r, m.color.g, m.color.b)
+	signals2BoxWidth := boxWidth - 20 // slightly smaller to fit 4 boxes
+	for i, m := range signals2 {
+		x := startX + float64(i)*(signals2BoxWidth+gap)
+		s.renderGateSignalBox(pdf, x, y, signals2BoxWidth, boxHeight, m.label, m.value, m.color.r, m.color.g, m.color.b)
 	}
 }
 
-// renderMetricBox draws a single metric box with colored background.
-func (s *MetricsSection) renderMetricBox(pdf *fpdf.Fpdf, x, y, w, h float64, label string, value int, r, g, b int) {
+// renderGateSignalBox draws a single gate signal box with colored background.
+func (s *GateContextSection) renderGateSignalBox(pdf *fpdf.Fpdf, x, y, w, h float64, label string, value int, r, g, b int) {
 	// Background
 	pdf.SetFillColor(r, g, b)
 	pdf.Rect(x, y, w, h, "F")
@@ -237,18 +237,18 @@ func (s *MetricsSection) renderMetricBox(pdf *fpdf.Fpdf, x, y, w, h float64, lab
 	pdf.CellFormat(w-6, 12, fmt.Sprintf("%d", value), "", 0, "C", false, 0, "")
 }
 
-// renderSecondaryMetrics draws graph and structural metrics.
-func (s *MetricsSection) renderSecondaryMetrics(pdf *fpdf.Fpdf) {
+// renderGateConnectivity draws graph and structural connectivity.
+func (s *GateContextSection) renderGateConnectivity(pdf *fpdf.Fpdf) {
 	y := 155.0
 
 	// Section header
 	pdf.SetFont("Arial", "B", 14)
 	pdf.SetXY(15, y)
-	pdf.Cell(180, 8, "Dependency Graph")
+	pdf.Cell(180, 8, "Gate Connectivity")
 
 	y += 12
 
-	// Graph metrics side-by-side
+	// Graph connectivity side-by-side
 	pdf.SetFillColor(44, 62, 80)
 	pdf.SetTextColor(255, 255, 255)
 
@@ -259,7 +259,7 @@ func (s *MetricsSection) renderSecondaryMetrics(pdf *fpdf.Fpdf) {
 	pdf.Cell(82, 6, "Total Nodes")
 	pdf.SetFont("Arial", "B", 20)
 	pdf.SetXY(18, y+12)
-	pdf.Cell(82, 14, fmt.Sprintf("%d", s.Dashboard.GraphNodes))
+	pdf.Cell(82, 14, fmt.Sprintf("%d", s.Data.GraphNodes))
 
 	// Edges box
 	pdf.Rect(107, y, 88, 30, "F")
@@ -267,7 +267,7 @@ func (s *MetricsSection) renderSecondaryMetrics(pdf *fpdf.Fpdf) {
 	pdf.Cell(82, 6, "Total Edges")
 	pdf.SetFont("Arial", "B", 20)
 	pdf.SetXY(110, y+12)
-	pdf.Cell(82, 14, fmt.Sprintf("%d", s.Dashboard.GraphEdges))
+	pdf.Cell(82, 14, fmt.Sprintf("%d", s.Data.GraphEdges))
 
 	// Edge-to-node ratio
 	y += 35
@@ -276,30 +276,30 @@ func (s *MetricsSection) renderSecondaryMetrics(pdf *fpdf.Fpdf) {
 	pdf.SetXY(15, y)
 
 	var edgeRatio float64
-	if s.Dashboard.GraphNodes > 0 {
-		edgeRatio = float64(s.Dashboard.GraphEdges) / float64(s.Dashboard.GraphNodes)
+	if s.Data.GraphNodes > 0 {
+		edgeRatio = float64(s.Data.GraphEdges) / float64(s.Data.GraphNodes)
 	}
 	pdf.Cell(180, 6, fmt.Sprintf("Edge Density: %.2f edges per node", edgeRatio))
 }
 
-// renderPlanSummary draws the merge plan summary box.
-func (s *MetricsSection) renderPlanSummary(pdf *fpdf.Fpdf) {
+// renderGateOutcome draws the merge gate outcome summary box.
+func (s *GateContextSection) renderGateOutcome(pdf *fpdf.Fpdf) {
 	y := 205.0
 
 	// Section header
 	pdf.SetFont("Arial", "B", 14)
 	pdf.SetXY(15, y)
-	pdf.Cell(180, 8, "Merge Plan Summary")
+	pdf.Cell(180, 8, "Gate Outcome")
 
 	y += 12
 
-	// Background for plan summary
+	// Background for gate outcome
 	pdf.SetFillColor(236, 240, 241)
 	pdf.Rect(15, y, 180, 55, "F")
 	pdf.SetDrawColor(52, 73, 94)
 	pdf.Rect(15, y, 180, 55, "D")
 
-	// Plan metrics in rows
+	// Gate outcome metrics in rows
 	pdf.SetTextColor(0, 0, 0)
 
 	// Row 1: Target vs Selected
@@ -307,14 +307,14 @@ func (s *MetricsSection) renderPlanSummary(pdf *fpdf.Fpdf) {
 	pdf.SetXY(20, y+8)
 	pdf.CellFormat(60, 10, "Target PRs:", "0", 0, "R", false, 0, "")
 	pdf.SetFont("Arial", "B", 14)
-	pdf.CellFormat(40, 10, fmt.Sprintf("%d", s.Dashboard.TargetPRs), "0", 0, "L", false, 0, "")
+	pdf.CellFormat(40, 10, fmt.Sprintf("%d", s.Data.TargetPRs), "0", 0, "L", false, 0, "")
 
 	pdf.SetFont("Arial", "", 11)
 	pdf.SetXY(100, y+8)
 	pdf.CellFormat(60, 10, "Selected:", "0", 0, "R", false, 0, "")
 	pdf.SetFont("Arial", "B", 14)
 	pdf.SetTextColor(39, 174, 96) // green
-	pdf.CellFormat(40, 10, fmt.Sprintf("%d", s.Dashboard.SelectedCount), "0", 0, "L", false, 0, "")
+	pdf.CellFormat(40, 10, fmt.Sprintf("%d", s.Data.SelectedCount), "0", 0, "L", false, 0, "")
 
 	// Row 2: Candidate pool
 	y += 12
@@ -323,14 +323,14 @@ func (s *MetricsSection) renderPlanSummary(pdf *fpdf.Fpdf) {
 	pdf.SetXY(20, y+8)
 	pdf.CellFormat(60, 10, "Candidate Pool:", "0", 0, "R", false, 0, "")
 	pdf.SetFont("Arial", "B", 14)
-	pdf.CellFormat(40, 10, fmt.Sprintf("%d", s.Dashboard.CandidateCount), "0", 0, "L", false, 0, "")
+	pdf.CellFormat(40, 10, fmt.Sprintf("%d", s.Data.CandidateCount), "0", 0, "L", false, 0, "")
 
 	pdf.SetFont("Arial", "", 11)
 	pdf.SetXY(100, y+8)
 	pdf.CellFormat(60, 10, "Rejected:", "0", 0, "R", false, 0, "")
 	pdf.SetFont("Arial", "B", 14)
 	pdf.SetTextColor(231, 76, 60) // red
-	pdf.CellFormat(40, 10, fmt.Sprintf("%d", s.Dashboard.RejectedCount), "0", 0, "L", false, 0, "")
+	pdf.CellFormat(40, 10, fmt.Sprintf("%d", s.Data.RejectedCount), "0", 0, "L", false, 0, "")
 
 	// Row 3: Selection rate
 	y += 12
@@ -339,10 +339,10 @@ func (s *MetricsSection) renderPlanSummary(pdf *fpdf.Fpdf) {
 	pdf.SetXY(20, y+8)
 
 	var selectionRate float64
-	if s.Dashboard.CandidateCount > 0 {
-		selectionRate = float64(s.Dashboard.SelectedCount) / float64(s.Dashboard.CandidateCount) * 100
+	if s.Data.CandidateCount > 0 {
+		selectionRate = float64(s.Data.SelectedCount) / float64(s.Data.CandidateCount) * 100
 	}
-	pdf.CellFormat(160, 10, fmt.Sprintf("Selection Rate: %.1f%% (%d of %d candidates)", selectionRate, s.Dashboard.SelectedCount, s.Dashboard.CandidateCount), "0", 0, "C", false, 0, "")
+	pdf.CellFormat(160, 10, fmt.Sprintf("Selection Rate: %.1f%% (%d of %d candidates)", selectionRate, s.Data.SelectedCount, s.Data.CandidateCount), "0", 0, "C", false, 0, "")
 }
 
 // PoolCompositionData holds merge plan data for the report.
@@ -581,12 +581,12 @@ func (e *PDFExporter) Export() ([]byte, error) {
 	return e.composer.Compose()
 }
 
-// LoadMetricsSection loads metrics from all JSON artifact files.
-func LoadMetricsSection(inputDir, repo string) (*MetricsSection, error) {
-	section := &MetricsSection{
+// LoadGateContextSection loads gate-journey context from all JSON artifact files.
+func LoadGateContextSection(inputDir, repo string) (*GateContextSection, error) {
+	section := &GateContextSection{
 		Repo:        repo,
 		GeneratedAt: time.Now(),
-		Dashboard:   MetricsDashboard{},
+		Data:        GateContextData{},
 	}
 
 	// Load analyze.json
@@ -612,13 +612,13 @@ func LoadMetricsSection(inputDir, repo string) (*MetricsSection, error) {
 		return nil, fmt.Errorf("failed to parse analyze JSON: %w", err)
 	}
 
-	section.Dashboard.TotalPRs = analyzeResult.Counts.TotalPRs
-	section.Dashboard.ClusterCount = analyzeResult.Counts.ClusterCount
-	section.Dashboard.DuplicateCount = analyzeResult.Counts.DuplicateGroups
-	section.Dashboard.OverlapCount = analyzeResult.Counts.OverlapGroups
-	section.Dashboard.ConflictCount = analyzeResult.Counts.ConflictPairs
-	section.Dashboard.StalePRCount = analyzeResult.Counts.StalePRs
-	section.Dashboard.GarbagePRCount = analyzeResult.Counts.GarbagePRs
+	section.Data.TotalPRs = analyzeResult.Counts.TotalPRs
+	section.Data.ClusterCount = analyzeResult.Counts.ClusterCount
+	section.Data.DuplicateCount = analyzeResult.Counts.DuplicateGroups
+	section.Data.OverlapCount = analyzeResult.Counts.OverlapGroups
+	section.Data.ConflictCount = analyzeResult.Counts.ConflictPairs
+	section.Data.StalePRCount = analyzeResult.Counts.StalePRs
+	section.Data.GarbagePRCount = analyzeResult.Counts.GarbagePRs
 
 	// Parse generatedAt timestamp
 	if analyzeResult.GeneratedAt != "" {
@@ -648,8 +648,8 @@ func LoadMetricsSection(inputDir, repo string) (*MetricsSection, error) {
 		return nil, fmt.Errorf("failed to parse graph JSON: %w", err)
 	}
 
-	section.Dashboard.GraphNodes = len(graphResult.Nodes)
-	section.Dashboard.GraphEdges = len(graphResult.Edges)
+	section.Data.GraphNodes = len(graphResult.Nodes)
+	section.Data.GraphEdges = len(graphResult.Edges)
 
 	// Load plan.json
 	planPath := inputDir + "/step-5-plan.json"
@@ -673,12 +673,17 @@ func LoadMetricsSection(inputDir, repo string) (*MetricsSection, error) {
 		return nil, fmt.Errorf("failed to parse plan JSON: %w", err)
 	}
 
-	section.Dashboard.SelectedCount = len(planResult.Selected)
-	section.Dashboard.RejectedCount = len(planResult.Rejections)
-	section.Dashboard.TargetPRs = planResult.Target
-	section.Dashboard.CandidateCount = planResult.CandidatePoolSize
+	section.Data.SelectedCount = len(planResult.Selected)
+	section.Data.RejectedCount = len(planResult.Rejections)
+	section.Data.TargetPRs = planResult.Target
+	section.Data.CandidateCount = planResult.CandidatePoolSize
 
 	return section, nil
+}
+
+// LoadMetricsSection is a backward-compatible alias for LoadGateContextSection.
+func LoadMetricsSection(inputDir, repo string) (*GateContextSection, error) {
+	return LoadGateContextSection(inputDir, repo)
 }
 
 // SectionFromPlan creates a pool composition section from plan response.

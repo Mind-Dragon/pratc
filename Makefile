@@ -22,10 +22,9 @@ verify-env:
 	@command -v $(PYTHON) >/dev/null 2>&1 || { echo "missing python3"; exit 1; }
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' || { echo "python3.11+ required"; exit 1; }
 	@command -v $(UV) >/dev/null 2>&1 || { echo "missing uv"; exit 1; }
-	@command -v $(NODE) >/dev/null 2>&1 || { echo "missing node"; exit 1; }
-	@command -v $(BUN) >/dev/null 2>&1 || { echo "missing bun"; exit 1; }
 	@command -v docker >/dev/null 2>&1 || { echo "missing docker"; exit 1; }
 	@command -v $(DOCKER_COMPOSE) >/dev/null 2>&1 || { echo "missing docker-compose"; exit 1; }
+	@echo "Core dependencies verified. Node/Bun optional for web UI development only."
 
 dev:
 	@echo "Run 'make dev-api' or 'make dev-web' after the next scaffold tasks land."

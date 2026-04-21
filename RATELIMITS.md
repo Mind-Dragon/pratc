@@ -110,10 +110,10 @@ pratc sync --repo=owner/repo --watch --interval=10m
 ```
 
 ### 5. Monitor Budget
-Use the dashboard to watch rate limit status:
+Use the API to check rate limit status:
 ```bash
-# Terminal dashboard
-pratc monitor
+# Via CLI
+pratc audit --limit=5 --format=json
 
 # Or API endpoint
 curl http://localhost:7400/api/health

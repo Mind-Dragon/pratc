@@ -1,6 +1,6 @@
 package tui
 
-// Dark Cockpit color palette - consistent with Web dashboard.
+// Dark Cockpit color palette - consistent with terminal monitor aesthetic.
 // All colors are dark mode only.
 const (
 	// Background

@@ -99,6 +99,16 @@ func (q *QualityAnalyzer) Analyze(ctx context.Context, prData PRData) (AnalyzerR
 		reasons = append(reasons, "PR has excessive changes without clear purpose or description")
 	}
 
+	// Check 5: Test gap evidence - production code changed without corresponding test changes
+	if len(prData.Files) > 0 {
+		if testGapFindings := q.detectTestGap(prData.Files); len(testGapFindings) > 0 {
+			findings = append(findings, testGapFindings...)
+			for _, f := range testGapFindings {
+				reasons = append(reasons, fmt.Sprintf("test gap detected: %s", f.Finding))
+			}
+		}
+	}
+
 	// Classify based on findings
 	category, priorityTier, _ := q.classifyPR(findings)
 
@@ -282,4 +292,126 @@ func (q *QualityAnalyzer) classifyPR(findings []types.AnalyzerFinding) (types.Re
 	}
 
 	return types.ReviewCategoryMergeAfterFocusedReview, types.PriorityTierReviewRequired, 0.5
+}
+
+// testFilePatterns matches test files that should have corresponding production files.
+var testFilePatterns = []*regexp.Regexp{
+	regexp.MustCompile(`_(test|spec)_`),
+	regexp.MustCompile(`\.test\.`),
+	regexp.MustCompile(`\.spec\.`),
+	regexp.MustCompile(`/test/`),
+	regexp.MustCompile(`/tests/`),
+	regexp.MustCompile(`_test\.go$`),
+	regexp.MustCompile(`_test\.py$`),
+	regexp.MustCompile(`_test\.js$`),
+	regexp.MustCompile(`_test\.ts$`),
+}
+
+// isTestFile returns true if the file path looks like a test file.
+func isTestFile(path string) bool {
+	for _, pattern := range testFilePatterns {
+		if pattern.MatchString(path) {
+			return true
+		}
+	}
+	return false
+}
+
+// isProductionCode returns true if the file looks like production code (not test, not config).
+func isProductionCode(path string) bool {
+	if isTestFile(path) {
+		return false
+	}
+	// Skip common non-production files
+	if strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml") {
+		return false
+	}
+	if strings.HasSuffix(path, ".json") || strings.HasSuffix(path, ".toml") {
+		return false
+	}
+	if strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".txt") {
+		return false
+	}
+	// Skip vendor and generated directories
+	if strings.Contains(path, "/vendor/") || strings.Contains(path, "/generated/") {
+		return false
+	}
+	return true
+}
+
+// detectTestGap detects when production code is changed without corresponding test changes.
+// It looks for production file changes and checks if there are any test file changes.
+func (q *QualityAnalyzer) detectTestGap(files []types.PRFile) []types.AnalyzerFinding {
+	var findings []types.AnalyzerFinding
+
+	// Separate production files and test files
+	var prodFiles []types.PRFile
+	var testFiles []types.PRFile
+
+	for _, file := range files {
+		if isTestFile(file.Path) {
+			testFiles = append(testFiles, file)
+		} else if isProductionCode(file.Path) {
+			prodFiles = append(prodFiles, file)
+		}
+	}
+
+	// If there are production changes but no test changes, flag as test gap
+	if len(prodFiles) > 0 && len(testFiles) == 0 {
+		// Only flag if there are substantial production changes
+		totalAdditions := 0
+		for _, pf := range prodFiles {
+			totalAdditions += pf.Additions
+		}
+		if totalAdditions >= 10 {
+			// Find the most significant production file change
+			var topProdFile types.PRFile
+			maxAdditions := 0
+			for _, pf := range prodFiles {
+				if pf.Additions > maxAdditions {
+					maxAdditions = pf.Additions
+					topProdFile = pf
+				}
+			}
+
+			finding := types.AnalyzerFinding{
+				AnalyzerName:    "quality",
+				AnalyzerVersion: "0.1.0",
+				Finding:         fmt.Sprintf("production code changed without test evidence: %s", topProdFile.Path),
+				Confidence:      0.75,
+				Location: &types.CodeLocation{
+					FilePath: topProdFile.Path,
+					Snippet: extractTestGapSnippet(topProdFile.Patch, 200),
+				},
+			}
+			findings = append(findings, finding)
+		}
+	}
+
+	return findings
+}
+
+// extractTestGapSnippet extracts a meaningful snippet from a production file patch.
+func extractTestGapSnippet(patch string, maxLen int) string {
+	if patch == "" {
+		return ""
+	}
+	lines := strings.Split(patch, "\n")
+	var sb strings.Builder
+	count := 0
+	for _, line := range lines {
+		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+			sb.WriteString(line)
+			sb.WriteString("\n")
+			count++
+			if count >= 5 || sb.Len() > maxLen {
+				break
+			}
+		}
+	}
+	result := sb.String()
+	if len(result) > maxLen {
+		return result[:maxLen] + "..."
+	}
+	return result
 }

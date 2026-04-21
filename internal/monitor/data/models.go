@@ -1,5 +1,5 @@
 // Package data provides data models and storage abstractions for the monitor package.
-// It defines structures for metrics, events, and dashboard state that are
+// It defines structures for metrics, events, and monitor state that are
 // shared between TUI and web implementations.
 package data
 
@@ -15,7 +15,7 @@ const (
 	StatusCompleted = "completed"
 )
 
-// SyncJobView represents a sync job for display in the dashboard.
+// SyncJobView represents a sync job for display in the monitor.
 // It provides a flattened view of job state suitable for real-time updates.
 type SyncJobView struct {
 	ID       string
@@ -28,7 +28,7 @@ type SyncJobView struct {
 }
 
 // RateLimitView represents the current GitHub API rate limit state.
-// This is used by both TUI and web dashboard to display quota information.
+// This is used by both TUI and web monitor to display quota information.
 type RateLimitView struct {
 	Remaining    int
 	Total        int
@@ -43,7 +43,7 @@ type RateLimitPoint struct {
 	Used      int
 }
 
-// LogEntry represents a single log line for display in the dashboard.
+// LogEntry represents a single log line for display in the monitor.
 // These entries are typically sourced from application logs and filtered
 // for relevance to the current repo or operation.
 type LogEntry struct {
@@ -55,7 +55,7 @@ type LogEntry struct {
 }
 
 // ActivityBucket represents aggregated activity metrics over a time window.
-// Used for sparklines and activity graphs in the dashboard.
+// Used for sparklines and activity graphs in the monitor.
 type ActivityBucket struct {
 	TimeWindow   time.Time
 	RequestCount int
@@ -63,7 +63,7 @@ type ActivityBucket struct {
 	AvgDuration  time.Duration
 }
 
-// DataUpdate is a container for all dashboard view data.
+// DataUpdate is a container for all monitor view data.
 // It is sent by the broadcaster to all connected clients when state changes.
 type DataUpdate struct {
 	Timestamp       time.Time

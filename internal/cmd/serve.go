@@ -19,7 +19,6 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/app"
 	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/formula"
-	"github.com/jeffersonnunn/pratc/internal/github"
 	"github.com/jeffersonnunn/pratc/internal/logger"
 	"github.com/jeffersonnunn/pratc/internal/monitor/data"
 	"github.com/jeffersonnunn/pratc/internal/monitor/server"
@@ -46,7 +45,7 @@ type repoSyncAPI interface {
 	Stream(repo string, w http.ResponseWriter, r *http.Request)
 }
 
-var newRepoSyncManager = func(jobDBPath, jobID string) *prsync.Manager {
+var newRepoSyncManager = func(jobDBPath, jobID, repo string) *prsync.Manager {
 	var jobRecorder prsync.JobRecorder
 	if strings.TrimSpace(jobDBPath) != "" {
 		jobRecorder = prsync.NewDBJobRecorder(jobDBPath)
@@ -57,7 +56,11 @@ var newRepoSyncManager = func(jobDBPath, jobID string) *prsync.Manager {
 		dbPath = filepath.Join(home, ".pratc", "pratc.db")
 	}
 	cacheStore, _ := cache.Open(dbPath)
-	token, _ := github.ResolveToken(context.Background())
+	token := ""
+	// Try to resolve GitHub access using settings-driven config
+	if githubAccess, err := ResolveGitHubAccess(context.Background(), repo); err == nil {
+		token = githubAccess.Token
+	}
 	return prsync.NewManager(prsync.NewDefaultRunner(jobRecorder, jobID, cacheStore, 0, token))
 }
 
@@ -65,10 +68,23 @@ func RegisterServeCommand() {
 	var port int
 	var repo string
 	var useCacheFirst bool
+	var resync bool
+	var forceCache bool
 
 	command := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve the prATC API",
+		Long: `Serve the prATC API.
+
+By default, the server uses cached data when available and only fetches live
+data when the cache is stale or missing. Use --resync to force a live refresh.
+
+Examples:
+  # Start server with default cached-first behavior
+  pratc serve --repo=owner/repo
+
+  # Force live refresh on all API requests
+  pratc serve --repo=owner/repo --resync`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
@@ -76,12 +92,15 @@ func RegisterServeCommand() {
 
 			repo = types.NormalizeRepoName(repo)
 			log.Info("starting server", "port", port, "repo", repo)
-			return runServer(ctx, port, repo, useCacheFirst)
+			return runServer(ctx, port, repo, useCacheFirst, resync, forceCache)
 		},
 	}
 	command.Flags().IntVar(&port, "port", 8080, "Port to bind the API server to")
 	command.Flags().StringVar(&repo, "repo", "", "Optional default repository for API routes")
-	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", false, "Check cache before live fetch for analyze/cluster endpoints")
+	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch (default, cached-first mode is always on)")
+	command.Flags().BoolVar(&resync, "resync", false, "Force live refresh: skip cache and fetch fresh data from GitHub")
+	command.Flags().BoolVar(&forceCache, "force-cache", false, "Offline mode: use stale cached data, never contact GitHub")
+	_ = command.Flags().MarkHidden("force-cache")
 	rootCmd.AddCommand(command)
 }
 
@@ -1032,10 +1051,19 @@ func authMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst bool) error {
-	token, err := github.ResolveToken(ctx)
+func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst, resync, forceCache bool) error {
+	// Resolve GitHub access using settings-driven config
+	githubAccess, err := ResolveGitHubAccess(ctx, defaultRepo)
 	if err != nil {
 		return err
+	}
+	// Emit truthful message about GitHub access state
+	log := logger.FromContext(ctx)
+	log.Info("github access resolved", "state", githubAccess.State.String(), "message", githubAccess.Message)
+	if githubAccess.Login != "" {
+		fmt.Fprintf(os.Stderr, "GitHub access: using named login %s\n", githubAccess.Login)
+	} else {
+		fmt.Fprintf(os.Stderr, "GitHub access: %s\n", githubAccess.Message)
 	}
 
 	dbPath := strings.TrimSpace(os.Getenv("PRATC_DB_PATH"))
@@ -1049,14 +1077,14 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst 
 	}
 	defer cacheStore.Close()
 
-	service := app.NewService(buildCacheFirstConfig(useCacheFirst, false, cacheStore))
+	service := app.NewService(buildCacheFirstConfig(useCacheFirst, resync, forceCache, cacheStore))
 	settingsStore, err := openSettingsStore()
 	if err != nil {
 		return err
 	}
 	defer settingsStore.Close()
 
-	repoSync := newRepoSyncManager("", "")
+	repoSync := newRepoSyncManager("", "", defaultRepo)
 
 	mux := http.NewServeMux()
 
@@ -1091,7 +1119,7 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst 
 	// Monitor WebSocket endpoint
 	monitorBroadcaster := data.NewBroadcaster(
 		data.NewStore(cacheStore),
-		data.NewRateLimitFetcher(token),
+		data.NewRateLimitFetcher(githubAccess.Token),
 		data.NewTimelineAggregator(cacheStore),
 	)
 	go monitorBroadcaster.Start(ctx)

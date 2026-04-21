@@ -12,8 +12,8 @@ You will need the following tools installed:
 |------|---------|---------|
 | Go | 1.23+ | Backend CLI and API |
 | Python | 3.11+ | ML service |
-| Node.js | Latest LTS | Web dashboard dependencies |
-| Bun | Latest | Web dashboard runtime |
+| Node.js | Latest LTS | Optional: web UI development only |
+| Bun | Latest | Optional: web UI development only |
 | Docker | Latest | Containerized services |
 | uv | Latest | Python package management |
 
@@ -210,7 +210,7 @@ internal/           # Go packages
   settings/         # Settings management
   types/            # Shared types
 ml-service/         # Python ML service
-web/                # TypeScript Next.js dashboard
+web/                # TypeScript Next.js dashboard (deprecated)
 ```
 
 ## Getting Help

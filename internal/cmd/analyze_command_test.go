@@ -17,19 +17,19 @@ func TestBuildAnalyzeConfig(t *testing.T) {
 	tests := []struct {
 		name          string
 		useCacheFirst bool
-		forceLive     bool
+		resync        bool
 		wantAllowLive bool
 	}{
 		{
-			name:          "sync-first without force-live",
+			name:          "cache-first default without resync",
 			useCacheFirst: true,
-			forceLive:     false,
+			resync:        false,
 			wantAllowLive: false,
 		},
 		{
-			name:          "live override enabled",
+			name:          "resync override enabled",
 			useCacheFirst: true,
-			forceLive:     true,
+			resync:        true,
 			wantAllowLive: true,
 		},
 	}
@@ -38,7 +38,7 @@ func TestBuildAnalyzeConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := buildAnalyzeConfig(tt.useCacheFirst, tt.forceLive, false, 0)
+			cfg := buildAnalyzeConfig(tt.useCacheFirst, tt.resync, false, 0)
 			if cfg.UseCacheFirst != tt.useCacheFirst {
 				t.Fatalf("expected UseCacheFirst=%t, got %t", tt.useCacheFirst, cfg.UseCacheFirst)
 			}
@@ -56,12 +56,12 @@ func TestShouldWarnAnalyzeSync(t *testing.T) {
 		name          string
 		useCacheFirst bool
 		force         bool
-		forceLive     bool
+		resync        bool
 		want          bool
 	}{
 		{name: "warns when cache first and no overrides", useCacheFirst: true, want: true},
 		{name: "skips when force compatibility flag set", useCacheFirst: true, force: true, want: false},
-		{name: "skips when force-live set", useCacheFirst: true, forceLive: true, want: false},
+		{name: "skips when resync set", useCacheFirst: true, resync: true, want: false},
 		{name: "skips when cache-first disabled", useCacheFirst: false, want: false},
 	}
 
@@ -69,7 +69,7 @@ func TestShouldWarnAnalyzeSync(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := shouldWarnAnalyzeSync(tt.useCacheFirst, tt.force, tt.forceLive, false); got != tt.want {
+			if got := shouldWarnAnalyzeSync(tt.useCacheFirst, tt.force, tt.resync, false); got != tt.want {
 				t.Fatalf("expected %t, got %t", tt.want, got)
 			}
 		})

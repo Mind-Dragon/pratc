@@ -6,7 +6,7 @@
 
 ## Overview
 
-The prATC Monitor WebSocket API provides real-time streaming of system metrics, sync job progress, GitHub rate limit status, and activity timelines. This endpoint is used by the web dashboard to display live updates without polling.
+The prATC Monitor WebSocket API provides real-time streaming of system metrics, sync job progress, GitHub rate limit status, and activity timelines. This endpoint can be used by any client that needs live updates, including API consumers and monitoring tools.
 
 ### Use Cases
 
@@ -141,7 +141,7 @@ All messages are JSON text frames with the following structure:
 
 ### SyncJobView
 
-Represents a sync job for display in the dashboard.
+Represents a sync job for monitoring and API responses.
 
 ```typescript
 interface SyncJobView {
@@ -684,7 +684,7 @@ function Dashboard() {
 
 ## Related Documentation
 
-- [Dashboard User Guide](./dashboard-user-guide.md) - For end-user documentation
+- [Dashboard User Guide](../archive/dashboard-user-guide.md) - Archived (web dashboard deprecated in v1.6)
 - [API Contracts](./api-contracts.md) - REST API documentation
 - [Architecture](../architecture.md) - System architecture overview
 

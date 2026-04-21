@@ -713,3 +713,116 @@ func (r *countingRunner) Run(ctx context.Context, args ...string) ([]byte, error
 	}
 	return r.runner.Run(ctx, args...)
 }
+
+func TestParseDiffOutput(t *testing.T) {
+	t.Parallel()
+
+	diffOutput := `diff --git a/internal/auth.go b/internal/auth.go
+index abc1234..def5678 100644
+--- a/internal/auth.go
++++ b/internal/auth.go
+@@ -10,5 +10,7 @@ func Authenticate() {
+ old line
++new line
++another new line
+@@ -20,3 +22,4 @@ func CheckPermission() {
+ context
+-old deleted
++new added
+diff --git a/internal/auth_test.go b/internal/auth_test.go
+new file mode 100644
+index 0000000..abc1234
+--- /dev/null
++++ b/internal/auth_test.go
+@@ -0,0 +1,3 @@
++package auth
++func TestAuth() {}
+`
+
+	files, hunks, err := parseDiffOutput(diffOutput, 123)
+	if err != nil {
+		t.Fatalf("parseDiffOutput failed: %v", err)
+	}
+
+	// Should have 2 files
+	if len(files) != 2 {
+		t.Fatalf("expected 2 files, got %d", len(files))
+	}
+
+	// First file should be auth.go
+	if files[0].Path != "b/internal/auth.go" {
+		t.Errorf("expected first file path 'b/internal/auth.go', got '%s'", files[0].Path)
+	}
+	if files[0].Status != "modified" {
+		t.Errorf("expected first file status 'modified', got '%s'", files[0].Status)
+	}
+
+	// Second file should be auth_test.go (new)
+	if files[1].Path != "b/internal/auth_test.go" {
+		t.Errorf("expected second file path 'b/internal/auth_test.go', got '%s'", files[1].Path)
+	}
+	if files[1].Status != "added" {
+		t.Errorf("expected second file status 'added', got '%s'", files[1].Status)
+	}
+
+	// Should have 3 hunks total (2 for auth.go, 1 for auth_test.go)
+	if len(hunks) != 3 {
+		t.Fatalf("expected 3 hunks, got %d", len(hunks))
+	}
+
+	// Check first hunk for auth.go
+	if hunks[0].OldPath != "a/internal/auth.go" {
+		t.Errorf("expected first hunk old path 'a/internal/auth.go', got '%s'", hunks[0].OldPath)
+	}
+	if hunks[0].NewPath != "b/internal/auth.go" {
+		t.Errorf("expected first hunk new path 'b/internal/auth.go', got '%s'", hunks[0].NewPath)
+	}
+	if hunks[0].OldStart != 10 {
+		t.Errorf("expected first hunk old start 10, got %d", hunks[0].OldStart)
+	}
+	if hunks[0].NewStart != 10 {
+		t.Errorf("expected first hunk new start 10, got %d", hunks[0].NewStart)
+	}
+}
+
+func TestParseDiffOutputEmpty(t *testing.T) {
+	t.Parallel()
+
+	files, hunks, err := parseDiffOutput("", 123)
+	if err != nil {
+		t.Fatalf("parseDiffOutput failed: %v", err)
+	}
+	if len(files) != 0 {
+		t.Errorf("expected 0 files, got %d", len(files))
+	}
+	if len(hunks) != 0 {
+		t.Errorf("expected 0 hunks, got %d", len(hunks))
+	}
+}
+
+func TestParseDiffOutputDeletedFile(t *testing.T) {
+	t.Parallel()
+
+	diffOutput := `diff --git a/removed.go b/removed.go
+deleted file mode 100644
+index abc1234..0000000
+--- a/removed.go
++++ /dev/null
+@@ -1,3 +0,0 @@
+-old line
+-old line
+-old line
+`
+
+	files, _, err := parseDiffOutput(diffOutput, 456)
+	if err != nil {
+		t.Fatalf("parseDiffOutput failed: %v", err)
+	}
+
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(files))
+	}
+	if files[0].Status != "removed" {
+		t.Errorf("expected file status 'removed', got '%s'", files[0].Status)
+	}
+}

@@ -3,6 +3,8 @@ package review
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"regexp"
 	"strings"
 	"time"
@@ -132,13 +134,23 @@ func (s *SecurityAnalyzer) Analyze(ctx context.Context, prData PRData) (Analyzer
 	pr := prData.PR
 	var findings []types.AnalyzerFinding
 
-	// 1. Detect risky file paths
-	riskyFileFindings := s.detectRiskyFiles(pr.FilesChanged)
-	findings = append(findings, riskyFileFindings...)
+	// 1. Detect risky file paths (fallback to FilesChanged if no diff evidence)
+	if len(prData.Files) > 0 {
+		riskyFileFindings := s.detectRiskyFilesWithEvidence(prData.Files)
+		findings = append(findings, riskyFileFindings...)
+	} else {
+		riskyFileFindings := s.detectRiskyFiles(pr.FilesChanged)
+		findings = append(findings, riskyFileFindings...)
+	}
 
-	// 2. Detect auth/permission surface changes
-	authFindings := s.detectAuthChanges(pr.FilesChanged)
-	findings = append(findings, authFindings...)
+	// 2. Detect auth/permission surface changes with diff evidence
+	if len(prData.DiffHunks) > 0 {
+		authFindings := s.detectAuthChangesWithEvidence(prData.DiffHunks)
+		findings = append(findings, authFindings...)
+	} else {
+		authFindings := s.detectAuthChanges(pr.FilesChanged)
+		findings = append(findings, authFindings...)
+	}
 
 	// 3. Detect dependency changes with security implications
 	dependencyFindings := s.detectDependencyChanges(pr.FilesChanged)
@@ -148,10 +160,12 @@ func (s *SecurityAnalyzer) Analyze(ctx context.Context, prData PRData) (Analyzer
 	deletionFindings := s.detectSecuritySensitiveDeletions(pr.FilesChanged, pr.Deletions)
 	findings = append(findings, deletionFindings...)
 
-	// Determine overall category and priority based on findings
-	category, priority, confidence := s.classifySecurityRisk(findings)
+	// Determine overall category and priority based on findings.
+	// The confidence returned by classifySecurityRisk is deliberately discarded;
+	// evidence-backed confidence is computed below from the actual findings.
+	category, priority, _ := s.classifySecurityRisk(findings)
 
-	confidence = calculateConfidenceFromFindings(findings)
+	confidence := calculateConfidenceFromFindings(findings)
 	confidence = capConfidenceByCategory(category, confidence)
 
 	result := types.ReviewResult{
@@ -334,4 +348,113 @@ func (s *SecurityAnalyzer) extractReasons(findings []types.AnalyzerFinding) []st
 	}
 
 	return reasons
+}
+
+// evidenceHash computes a SHA-256 hash of the given content and returns it
+// in the format "sha256:<hex>" for use as an AnalyzerFinding.EvidenceHash.
+func evidenceHash(content string) string {
+	h := sha256.Sum256([]byte(content))
+	return "sha256:" + hex.EncodeToString(h[:])
+}
+
+// detectRiskyFilesWithEvidence scans files with full patch data for risky files
+// and emits findings with concrete location evidence.
+func (s *SecurityAnalyzer) detectRiskyFilesWithEvidence(files []types.PRFile) []types.AnalyzerFinding {
+	var findings []types.AnalyzerFinding
+
+	for _, file := range files {
+		for _, pattern := range envAndSecretPatterns {
+			if pattern.MatchString(file.Path) {
+				// Build location evidence from patch if available
+				location := &types.CodeLocation{
+					FilePath: file.Path,
+					Snippet: extractSnippet(file.Patch, 200),
+				}
+
+				finding := types.AnalyzerFinding{
+					AnalyzerName:    "security",
+					AnalyzerVersion: "0.1.0",
+					Finding:         "risky file path detected: " + file.Path,
+					Confidence:      0.90,
+					Location:        location,
+					EvidenceHash:    evidenceHash(file.Patch),
+				}
+				findings = append(findings, finding)
+				break
+			}
+		}
+	}
+
+	return findings
+}
+
+// detectAuthChangesWithEvidence scans diff hunks for auth/permission-related changes
+// and emits findings with concrete diff evidence.
+func (s *SecurityAnalyzer) detectAuthChangesWithEvidence(hunks []types.DiffHunk) []types.AnalyzerFinding {
+	var findings []types.AnalyzerFinding
+
+	for _, hunk := range hunks {
+		for _, pattern := range authRelatedPatterns {
+			if pattern.MatchString(hunk.NewPath) {
+				finding := types.AnalyzerFinding{
+					AnalyzerName:    "security",
+					AnalyzerVersion: "0.1.0",
+					Finding:         "auth/permission surface change detected in " + hunk.NewPath,
+					Confidence:      0.80,
+					Location: &types.CodeLocation{
+						FilePath:  hunk.NewPath,
+						LineStart: hunk.NewStart,
+						LineEnd:   hunk.NewStart + hunk.NewLines - 1,
+						Snippet:   truncateSnippet(hunk.Content, 300),
+					},
+					DiffHunk: &types.DiffHunk{
+						OldPath:  hunk.OldPath,
+						NewPath:  hunk.NewPath,
+						OldStart: hunk.OldStart,
+						OldLines: hunk.OldLines,
+						NewStart: hunk.NewStart,
+						NewLines: hunk.NewLines,
+						Content:  truncateSnippet(hunk.Content, 500),
+						Section:  hunk.Section,
+					},
+					EvidenceHash: evidenceHash(hunk.Content),
+				}
+				findings = append(findings, finding)
+				break
+			}
+		}
+	}
+
+	return findings
+}
+
+// extractSnippet extracts a meaningful snippet from patch content.
+func extractSnippet(patch string, maxLen int) string {
+	if patch == "" {
+		return ""
+	}
+	lines := strings.Split(patch, "\n")
+	var sb strings.Builder
+	for _, line := range lines {
+		if len(line) > 0 && (strings.HasPrefix(line, "+") || strings.HasPrefix(line, " ") || strings.HasPrefix(line, "-")) {
+			sb.WriteString(line[:min(len(line), 80)])
+			sb.WriteString("\n")
+			if sb.Len() > maxLen {
+				break
+			}
+		}
+	}
+	result := sb.String()
+	if len(result) > maxLen {
+		return result[:maxLen] + "..."
+	}
+	return result
+}
+
+// truncateSnippet truncates a string to maxLen characters.
+func truncateSnippet(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
