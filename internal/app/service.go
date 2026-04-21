@@ -33,7 +33,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
@@ -1642,175 +1641,215 @@ func classifyGarbage(prs []types.PR) []types.GarbagePR {
 	return garbage
 }
 
-// classifyDuplicates compares PRs pairwise for similarity. Parallelized with
-// goroutine workers to handle large corpora within the 300s SLO.
+// classifyDuplicates compares PRs for similarity.
+// Small corpora stay exact; larger corpora use MinHash/LSH candidate generation
+// and then re-score only the candidate pairs with the exact existing formula.
 func classifyDuplicates(prs []types.PR, mergedPRs []review.MergedPRRecord, emit func(phase string, done, total int)) ([]types.DuplicateGroup, []types.DuplicateGroup) {
-	// Pre-tokenize all titles to avoid re-tokenizing in the inner loop.
-	// Skip body pre-tokenization — bodies can be huge and only contribute 10% to score.
 	titleTokens := make([][]string, len(prs))
+	bodyTokens := make([][]string, len(prs))
 	for i := range prs {
 		titleTokens[i] = util.Tokenize(prs[i].Title)
+		if prs[i].Body != "" {
+			bodyTokens[i] = util.Tokenize(prs[i].Body)
+		}
 	}
 
-	// Parallel workers for the outer loop
-	numWorkers := 8
-	total := len(prs)
-	chunkSize := (total + numWorkers - 1) / numWorkers
-
-	type workerResult struct {
-		duplicates map[int]*types.DuplicateGroup
-		overlaps   map[int]*types.DuplicateGroup
-	}
-
-	results := make([]workerResult, numWorkers)
-	var wg sync.WaitGroup
-
-	for w := 0; w < numWorkers; w++ {
-		start := w * chunkSize
-		end := start + chunkSize
-		if end > total {
-			end = total
-		}
-		if start >= total {
-			break
-		}
-
-		results[w] = workerResult{
-			duplicates: make(map[int]*types.DuplicateGroup),
-			overlaps:   make(map[int]*types.DuplicateGroup),
-		}
-		wg.Add(1)
-		go func(workerID, startI, endI int) {
-			defer wg.Done()
-			dupes := results[workerID].duplicates
-			ovs := results[workerID].overlaps
-
-			for i := startI; i < endI; i++ {
-				for j := i + 1; j < total; j++ {
-					titleScore := util.Jaccard(titleTokens[i], titleTokens[j])
-					if titleScore < 0.03 {
-						continue
-					}
-					// Substring containment: if one title contains the other
-					shortTitle := strings.ToLower(strings.TrimSpace(prs[i].Title))
-					longTitle := strings.ToLower(strings.TrimSpace(prs[j].Title))
-					if len(shortTitle) > len(longTitle) {
-						shortTitle, longTitle = longTitle, shortTitle
-					}
-					if len(shortTitle) >= 10 && strings.Contains(longTitle, shortTitle) {
-						titleScore = maxFloat(titleScore, 0.80)
-					}
-					bodyScore := 0.0
-					if prs[i].Body != "" && prs[j].Body != "" {
-						bodyScore = util.Jaccard(util.Tokenize(prs[i].Body), util.Tokenize(prs[j].Body))
-					}
-					fileScore := util.Jaccard(prs[i].FilesChanged, prs[j].FilesChanged)
-					if len(prs[i].FilesChanged) == 0 && len(prs[j].FilesChanged) == 0 {
-						fileScore = 0.5
-					}
-					score := round((0.4*titleScore)+(0.4*fileScore)+(0.2*bodyScore), 4)
-					if fileScore > 0.8 && titleScore > 0.05 {
-						score = maxFloat(score, 0.85)
-					}
-					if titleScore > 0.75 && fileScore == 0.5 {
-						score = maxFloat(score, 0.80)
-					}
-					if score < types.OverlapThreshold {
-						continue
-					}
-
-					canonical := min(prs[i].Number, prs[j].Number)
-					other := max(prs[i].Number, prs[j].Number)
-
-					if score > types.DuplicateThreshold {
-						group := dupes[canonical]
-						if group == nil {
-							group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity above duplicate threshold"}
-							dupes[canonical] = group
-						}
-						group.Similarity = maxFloat(group.Similarity, score)
-						group.DuplicatePRNums = appendUniqueInt(group.DuplicatePRNums, other)
-						continue
-					}
-
-					group := ovs[canonical]
-					if group == nil {
-						group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity in overlap range"}
-						ovs[canonical] = group
-					}
-					group.Similarity = maxFloat(group.Similarity, score)
-					group.DuplicatePRNums = appendUniqueInt(group.DuplicatePRNums, other)
-				}
-			}
-		}(w, start, end)
-	}
-
-	wg.Wait()
-	emit("duplicates_inner", total, total)
-
-	// Merge worker results
 	duplicatesByCanonical := make(map[int]*types.DuplicateGroup)
 	overlapsByCanonical := make(map[int]*types.DuplicateGroup)
-	for _, r := range results {
-		for canonical, group := range r.duplicates {
-			existing := duplicatesByCanonical[canonical]
-			if existing == nil {
-				duplicatesByCanonical[canonical] = group
-			} else {
-				existing.Similarity = maxFloat(existing.Similarity, group.Similarity)
-				for _, n := range group.DuplicatePRNums {
-					existing.DuplicatePRNums = appendUniqueInt(existing.DuplicatePRNums, n)
-				}
-			}
-		}
-		for canonical, group := range r.overlaps {
-			existing := overlapsByCanonical[canonical]
-			if existing == nil {
-				overlapsByCanonical[canonical] = group
-			} else {
-				existing.Similarity = maxFloat(existing.Similarity, group.Similarity)
-				for _, n := range group.DuplicatePRNums {
-					existing.DuplicatePRNums = appendUniqueInt(existing.DuplicatePRNums, n)
-				}
-			}
-		}
+
+	if len(prs) == 0 {
+		return nil, nil
 	}
 
-	// Compare open PRs against merged PR history
-	for i := 0; i < len(prs); i++ {
-		for _, merged := range mergedPRs {
-			score := similarityWithMerged(prs[i], merged)
-			if score < types.OverlapThreshold {
-				continue
+	if len(prs)+len(mergedPRs) < minPRsForLSHDuplicateCandidates {
+		pairs := make([][2]int, 0, (len(prs)*(len(prs)-1))/2)
+		for i := 0; i < len(prs); i++ {
+			for j := i + 1; j < len(prs); j++ {
+				pairs = append(pairs, [2]int{i, j})
 			}
-
-			canonical := prs[i].Number
-			other := -merged.PRNumber
-
-			if score > types.DuplicateThreshold {
-				group := duplicatesByCanonical[canonical]
-				if group == nil {
-					group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity above duplicate threshold (compared against merged history)"}
-					duplicatesByCanonical[canonical] = group
-				}
-				group.Similarity = maxFloat(group.Similarity, score)
-				group.DuplicatePRNums = appendUniqueInt(group.DuplicatePRNums, other)
-				continue
+		}
+		runDuplicateCandidatePairs(prs, titleTokens, bodyTokens, pairs, duplicatesByCanonical, overlapsByCanonical)
+		for i := 0; i < len(prs); i++ {
+			for _, merged := range mergedPRs {
+				recordMergedDuplicate(prs[i], merged, duplicatesByCanonical, overlapsByCanonical)
 			}
+		}
+		emit("duplicates_inner", len(pairs), len(prs))
+		return flattenGroups(duplicatesByCanonical), flattenGroups(overlapsByCanonical)
+	}
 
-			group := overlapsByCanonical[canonical]
+	signatures := make([][]uint64, 0, len(prs)+len(mergedPRs))
+	for i := range prs {
+		signatures = append(signatures, util.MinHashSignature(duplicateLSHTokens(prs[i], titleTokens[i]), duplicateMinHashPermutations))
+	}
+	for _, merged := range mergedPRs {
+		signatures = append(signatures, util.MinHashSignature(duplicateLSHTokensFromMerged(merged), duplicateMinHashPermutations))
+	}
+
+	candidatePairs := util.MinHashCandidatePairs(signatures, duplicateLSHBands)
+	openOpenCandidates := make([][2]int, 0, len(candidatePairs))
+	for _, pair := range candidatePairs {
+		left, right := pair[0], pair[1]
+		if right < len(prs) {
+			openOpenCandidates = append(openOpenCandidates, pair)
+			continue
+		}
+		if left < len(prs) && right >= len(prs) {
+			merged := mergedPRs[right-len(prs)]
+			recordMergedDuplicate(prs[left], merged, duplicatesByCanonical, overlapsByCanonical)
+		}
+	}
+	if len(openOpenCandidates) == 0 {
+		for i := 0; i < len(prs); i++ {
+			for _, merged := range mergedPRs {
+				recordMergedDuplicate(prs[i], merged, duplicatesByCanonical, overlapsByCanonical)
+			}
+		}
+		emit("duplicates_inner", 0, len(prs))
+		return flattenGroups(duplicatesByCanonical), flattenGroups(overlapsByCanonical)
+	}
+
+	runDuplicateCandidatePairs(prs, titleTokens, bodyTokens, openOpenCandidates, duplicatesByCanonical, overlapsByCanonical)
+	emit("duplicates_inner", len(openOpenCandidates), len(prs))
+	return flattenGroups(duplicatesByCanonical), flattenGroups(overlapsByCanonical)
+}
+
+const (
+	minPRsForLSHDuplicateCandidates = 150
+	duplicateMinHashPermutations    = 8
+	duplicateLSHBands               = 2
+)
+
+func runDuplicateCandidatePairs(
+	prs []types.PR,
+	titleTokens [][]string,
+	bodyTokens [][]string,
+	pairs [][2]int,
+	duplicatesByCanonical map[int]*types.DuplicateGroup,
+	overlapsByCanonical map[int]*types.DuplicateGroup,
+) {
+	for _, pair := range pairs {
+		left := pair[0]
+		right := pair[1]
+		if left < 0 || right < 0 || left >= len(prs) || right >= len(prs) || left >= right {
+			continue
+		}
+		score := duplicateSimilarityScore(prs[left], prs[right], titleTokens[left], titleTokens[right], bodyTokens[left], bodyTokens[right])
+		if score < types.OverlapThreshold {
+			continue
+		}
+		canonical := min(prs[left].Number, prs[right].Number)
+		other := max(prs[left].Number, prs[right].Number)
+		if score > types.DuplicateThreshold {
+			group := duplicatesByCanonical[canonical]
 			if group == nil {
-				group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity in overlap range (compared against merged history)"}
-				overlapsByCanonical[canonical] = group
+				group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity above duplicate threshold"}
+				duplicatesByCanonical[canonical] = group
 			}
 			group.Similarity = maxFloat(group.Similarity, score)
 			group.DuplicatePRNums = appendUniqueInt(group.DuplicatePRNums, other)
+			continue
 		}
+		group := overlapsByCanonical[canonical]
+		if group == nil {
+			group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity in overlap range"}
+			overlapsByCanonical[canonical] = group
+		}
+		group.Similarity = maxFloat(group.Similarity, score)
+		group.DuplicatePRNums = appendUniqueInt(group.DuplicatePRNums, other)
 	}
+}
 
-	duplicates := flattenGroups(duplicatesByCanonical)
-	overlaps := flattenGroups(overlapsByCanonical)
-	return duplicates, overlaps
+func duplicateSimilarityScore(left, right types.PR, leftTitleTokens, rightTitleTokens, leftBodyTokens, rightBodyTokens []string) float64 {
+	titleScore := util.Jaccard(leftTitleTokens, rightTitleTokens)
+	shortTitle := strings.ToLower(strings.TrimSpace(left.Title))
+	longTitle := strings.ToLower(strings.TrimSpace(right.Title))
+	if len(shortTitle) > len(longTitle) {
+		shortTitle, longTitle = longTitle, shortTitle
+	}
+	if len(shortTitle) >= 10 && strings.Contains(longTitle, shortTitle) {
+		titleScore = maxFloat(titleScore, 0.80)
+	}
+	bodyScore := 0.0
+	if len(leftBodyTokens) > 0 && len(rightBodyTokens) > 0 {
+		bodyScore = util.Jaccard(leftBodyTokens, rightBodyTokens)
+	}
+	fileScore := util.Jaccard(left.FilesChanged, right.FilesChanged)
+	if len(left.FilesChanged) == 0 && len(right.FilesChanged) == 0 {
+		fileScore = 0.5
+	}
+	score := round((0.4*titleScore)+(0.4*fileScore)+(0.2*bodyScore), 4)
+	if fileScore > 0.8 && titleScore > 0.05 {
+		score = maxFloat(score, 0.85)
+	}
+	if titleScore > 0.75 && fileScore == 0.5 {
+		score = maxFloat(score, 0.80)
+	}
+	return score
+}
+
+func recordMergedDuplicate(
+	pr types.PR,
+	merged review.MergedPRRecord,
+	duplicatesByCanonical map[int]*types.DuplicateGroup,
+	overlapsByCanonical map[int]*types.DuplicateGroup,
+) {
+	score := similarityWithMerged(pr, merged)
+	if score < types.OverlapThreshold {
+		return
+	}
+	canonical := pr.Number
+	other := -merged.PRNumber
+	if score > types.DuplicateThreshold {
+		group := duplicatesByCanonical[canonical]
+		if group == nil {
+			group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity above duplicate threshold (compared against merged history)"}
+			duplicatesByCanonical[canonical] = group
+		}
+		group.Similarity = maxFloat(group.Similarity, score)
+		group.DuplicatePRNums = appendUniqueInt(group.DuplicatePRNums, other)
+		return
+	}
+	group := overlapsByCanonical[canonical]
+	if group == nil {
+		group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity in overlap range (compared against merged history)"}
+		overlapsByCanonical[canonical] = group
+	}
+	group.Similarity = maxFloat(group.Similarity, score)
+	group.DuplicatePRNums = appendUniqueInt(group.DuplicatePRNums, other)
+}
+
+func duplicateLSHTokens(pr types.PR, titleTokens []string) []string {
+	combined := make([]string, 0, len(titleTokens)+len(pr.FilesChanged))
+	combined = append(combined, titleTokens...)
+	for _, file := range pr.FilesChanged {
+		combined = append(combined, strings.ToLower(strings.TrimSpace(file)))
+	}
+	return dedupeTokens(combined)
+}
+
+func duplicateLSHTokensFromMerged(merged review.MergedPRRecord) []string {
+	return duplicateLSHTokens(types.PR{Title: merged.Title, Body: merged.Body, FilesChanged: merged.FilesChanged}, util.Tokenize(merged.Title))
+}
+
+func dedupeTokens(tokens []string) []string {
+	if len(tokens) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(tokens))
+	out := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		trimmed := strings.TrimSpace(strings.ToLower(token))
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return out
 }
 
 func flattenGroups(input map[int]*types.DuplicateGroup) []types.DuplicateGroup {

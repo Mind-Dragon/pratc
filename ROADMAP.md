@@ -46,8 +46,8 @@ Cache-backed verification run `projects/openclaw_openclaw/runs/final-wave` now p
 
 ### Next improvements (if needed after verification)
 
-- [ ] Profile duplicate detection hot path with `go tool pprof`
-- [ ] LSH/MinHash for O(n) approximate duplicate detection (replaces O(n^2) brute force)
+- [x] Profile duplicate detection hot path with `go test -cpuprofile` / `go tool pprof` and capture the current hotspot surface
+- [x] Add MinHash/LSH candidate generation to bound duplicate comparisons on large corpora; `BenchmarkClassifyDuplicatesSparseSimilarity` now runs at ~90ms/op vs `BenchmarkExactDuplicatePairsSparseSimilarity` at ~21s/op on the 6k sparse synthetic benchmark
 - [ ] Expand noise file list further based on live run results
 - [ ] Tune substance scoring weights based on operator feedback
 
