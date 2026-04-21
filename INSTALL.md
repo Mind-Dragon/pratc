@@ -230,10 +230,10 @@ uv sync
 
 After installation:
 
-1. **Read [RATELIMITS.md](RATELIMITS.md)** — Understand GitHub API rate limits
-2. **Sync your first repo**: `pratc sync --repo=owner/repo`
-3. **Run analysis**: `pratc analyze --repo=owner/repo`
-4. **Start monitoring**: `pratc monitor`
+1. **Read [RATELIMITS.md](RATELIMITS.md)** — Understand GitHub API rate limits and cache-first defaults
+2. **Run your first full workflow**: `pratc workflow --repo=owner/repo --progress`
+3. **Open the dashboard**: `pratc monitor` or `http://localhost:7400/api/health`
+4. **Read [README.md](README.md)** — Feature overview, CLI commands, and architecture
 
 For usage examples, see [README.md](README.md).
 
