@@ -4,30 +4,34 @@ prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull re
 
 ## Project Status
 
-- **Current release line:** `1.5.x`
-- **Current direction:** v1.5 triage engine — duplicate detection, conflict filtering, intermediate caching, and performance optimization
+- **Current release line:** `1.5.0`
+- **Validation status:** cache-first and explicit live full-corpus workflows are audit-green against `openclaw/openclaw` (`6,632` PRs, `17` required checks passing, `0` failures)
+- **Default execution model:** cache-first local snapshot reuse; fresh sync happens only when you explicitly request `--refresh-sync` or `--force-live`
 - **Default API port:** `7400` (reserved prATC range: `7400-7500`)
-- **Last full corpus run:** openclaw/openclaw (6,632 PRs, 28.5 min)
 
 ## Documentation
 
 - [CHANGELOG.md](CHANGELOG.md) — Release history
-- [ROADMAP.md](ROADMAP.md) — Current and upcoming releases (v1.5, v1.6, v1.7)
-- [TODO.md](TODO.md) — Active development plan with bug tracker
+- [ROADMAP.md](ROADMAP.md) — Current release status and next product phases
+- [TODO.md](TODO.md) — Autonomous-mode buildout record (complete)
 - [version1.4.2.md](version1.4.2.md) — Shipped v1.4.2 operating model
 - [ARCHITECTURE.md](ARCHITECTURE.md) — System shape, data flow, and technical reference
+- [GUIDELINE.md](GUIDELINE.md) — Bucket rules, layer ordering, and non-negotiables
+- [INSTALL.md](INSTALL.md) — Installation and deployment guide
+- [RATELIMITS.md](RATELIMITS.md) — GitHub budget behavior and cache-first operating guidance
 
 ## Features
 
 - **CLI Analysis**: Analyze, cluster, graph, and plan merges for GitHub repositories
+- **Cache-First Workflow**: Reuse the local SQLite snapshot by default; refresh or force-live only when explicitly requested
 - **Garbage Classifier**: Automatically filters empty PRs, bot PRs, spam, and drafts before analysis
-- **Duplicate Detection**: Pairwise similarity scoring with configurable threshold (0.85)
-- **Conflict Graph**: Noise-filtered file overlap detection with severity scoring
-- **Substance Scoring**: 0-100 composite score (file depth, test coverage, freshness, clean findings)
+- **Duplicate Detection**: Exact scoring with MinHash/LSH candidate generation for large corpora, plus cache-backed preservation of truthful `0.80` duplicate groups
+- **Conflict Graph**: Noise-filtered file overlap detection with severity scoring and generated-file suppression from live OpenClaw data
+- **Substance Scoring**: 0-100 composite score with source-file impact, test coverage, freshness, diff footprint, and clean-finding weighting
 - **Deep Judgment Layers**: 16-layer decision ladder (confidence, dependency, blast radius, leverage, ownership, stability, mergeability, strategic weight, attention cost, reversibility, signal quality)
 - **Temporal Routing**: PRs split into `now`, `future`, and `blocked` buckets
 - **Intermediate Caching**: Duplicate groups, conflict graph, and substance scores cached in SQLite with corpus fingerprinting
-- **PDF Report**: Executive summary, junk section, duplicate chains, near-duplicates, now/future/blocked queues, full appendix
+- **PDF Report**: Workflow-generated real PDF with executive summary, junk section, duplicate chains, near-duplicates, now/future/blocked queues, and full appendix
 - **Preflight Check**: Estimate sync time and delta before committing to a long run
 - **Singleton Lock**: Prevents concurrent prATC instances against the same repo
 - **Repo Normalization**: Case-insensitive repo names (OpenClaw/openclaw → openclaw/openclaw)
@@ -38,22 +42,28 @@ prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull re
 
 ```bash
 # Build
-go build -o ./pratc-bin ./cmd/pratc/
+go build -o ./bin/pratc ./cmd/pratc/
+
+# Authenticate once (preferred over exporting tokens into shell history)
+gh auth login
 
 # Pre-flight check (estimate before syncing)
-pratc preflight --repo=owner/repo
+./bin/pratc preflight --repo=owner/repo
 
-# Full workflow (sync + analyze)
-pratc workflow --repo=owner/repo --use-cache-first --progress
+# Default full workflow (cache-first; reuses local snapshot when available)
+./bin/pratc workflow --repo=owner/repo --progress
 
-# Analyze from cache
-pratc analyze --repo=owner/repo --force-cache --format=json
+# Analyze from cache only
+./bin/pratc analyze --repo=owner/repo --force-cache --format=json
 
-# Generate PDF report
-pratc report --repo=owner/repo --input-dir=projects/<repo>/runs/<timestamp>
+# Explicit live validation path (fresh sync + live analyze)
+./bin/pratc workflow --repo=owner/repo --refresh-sync --force-live --progress
+
+# Generate PDF report from a run directory
+./bin/pratc report --repo=owner/repo --input-dir=projects/<repo>/runs/<timestamp>
 
 # API server
-pratc serve --port=7400
+./bin/pratc serve --port=7400
 ```
 
 ## CLI Commands
@@ -88,11 +98,12 @@ pratc analyze --repo=owner/repo --max-prs=1000           # Cap analysis at 1000 
 ```
 
 ### workflow
-Run sync to completion, then analyze.
+Run sync to completion, then analyze, cluster, graph, plan, and generate a real PDF report.
+Cache-first is the default behavior; workflow reuses the local snapshot unless you explicitly ask for a fresh live run.
 
 ```bash
-pratc workflow --repo=owner/repo --use-cache-first --progress
-pratc workflow --repo=owner/repo --refresh-sync --sync-max-prs=500
+./bin/pratc workflow --repo=owner/repo --progress
+./bin/pratc workflow --repo=owner/repo --refresh-sync --force-live --progress
 ```
 
 ### sync
@@ -211,6 +222,9 @@ prATC resolves GitHub tokens in order:
 ## Testing
 
 ```bash
+# Restore public open-PR fixtures used by fixture-backed tests
+python3 scripts/fetch_fixtures.py --repo opencode-ai/opencode --limit 100
+
 go test ./...
 go test -race -v ./...
 go vet ./...

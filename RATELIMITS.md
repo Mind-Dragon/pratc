@@ -78,24 +78,27 @@ pratc sync --repo=owner/repo --watch --interval=5m
 ## Best Practices
 
 ### 1. Use Authentication
-Always set `GITHUB_TOKEN`:
+Prefer `gh auth login` so tokens do not end up in shell history. Environment variables remain supported when automation needs them:
 ```bash
-export GITHUB_TOKEN=ghp_your_token_here
+gh auth login
+# or
+export GITHUB_TOKEN=<github-token>
 ```
 
 ### 2. Warm Cache First
-Initial sync is expensive. Run once and let cache persist:
+Initial sync is expensive. After that, prefer the cache-first workflow and reuse the local snapshot:
 ```bash
-# First time (full sync)
-pratc sync --repo=owner/repo
+# First time (full sync or live validation)
+pratc workflow --repo=owner/repo --refresh-sync --force-live --progress
 
-# Subsequent runs (incremental)
-pratc sync --repo=owner/repo --watch
+# Default day-to-day path (cache-first)
+pratc workflow --repo=owner/repo --progress
 ```
 
 ### 3. Use Cache-First Mode
-For analysis, use cached data when possible:
+For routine analysis, the default path should stay local unless you explicitly need a fresh recapture:
 ```bash
+pratc workflow --repo=owner/repo --progress
 pratc analyze --repo=owner/repo --use-cache-first
 ```
 

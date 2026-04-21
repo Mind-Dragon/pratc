@@ -73,23 +73,24 @@ sudo cp bin/pratc /usr/local/bin/
 ### Verify Installation
 
 ```bash
-pratc version
+pratc --help | sed -n '1,2p'
 ```
 
-Expected output:
-```
-Github Pull Request Air Traffic Control v1.3.1 ... by Jefferson Nunn
+Expected output begins with:
+```text
+Harness Optimizer v1.5.0 built on <timestamp>
+Using Config from: settings=... | cache=...
 ```
 
 ## Configuration
 
 ### Environment Variables
 
-Create `~/.pratc/.env` (optional):
+Create `~/.pratc/.env` only if you prefer environment-based auth. For most users, `gh auth login` is cleaner and keeps tokens out of shell history.
 
 ```bash
-# GitHub authentication (required)
-export GITHUB_TOKEN=ghp_your_token_here
+# GitHub authentication (preferred: `gh auth login`; env vars remain supported)
+export GITHUB_TOKEN=<github-token>
 
 # API server configuration
 export PRATC_PORT=7400
@@ -119,26 +120,12 @@ prATC requires a GitHub personal access token (PAT) with `repo` scope:
 2. Click "Generate new token (classic)"
 3. Select scopes: `repo` (full control of private repositories)
 4. Generate token and copy it
-5. Set environment variable:
+5. Set environment variable if you are not using `gh auth login`:
    ```bash
-   export GITHUB_TOKEN=ghp_your_token_here
+   export GITHUB_TOKEN=<github-token>
    ```
 
-**Security note:** Never commit your token to version control. Use a secrets manager or environment variable.
-
-## Deployment Options
-
-### Local Development
-
-```bash
-# Start API server
-pratc serve --port=7400
-
-# In another terminal, start web dashboard
-cd web && bun run dev
-
-# Open http://localhost:3000/monitor
-```
+**Security note:** Never commit tokens or other credentials to version control. Prefer `gh auth login`, a secrets manager, or environment injection over shell-history copy/paste.
 
 ## Deployment Options
 
@@ -162,17 +149,7 @@ For production use, consider:
 2. **Reverse proxy** — nginx or Caddy in front of prATC API
 3. **TLS termination** — Use Let's Encrypt or enterprise CA
 4. **Backup strategy** — Regular SQLite database backups
-5. **Monitoring** — Logs at INFO level for rate limit events
-
-### Production Deployment
-
-For production use, consider:
-
-1. **Systemd service** — See `systemd/pratc.service` template
-2. **Reverse proxy** — nginx or Caddy in front of prATC API
-3. **TLS termination** — Use Let's Encrypt or enterprise CA
-4. **Backup strategy** — Regular SQLite database backups
-5. **Monitoring** — Prometheus metrics endpoint (future feature)
+5. **Monitoring** — Logs at INFO level for sync, resume, and rate-limit events
 
 ## Directory Structure
 

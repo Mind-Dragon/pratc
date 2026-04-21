@@ -25,6 +25,7 @@ The system has five broad parts:
    - route now versus future
    - apply deeper judgment layers (confidence through signal quality)
    - existing components: internal/filter/ (pre-filter pipeline), internal/planning/ (pool selector, hierarchy, pairwise, time decay), internal/review/ (security, reliability, quality analyzers), internal/analysis/ (bot detection)
+- duplicate detection now defaults to a Go cache-first path with MinHash/LSH candidate generation plus exact rescoring; the Python ML service remains optional for enrichment/alternate backends
 
 3. Reason ledger
    - store the reason trail for every PR
@@ -59,7 +60,7 @@ Normalize + store (internal/cache/ — SQLite)
 Layer 1: garbage detection (internal/analysis/ + new classifiers)
     │
     ▼
-Layer 2: duplicate collapse (internal/ml/ → Python ML service)
+Layer 2: duplicate collapse (Go MinHash/LSH candidate generation + exact rescoring; optional ML bridge)
     │
     ▼
 Layer 3: obvious badness (spam/malware/junk classification)
@@ -255,14 +256,17 @@ Health() *HealthResponse
 - Graph: 120s
 - Plan: 90s
 
-### Production run results (openclaw/openclaw, 2026-04-19)
+### Current full-corpus validation status (openclaw/openclaw, 2026-04-21)
 
-- 4,992 PRs analyzed (capped at 5,000; full corpus is ~6,632)
-- 69 clusters, 9 duplicate groups, 741 overlap groups
-- 38,884 conflict pairs (reduced from 92,911 by v1.5 noise filtering; still above target of 5,000)
-- 215 stale PRs, 8 garbage PRs
-- Full sync + analyze pipeline: 28.5 min (first run, no cache)
-- Intermediate cache now stores duplicate groups, conflicts, and substance scores; second run skips O(n^2) recomputation
+- Cache-first full workflow: audit-green (`17` pass, `0` fail, `2` manual)
+- Explicit live validation (`--refresh-sync --force-live`): audit-green (`17` pass, `0` fail, `2` manual)
+- Full corpus analyzed: `6,632` PRs
+- Duplicate groups: `95`
+- Overlap groups: `0`
+- Conflict pairs after noise filtering: `0`
+- Garbage PRs: `14`
+- Workflow artifact contract complete: `sync.json`, `analyze.json`, step-numbered artifacts, and `report.pdf`
+- Duplicate detection on large sparse corpora now uses MinHash/LSH candidate generation with exact rescoring; the 6k sparse synthetic benchmark sits around `~90ms/op` instead of `~21s/op` for exact pairwise comparison
 
 ## Key design principle
 

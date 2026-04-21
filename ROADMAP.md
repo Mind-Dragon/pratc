@@ -14,9 +14,9 @@ prATC development roadmap.
 - 16-layer decision ladder (documented, partially implemented)
 - See `version1.4.2.md` for full details
 
-## Version 1.5 — Triage Engine Fixes + Performance (CODE COMPLETE, CACHE-BACKED VERIFICATION GREEN)
+## Version 1.5 — Triage Engine Fixes + Performance (CODE COMPLETE, CACHE-BACKED + LIVE VALIDATION GREEN)
 
-**Code complete: 2026-04-19.** BUG-1 through BUG-6 shipped first. A later cache-backed rerun at `projects/openclaw_openclaw/runs/final-wave` proved the decision surface, duplicate cache classification, conflict filtering, and dependency-edge cleanup are audit-green. Remaining: controller-proof tasks and any future uncapped/live-run validation beyond the current cache-backed green pass.
+**Code complete: 2026-04-19. Validation complete: 2026-04-21.** The v1.5 line is now green on both the default cache-first full workflow and one explicit live validation run against `openclaw/openclaw`. The current local release-ready surface is: full artifact contract, audit-green analyze/report output, cache-first by default, and live-path verification without required failures.
 
 ### Completed
 

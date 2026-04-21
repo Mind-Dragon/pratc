@@ -6,13 +6,23 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- Cache-backed analyze now surfaces per-PR category/bucket, reasons, confidence, temporal bucket, decision layers, priority tier, and substance score directly on `AnalysisResponse.PRs`, making the analyze artifact self-describing for report/appendix use.
-- Cache-backed duplicate classification preserves truthful 0.80-similarity duplicate groups from older cached corpora via `CachedDuplicateThreshold`, restoring duplicate presence on reruns.
-- Graph generation no longer creates same-base-branch fake dependency edges, and `mergeability_signal` conflicts now require both PRs to be conflicting, materially reducing graph noise.
+- Workflow now carries a full artifact contract end-to-end: `sync.json`, `analyze.json`, step-numbered artifacts, and a real `report.pdf` generated before workflow completion.
+- Post-sync workflow phases (`cluster`, `graph`, `plan`) now preserve the workflow snapshot truthfully even when `analyze` runs longer than cache TTL.
+- Duplicate classification now preserves truthful `0.80` duplicate groups on cache-backed fresh reruns as well as cached reloads, restoring duplicate presence on full-corpus cached analysis.
+- Large-corpus duplicate detection now uses MinHash/LSH candidate generation with exact rescoring, keeping the sparse 6k synthetic benchmark around `~90ms/op` instead of `~21s/op` for exact pairwise comparison.
+- Conflict-noise filtering now suppresses additional generated/docs-heavy OpenClaw paths (`docs/.generated/*`, `docs/docs.json`, `schema.base.generated.ts`, `schema.help.ts`, `schema.labels.ts`).
+- Substance scoring now uses a wider and more informative composite (source-file impact, test signal, freshness, diff footprint, and clean findings) instead of a compressed 30–70 band.
+- Audit smoke runs under 150 PRs no longer hard-fail duplicate/junk presence checks; those now downgrade to manual when the sample is intentionally too small.
+- Public docs now describe the cache-first default, the full workflow artifact contract, and the current release-ready validation state without stale installer/version examples.
+
+### Removed
+
+- Stale root-level planning docs and scratch release notes (`pratc.md`, `prATC _ App Architecture Plan.md`, `REPORT_TODO.md`, `v1.5-triage-engine-plan.md`, `version1.4.1.md`) were dropped from the release surface.
 
 ### Verified
 
-- Cache-backed rerun `projects/openclaw_openclaw/runs/final-wave` passes the required audit surface with 17 checks passing and 0 failures.
+- Cache-backed full workflow against `openclaw/openclaw` (`6,632` PRs) is audit-green with `17` passing checks, `0` failures, and a generated `report.pdf`.
+- Explicit live validation (`--refresh-sync --force-live`) against `openclaw/openclaw` is also audit-green with the same `17` passing checks, `0` failures, and a generated `report.pdf`.
 
 ## [1.5.0] — 2026-04-18
 
