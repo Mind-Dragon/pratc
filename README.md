@@ -1,6 +1,37 @@
 # prATC
 
+<p align="center">
+  <img src="docs/assets/pratc-banner.svg" alt="prATC banner" width="100%">
+</p>
+
+<p align="center">
+  <strong>PR Air Traffic Control for repositories that have outgrown manual triage.</strong>
+</p>
+
+<p align="center">
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-1.5.0-1BC3F3?style=for-the-badge" alt="Release 1.5.0"></a>
+  <a href="RATELIMITS.md"><img src="https://img.shields.io/badge/status-audit--green-1F9D55?style=for-the-badge" alt="Audit green"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-FSL--1.1--Apache--2.0-4B5563?style=for-the-badge" alt="License"></a>
+  <a href="INSTALL.md"><img src="https://img.shields.io/badge/port-7400-0F172A?style=for-the-badge" alt="Default port 7400"></a>
+</p>
+
+<p align="center">
+  <a href="#about">About</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#documentation">Docs</a> ·
+  <a href="#configuration">Config</a> ·
+  <a href="#testing">Testing</a> ·
+  <a href="#license">License</a>
+</p>
+
+## About
+
 prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull request triage and merge planning.
+
+It gives you a cache-first workflow for repositories with hundreds or thousands of PRs, then turns that corpus into something navigable: duplicate groups, conflict maps, ranked merge queues, and a PDF report you can hand to humans.
+
+Use it when "just open the PR list" has stopped being a serious plan.
 
 ## Project Status
 

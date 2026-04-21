@@ -1,0 +1,71 @@
+<svg width="1200" height="360" viewBox="0 0 1200 360" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">prATC banner</title>
+  <desc id="desc">A dark radar-themed banner for prATC, PR Air Traffic Control.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#06131E"/>
+      <stop offset="1" stop-color="#0B2233"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="202" y1="56" x2="202" y2="304" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6FE7FF"/>
+      <stop offset="1" stop-color="#1BC3F3"/>
+    </linearGradient>
+    <linearGradient id="textAccent" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#D9F9FF"/>
+      <stop offset="1" stop-color="#8BE8FF"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="360" rx="28" fill="url(#bg)"/>
+  <rect x="18" y="18" width="1164" height="324" rx="20" stroke="#16384E" stroke-width="2"/>
+
+  <g opacity="0.18">
+    <circle cx="202" cy="180" r="118" stroke="url(#accent)" stroke-width="2"/>
+    <circle cx="202" cy="180" r="88" stroke="url(#accent)" stroke-width="2"/>
+    <circle cx="202" cy="180" r="58" stroke="url(#accent)" stroke-width="2"/>
+    <circle cx="202" cy="180" r="28" stroke="url(#accent)" stroke-width="2"/>
+    <path d="M202 56V304" stroke="url(#accent)" stroke-width="2"/>
+    <path d="M78 180H326" stroke="url(#accent)" stroke-width="2"/>
+    <path d="M114 92L290 268" stroke="url(#accent)" stroke-width="2"/>
+    <path d="M114 268L290 92" stroke="url(#accent)" stroke-width="2"/>
+  </g>
+
+  <g filter="url(#glow)">
+    <path d="M202 180L267 129" stroke="#7FF3FF" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="267" cy="129" r="7" fill="#A9FBFF"/>
+    <circle cx="267" cy="129" r="15" stroke="#69EEFF" stroke-opacity="0.7"/>
+  </g>
+
+  <g opacity="0.9">
+    <path d="M325 96L353 83L366 96L353 101L367 112L360 120L346 108L343 124L333 124L336 104L325 96Z" fill="#7AEFFF"/>
+    <path d="M110 248L129 238L136 248L128 251L136 260L130 266L122 257L118 269L111 267L114 252L110 248Z" fill="#41D8FF" opacity="0.7"/>
+    <path d="M288 255L307 246L314 255L306 258L315 267L309 273L300 264L296 275L289 273L292 259L288 255Z" fill="#41D8FF" opacity="0.7"/>
+  </g>
+
+  <g>
+    <text x="410" y="145" fill="url(#textAccent)" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="64" font-weight="800" letter-spacing="1">prATC</text>
+    <text x="410" y="192" fill="#E6F7FB" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="30" font-weight="600">PR Air Traffic Control</text>
+    <text x="410" y="236" fill="#9EC6D6" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="22">Large-scale pull request triage, conflict mapping, and merge planning.</text>
+  </g>
+
+  <g>
+    <rect x="410" y="266" width="148" height="34" rx="17" fill="#0E3044" stroke="#1E5A74"/>
+    <text x="484" y="288" text-anchor="middle" fill="#B8F5FF" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="700">CACHE-FIRST</text>
+
+    <rect x="572" y="266" width="138" height="34" rx="17" fill="#0E3044" stroke="#1E5A74"/>
+    <text x="641" y="288" text-anchor="middle" fill="#B8F5FF" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="700">ANALYZE</text>
+
+    <rect x="724" y="266" width="128" height="34" rx="17" fill="#0E3044" stroke="#1E5A74"/>
+    <text x="788" y="288" text-anchor="middle" fill="#B8F5FF" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="700">PLAN</text>
+
+    <rect x="866" y="266" width="142" height="34" rx="17" fill="#0E3044" stroke="#1E5A74"/>
+    <text x="937" y="288" text-anchor="middle" fill="#B8F5FF" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" font-weight="700">REPORT</text>
+  </g>
+</svg>
