@@ -453,7 +453,11 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 				log.Warn("failed to fetch merged PRs", "error", err)
 			}
 		}
-		duplicates, overlaps = classifyDuplicates(prs, mergedPRs, s.emit)
+		duplicateThreshold := types.DuplicateThreshold
+		if !meta.LiveSource {
+			duplicateThreshold = types.CachedDuplicateThreshold
+		}
+		duplicates, overlaps = classifyDuplicates(prs, mergedPRs, s.emit, duplicateThreshold)
 		telemetry.StageLatenciesMS["duplicates_ms"] = int(time.Since(dupStart).Milliseconds())
 		s.emit("duplicates", len(duplicates), len(prs))
 
@@ -1644,7 +1648,7 @@ func classifyGarbage(prs []types.PR) []types.GarbagePR {
 // classifyDuplicates compares PRs for similarity.
 // Small corpora stay exact; larger corpora use MinHash/LSH candidate generation
 // and then re-score only the candidate pairs with the exact existing formula.
-func classifyDuplicates(prs []types.PR, mergedPRs []review.MergedPRRecord, emit func(phase string, done, total int)) ([]types.DuplicateGroup, []types.DuplicateGroup) {
+func classifyDuplicates(prs []types.PR, mergedPRs []review.MergedPRRecord, emit func(phase string, done, total int), duplicateThreshold float64) ([]types.DuplicateGroup, []types.DuplicateGroup) {
 	titleTokens := make([][]string, len(prs))
 	bodyTokens := make([][]string, len(prs))
 	for i := range prs {
@@ -1668,10 +1672,10 @@ func classifyDuplicates(prs []types.PR, mergedPRs []review.MergedPRRecord, emit 
 				pairs = append(pairs, [2]int{i, j})
 			}
 		}
-		runDuplicateCandidatePairs(prs, titleTokens, bodyTokens, pairs, duplicatesByCanonical, overlapsByCanonical)
+		runDuplicateCandidatePairs(prs, titleTokens, bodyTokens, pairs, duplicateThreshold, duplicatesByCanonical, overlapsByCanonical)
 		for i := 0; i < len(prs); i++ {
 			for _, merged := range mergedPRs {
-				recordMergedDuplicate(prs[i], merged, duplicatesByCanonical, overlapsByCanonical)
+				recordMergedDuplicate(prs[i], merged, duplicateThreshold, duplicatesByCanonical, overlapsByCanonical)
 			}
 		}
 		emit("duplicates_inner", len(pairs), len(prs))
@@ -1696,20 +1700,20 @@ func classifyDuplicates(prs []types.PR, mergedPRs []review.MergedPRRecord, emit 
 		}
 		if left < len(prs) && right >= len(prs) {
 			merged := mergedPRs[right-len(prs)]
-			recordMergedDuplicate(prs[left], merged, duplicatesByCanonical, overlapsByCanonical)
+			recordMergedDuplicate(prs[left], merged, duplicateThreshold, duplicatesByCanonical, overlapsByCanonical)
 		}
 	}
 	if len(openOpenCandidates) == 0 {
 		for i := 0; i < len(prs); i++ {
 			for _, merged := range mergedPRs {
-				recordMergedDuplicate(prs[i], merged, duplicatesByCanonical, overlapsByCanonical)
+				recordMergedDuplicate(prs[i], merged, duplicateThreshold, duplicatesByCanonical, overlapsByCanonical)
 			}
 		}
 		emit("duplicates_inner", 0, len(prs))
 		return flattenGroups(duplicatesByCanonical), flattenGroups(overlapsByCanonical)
 	}
 
-	runDuplicateCandidatePairs(prs, titleTokens, bodyTokens, openOpenCandidates, duplicatesByCanonical, overlapsByCanonical)
+	runDuplicateCandidatePairs(prs, titleTokens, bodyTokens, openOpenCandidates, duplicateThreshold, duplicatesByCanonical, overlapsByCanonical)
 	emit("duplicates_inner", len(openOpenCandidates), len(prs))
 	return flattenGroups(duplicatesByCanonical), flattenGroups(overlapsByCanonical)
 }
@@ -1725,6 +1729,7 @@ func runDuplicateCandidatePairs(
 	titleTokens [][]string,
 	bodyTokens [][]string,
 	pairs [][2]int,
+	duplicateThreshold float64,
 	duplicatesByCanonical map[int]*types.DuplicateGroup,
 	overlapsByCanonical map[int]*types.DuplicateGroup,
 ) {
@@ -1740,7 +1745,7 @@ func runDuplicateCandidatePairs(
 		}
 		canonical := min(prs[left].Number, prs[right].Number)
 		other := max(prs[left].Number, prs[right].Number)
-		if score > types.DuplicateThreshold {
+		if score >= duplicateThreshold {
 			group := duplicatesByCanonical[canonical]
 			if group == nil {
 				group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity above duplicate threshold"}
@@ -1791,6 +1796,7 @@ func duplicateSimilarityScore(left, right types.PR, leftTitleTokens, rightTitleT
 func recordMergedDuplicate(
 	pr types.PR,
 	merged review.MergedPRRecord,
+	duplicateThreshold float64,
 	duplicatesByCanonical map[int]*types.DuplicateGroup,
 	overlapsByCanonical map[int]*types.DuplicateGroup,
 ) {
@@ -1800,7 +1806,7 @@ func recordMergedDuplicate(
 	}
 	canonical := pr.Number
 	other := -merged.PRNumber
-	if score > types.DuplicateThreshold {
+	if score >= duplicateThreshold {
 		group := duplicatesByCanonical[canonical]
 		if group == nil {
 			group = &types.DuplicateGroup{CanonicalPRNumber: canonical, Reason: "title/body/file similarity above duplicate threshold (compared against merged history)"}

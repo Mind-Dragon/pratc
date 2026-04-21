@@ -47,7 +47,7 @@ func TestDuplicateThreshold_Reachable(t *testing.T) {
 
 	noop := func(string, int, int) {}
 
-	dups, overlaps := classifyDuplicates(prs, nil, noop)
+	dups, overlaps := classifyDuplicates(prs, nil, noop, types.DuplicateThreshold)
 
 	// Score calculation for these PRs:
 	// - titleScore = 1.0 (identical titles)
@@ -119,7 +119,7 @@ func TestDuplicateDetection_FindsGroup(t *testing.T) {
 
 	noop := func(string, int, int) {}
 
-	dups, overlaps := classifyDuplicates(prs, nil, noop)
+	dups, overlaps := classifyDuplicates(prs, nil, noop, types.DuplicateThreshold)
 
 	// With identical files (fileScore=1.0) and substring title relationship,
 	// titleScore will be boosted to 0.80 via substring containment

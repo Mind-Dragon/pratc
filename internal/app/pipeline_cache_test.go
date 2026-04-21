@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/testutil"
@@ -326,6 +327,55 @@ func TestPipeline_CachedDuplicatesWith080Similarity(t *testing.T) {
 	}
 	if !found200 {
 		t.Fatalf("expected duplicate group with canonical PR 200 (0.85 similarity) to be classified as duplicate")
+	}
+}
+
+func TestPipeline_CacheBackedFreshClassifyPreserves080Duplicates(t *testing.T) {
+	t.Parallel()
+
+	store, err := cache.Open(filepath.Join(t.TempDir(), "cache.db"))
+	if err != nil {
+		t.Fatalf("open cache: %v", err)
+	}
+	defer store.Close()
+
+	repo := "owner/repo"
+	now := fixedNow()
+	for i := 1; i <= 160; i++ {
+		pr := types.PR{
+			Repo:              repo,
+			Number:            i,
+			Title:             "misc change",
+			Body:              "misc body",
+			URL:               "https://example.invalid/pr/" + string(rune(i)),
+			Author:            "bot",
+			BaseBranch:        "main",
+			HeadBranch:        "branch",
+			UpdatedAt:         now.Format(time.RFC3339),
+			CreatedAt:         now.Add(-time.Hour).Format(time.RFC3339),
+			Additions:         1,
+			Deletions:         1,
+			ChangedFilesCount: 0,
+		}
+		if i == 50 || i == 120 {
+			pr.Title = "feat(web-search): add SearXNG as a search provider"
+			pr.Body = "Adds SearXNG support to web search provider configuration and runtime wiring"
+		}
+		if err := store.UpsertPR(pr); err != nil {
+			t.Fatalf("upsert pr %d: %v", i, err)
+		}
+	}
+	if err := store.SetLastSync(repo, now); err != nil {
+		t.Fatalf("set last sync: %v", err)
+	}
+
+	service := NewService(Config{Now: fixedNow, CacheStore: store, UseCacheFirst: true, AllowForceCache: true})
+	response, err := service.Analyze(context.Background(), repo)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	if response.Counts.DuplicateGroups == 0 {
+		t.Fatalf("expected cache-backed fresh classify to preserve 0.80 duplicate groups, got 0 duplicates and %d overlaps", response.Counts.OverlapGroups)
 	}
 }
 

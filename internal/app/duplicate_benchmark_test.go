@@ -16,7 +16,7 @@ func BenchmarkClassifyDuplicatesDenseSimilarity(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		classifyDuplicates(prs, merged, emit)
+		classifyDuplicates(prs, merged, emit, types.DuplicateThreshold)
 	}
 }
 
@@ -27,7 +27,7 @@ func BenchmarkClassifyDuplicatesSparseSimilarity(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		classifyDuplicates(prs, merged, emit)
+		classifyDuplicates(prs, merged, emit, types.DuplicateThreshold)
 	}
 }
 
@@ -48,7 +48,7 @@ func BenchmarkExactDuplicatePairsSparseSimilarity(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		dups := make(map[int]*types.DuplicateGroup)
 		ovs := make(map[int]*types.DuplicateGroup)
-		runDuplicateCandidatePairs(prs, titleTokens, bodyTokens, pairs, dups, ovs)
+		runDuplicateCandidatePairs(prs, titleTokens, bodyTokens, pairs, types.CachedDuplicateThreshold, dups, ovs)
 	}
 }
 
