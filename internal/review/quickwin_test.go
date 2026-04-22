@@ -1099,6 +1099,27 @@ func TestIsAbandonedBoundary(t *testing.T) {
 	}
 }
 
+// TestHasQualityFindings_RealAnalyzerOutput tests that hasQualityFindings returns true
+// when AnalyzerName="security" regardless of Finding string content.
+// Real analyzers output findings like "risky file path detected: main.go" with
+// AnalyzerName="security", not Finding prefixed with "security_".
+// This test FAILS on current code which incorrectly checks Finding prefix.
+func TestHasQualityFindings_RealAnalyzerOutput(t *testing.T) {
+	findings := []types.AnalyzerFinding{
+		{
+			AnalyzerName:    "security",
+			AnalyzerVersion: "1.0.0",
+			Finding:         "risky file path detected: main.go",
+			Confidence:      0.85,
+		},
+	}
+
+	got := hasQualityFindings(findings)
+	if !got {
+		t.Errorf("hasQualityFindings() = %v, want true (AnalyzerName=security should qualify)", got)
+	}
+}
+
 // TestQuickwinSmallPRExactly3Conflicts tests that exactly 3 conflicts does NOT get
 // reclassified by Rule 1 (small PR). Rule 1 requires len(ConflictPairs) < 3.
 func TestQuickwinSmallPRExactly3Conflicts(t *testing.T) {
@@ -1150,5 +1171,71 @@ func TestQuickwinSmallPRExactly3Conflicts(t *testing.T) {
 	if resultsCopy[0].ReclassificationReason != "genuine low_value" {
 		t.Errorf("PR with exactly 3 conflicts should get 'genuine low_value', got %q",
 			resultsCopy[0].ReclassificationReason)
+	}
+}
+
+// TestRule3_TemporalBucketGuard verifies that PRs with TemporalBucket="now"
+// are NOT processed by RunQuickWinPass at all. The isLowValueCandidate guard
+// at line 123 filters them before any rules run. This test ensures that
+// even if a "now" PR has quality findings matching Rule 3, it stays untouched.
+func TestRule3_TemporalBucketGuard(t *testing.T) {
+	now := time.Now()
+	thirtyDaysAgo := now.AddDate(0, 0, -30).Format(time.RFC3339)
+
+	// PR already promoted to "now" by SecondPass (e.g., via Rule 1 or Rule 2)
+	// This PR has quality findings and SubstanceScore > 40, which would
+	// trigger Rule 3 if it weren't already "now".
+	results := []types.ReviewResult{
+		{
+			PRNumber:       500,
+			Category:       types.ReviewCategoryMergeAfterFocusedReview,
+			SubstanceScore: 45,
+			TemporalBucket: "now", // Already promoted - should NOT be reclassified
+			AnalyzerFindings: []types.AnalyzerFinding{
+				{
+					AnalyzerName: "security",
+					// Use prefix that WOULD match current hasQualityFindings (security_)
+					// to prove the temporal guard is needed independently
+					Finding:      "security_sql_injection: vulnerability in user input",
+				},
+			},
+			DecisionLayers: []types.DecisionLayer{},
+		},
+	}
+
+	prDataMap := map[int]PRData{
+		500: {
+			PR: types.PR{
+				Number:            500,
+				ChangedFilesCount: 5,
+				Additions:         100,
+				Deletions:         20,
+				CIStatus:          "success",
+				IsDraft:           false,
+				FilesChanged:      []string{"src/handler.go", "src/db.go", "src/auth.go"},
+				Labels:            []string{},
+				UpdatedAt:         thirtyDaysAgo,
+				ReviewCount:       2,
+			},
+			ConflictPairs: []types.ConflictPair{},
+		},
+	}
+
+	resultsCopy := make([]types.ReviewResult, len(results))
+	copy(resultsCopy, results)
+
+	got := RunQuickWinPass(resultsCopy, prDataMap)
+
+	// Rule 3 should NOT have reclassified this PR because TemporalBucket is already "now"
+	// Bug: Due to missing TemporalBucket=="future" guard, Rule 3 will incorrectly
+	// reclassify it to "future" (setting TemporalBucket to "future")
+	if got != 0 {
+		t.Errorf("RunQuickWinPass() reclassified %d PRs, want 0 (PR with TemporalBucket='now' should not be reclassified)", got)
+	}
+
+	// TemporalBucket must stay "now" - it should NOT be changed to "future"
+	if resultsCopy[0].TemporalBucket != "now" {
+		t.Errorf("TemporalBucket = %q, want 'now' - Rule 3 should NOT demote already-promoted PRs to 'future'",
+			resultsCopy[0].TemporalBucket)
 	}
 }

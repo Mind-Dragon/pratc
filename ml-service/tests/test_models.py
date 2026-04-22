@@ -171,3 +171,50 @@ def test_coerce_dataclass_fixed_preserves_provided_values():
     assert result.title == "Test PR"
     assert result.labels == ["bug", "urgent"]
     assert result.files_changed == ["src/main.go", "src/util.go"]
+
+
+class TestCoerceDataclass_MissingKey:
+    """Contract test P1.4: _coerce_dataclass should handle missing required fields gracefully.
+
+    When Go omits map fields via omitempty, the value dict may be missing keys.
+    The implementation should use value.get() with defaults rather than value[item.name].
+    This test verifies that no KeyError is raised when a required field is missing.
+    """
+
+    def test_no_keyerror_when_required_field_missing(self):
+        """Pass a dict missing a required field to _coerce_dataclass.
+
+        Assert that no KeyError is raised. The current buggy implementation
+        uses value[item.name] which raises KeyError when field is missing.
+        """
+        @dataclass
+        class TestConfig:
+            id: str
+            repo: str
+            number: int
+            title: str
+            labels: list[str] = field(default_factory=list)
+            files_changed: list[str] = field(default_factory=list)
+            review_status: str = ""
+            is_draft: bool = False
+
+        # Dict missing 'number' (a required field without a default)
+        test_data = {
+            "id": "1",
+            "repo": "owner/repo",
+            # 'number' is intentionally missing
+            "title": "Test PR",
+            # 'labels' is missing but has default_factory
+            # 'files_changed' is missing but has default_factory
+            # 'review_status' is missing but has default=""
+            # 'is_draft' is missing but has default=False
+        }
+
+        # This should NOT raise KeyError even when fields are missing
+        # The implementation should use value.get() and handle defaults
+        result = _coerce_dataclass_buggy(TestConfig, test_data)
+
+        assert result.id == "1"
+        assert result.repo == "owner/repo"
+        # For the missing required field 'number', we expect it to be None
+        # or the dataclass constructor should handle it gracefully

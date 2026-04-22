@@ -61,3 +61,17 @@ func TestTargetRatioUpperBoundValidation(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateTargetRatio_Negative tests that negative target-ratio values
+// are rejected as invalid. A negative ratio is nonsensical for a target.
+// This is a contract test: the current implementation only checks ratio > 1.0,
+// so negative values pass silently — this test SHOULD FAIL until the bug is fixed.
+func TestValidateTargetRatio_Negative(t *testing.T) {
+	err := validateTargetRatio(-0.5)
+	if err == nil {
+		t.Fatalf("expected error for negative target-ratio -0.5, got nil")
+	}
+	if !strings.Contains(err.Error(), "target-ratio") {
+		t.Fatalf("expected error containing 'target-ratio', got %q", err.Error())
+	}
+}

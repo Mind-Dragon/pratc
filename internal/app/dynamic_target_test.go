@@ -127,6 +127,17 @@ func TestDynamicTargetConfig_ComputeDynamicTarget(t *testing.T) {
 	}
 }
 
+// TestResolveDynamicTargetConfig_ZeroValueEnabledDefault verifies that a zero-valued
+// DynamicTargetConfig (Enabled=false by default) results in Enabled=true per the
+// "default to enabled" contract in the implementation comment.
+func TestResolveDynamicTargetConfig_ZeroValueEnabledDefault(t *testing.T) {
+	cfg := DynamicTargetConfig{}
+	got := resolveDynamicTargetConfig(cfg)
+	if got.Enabled != true {
+		t.Errorf("resolveDynamicTargetConfig(DynamicTargetConfig{}) Enabled = %v; want true (default to enabled per comment)", got.Enabled)
+	}
+}
+
 func TestResolveDynamicTargetConfig(t *testing.T) {
 	tests := []struct {
 		name  string
