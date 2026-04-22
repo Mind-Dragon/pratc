@@ -212,7 +212,7 @@ func (b *BudgetManager) CanAfford(requests int) bool {
 func (b *BudgetManager) RecordResponse(remaining int, resetEpoch int64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.RemainingVal = remaining
+	b.RemainingVal = max(remaining, 0)
 	b.ResetTime = time.Unix(resetEpoch, 0)
 	b.LastUpdated = time.Now()
 }
