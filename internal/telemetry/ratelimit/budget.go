@@ -203,7 +203,7 @@ func (b *BudgetManager) CanAfford(requests int) bool {
 	if requests == 0 && available >= b.reserveBuffer {
 		return true
 	}
-	return (available - requests) > b.reserveBuffer
+	return (available - requests) >= b.reserveBuffer
 }
 
 // RecordResponse updates the budget state from GitHub API response headers.

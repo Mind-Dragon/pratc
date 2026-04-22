@@ -336,7 +336,7 @@ func TestCanAfford(t *testing.T) {
 			remaining:  500,
 			reserved:   250,
 			requests:   50,
-			wantAfford: false,
+			wantAfford: true,
 		},
 	}
 
@@ -574,4 +574,38 @@ func TestBudgetManager_NoMetrics(t *testing.T) {
 	}
 
 	// No panic should occur (metrics is nil)
+}
+
+// B1: CanAfford boundary inverted at budget.go line 206
+// Bug: CanAfford(0) returns false when available == reserveBuffer, but should return true.
+// The boundary check at line 206 uses > instead of >=, causing an off-by-one error
+// when determining if we can afford zero requests at the exact reserve boundary.
+func TestCanAfford_ZeroRequests(t *testing.T) {
+	bm := NewBudgetManager()
+
+	// Set remaining to exactly the reserve buffer (200)
+	bm.RecordResponse(200, time.Now().Add(30*time.Minute).Unix())
+
+	// CanAfford(0) should return true when available == reserveBuffer
+	if !bm.CanAfford(0) {
+		t.Errorf("CanAfford(0) = false, want true when available == reserveBuffer (200)")
+	}
+}
+
+// B4: RecordResponse accepts negative remaining at budget.go line 212-218
+// Bug: RecordResponse(-1) stores -1 in RemainingVal instead of clamping to 0.
+// Negative remaining values are invalid and should be treated as 0.
+func TestRecordResponse_NegativeRemaining(t *testing.T) {
+	bm := NewBudgetManager()
+
+	// Record a negative remaining value (simulating malformed API response)
+	bm.RecordResponse(-1, time.Now().Add(30*time.Minute).Unix())
+
+	// Remaining should be clamped to 0, not stored as -1
+	if bm.Remaining() < 0 {
+		t.Errorf("Remaining() = %d, want >= 0 (negative should be clamped)", bm.Remaining())
+	}
+	if bm.Remaining() != 0 {
+		t.Errorf("Remaining() = %d, want 0 after RecordResponse(-1, ...)", bm.Remaining())
+	}
 }
