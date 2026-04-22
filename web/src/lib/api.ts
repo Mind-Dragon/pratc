@@ -44,7 +44,7 @@ function apiBaseUrl(): string {
   if (configured && configured.trim().length > 0) {
     return configured.replace(/\/$/, "");
   }
-  return "http://localhost:8080";
+  return "http://localhost:7400";
 }
 
 function repoPath(repo: string): string {
@@ -100,17 +100,18 @@ export async function fetchOmniPlan(
 }
 
 export async function fetchSettings(repo: string = DEFAULT_REPO): Promise<SettingsMap | null> {
-  return fetchJSON<SettingsMap | null>(`${repoPath(repo)}/settings`, null);
+  return fetchJSON<SettingsMap | null>(`/api/settings?repo=${encodeURIComponent(repo)}`, null);
 }
 
 export async function postSetting(
   payload: PostSettingPayload,
   options?: PostSettingOptions
 ): Promise<PostSettingResponse | null> {
-  const basePath = repoPath(payload.repo);
-  const path = options?.validateOnly
-    ? `${basePath}/settings/${payload.scope}/${encodeURIComponent(payload.key)}/validate`
-    : `${basePath}/settings/${payload.scope}/${encodeURIComponent(payload.key)}`;
+  const params = new URLSearchParams({ scope: payload.scope, repo: payload.repo, key: payload.key });
+  if (options?.validateOnly) {
+    params.set("validateOnly", "true");
+  }
+  const path = `/api/settings?${params}`;
 
   try {
     const response = await loggedFetch(`${apiBaseUrl()}${path}`, {
@@ -132,7 +133,8 @@ export async function deleteSetting(
   repo: string,
   key: string
 ): Promise<DeleteSettingResponse | null> {
-  const path = `${repoPath(repo)}/settings/${scope}/${encodeURIComponent(key)}`;
+  const params = new URLSearchParams({ scope, repo, key });
+  const path = `/api/settings?${params}`;
 
   try {
     const response = await loggedFetch(`${apiBaseUrl()}${path}`, {
@@ -151,7 +153,8 @@ export async function exportSettingsYAML(
   scope: "global" | "repo",
   repo: string
 ): Promise<string | null> {
-  const path = `${repoPath(repo)}/settings/${scope}/export`;
+  const params = new URLSearchParams({ scope, repo });
+  const path = `/api/settings/export?${params}`;
 
   try {
     const response = await loggedFetch(`${apiBaseUrl()}${path}`);
@@ -169,7 +172,8 @@ export async function importSettingsYAML(
   repo: string,
   content: string
 ): Promise<ImportSettingsResponse | null> {
-  const path = `${repoPath(repo)}/settings/${scope}/import`;
+  const params = new URLSearchParams({ scope, repo });
+  const path = `/api/settings/import?${params}`;
 
   try {
     const response = await loggedFetch(`${apiBaseUrl()}${path}`, {

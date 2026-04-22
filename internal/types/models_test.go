@@ -115,7 +115,7 @@ func TestTypeScriptInterfacesMirrorCanonicalFields(t *testing.T) {
 		"health_status: string;",
 		"export interface AnalysisResponse",
 		"generatedAt: string;",
-		"review_payload: ReviewResponse;",
+		"review_payload?: ReviewResponse;",
 		"export interface ReviewResponse",
 		"export interface BucketCount",
 		"buckets: BucketCount[];",
