@@ -82,6 +82,8 @@ func TestAnalyzerFindingWithLocation(t *testing.T) {
 		AnalyzerVersion: "0.1.0",
 		Finding:         "potential SQL injection",
 		Confidence:      0.85,
+		Subsystem:       "auth",
+		SignalType:      "risky_pattern",
 		Location: &CodeLocation{
 			FilePath:  "internal/db/query.go",
 			LineStart: 42,
@@ -112,6 +114,12 @@ func TestAnalyzerFindingWithLocation(t *testing.T) {
 	}
 	if parsed.AnalyzerName != finding.AnalyzerName {
 		t.Errorf("AnalyzerName mismatch: got %q, want %q", parsed.AnalyzerName, finding.AnalyzerName)
+	}
+	if parsed.Subsystem != finding.Subsystem {
+		t.Errorf("Subsystem mismatch: got %q, want %q", parsed.Subsystem, finding.Subsystem)
+	}
+	if parsed.SignalType != finding.SignalType {
+		t.Errorf("SignalType mismatch: got %q, want %q", parsed.SignalType, finding.SignalType)
 	}
 	if parsed.Location == nil {
 		t.Fatal("Location is nil after unmarshal")

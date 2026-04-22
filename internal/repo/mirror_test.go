@@ -826,3 +826,38 @@ index abc1234..0000000
 		t.Errorf("expected file status 'removed', got '%s'", files[0].Status)
 	}
 }
+
+func TestParseDiffOutputPreservesPatchAndHunkContent(t *testing.T) {
+	t.Parallel()
+
+	diffOutput := `diff --git a/internal/auth.go b/internal/auth.go
+index 1234567..89abcde 100644
+--- a/internal/auth.go
++++ b/internal/auth.go
+@@ -10,2 +10,4 @@ func Validate() {
+-allow := false
++allow := true
++token := readToken()
+ }
+`
+
+	files, hunks, err := parseDiffOutput(diffOutput, 789)
+	if err != nil {
+		t.Fatalf("parseDiffOutput failed: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(files))
+	}
+	if files[0].Patch == "" {
+		t.Fatal("expected file patch to be preserved")
+	}
+	if len(hunks) != 1 {
+		t.Fatalf("expected 1 hunk, got %d", len(hunks))
+	}
+	if hunks[0].Content == "" {
+		t.Fatal("expected hunk content to be preserved")
+	}
+	if hunks[0].Section != "func Validate() {" {
+		t.Fatalf("expected hunk section %q, got %q", "func Validate() {", hunks[0].Section)
+	}
+}

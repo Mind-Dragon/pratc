@@ -541,6 +541,10 @@ type AnalyzerFinding struct {
 	Finding string `json:"finding"`
 	// Confidence is the analyzer's confidence in this finding, ranging from 0.0 to 1.0.
 	Confidence float64 `json:"confidence"`
+	// Subsystem classifies which product or code subsystem the finding belongs to.
+	Subsystem string `json:"subsystem,omitempty"`
+	// SignalType classifies the evidence shape (e.g. risky_pattern, subsystem_tag, test_gap).
+	SignalType string `json:"signal_type,omitempty"`
 	// Location points to the specific code location this finding relates to, if applicable.
 	Location *CodeLocation `json:"location,omitempty"`
 	// DiffHunk contains the diff context for this finding, if available.

@@ -336,6 +336,8 @@ export interface AnalyzerFinding {
   analyzer_version: string;
   finding: string;
   confidence: number;
+  subsystem?: string;
+  signal_type?: string;
   location?: CodeLocation;
   diff_hunk?: DiffHunk;
   evidence_hash?: string;
