@@ -374,6 +374,11 @@ func (s Service) Health() types.HealthResponse {
 	return types.HealthResponse{Status: "ok", Version: version.Version, APIVersion: "v1.6"}
 }
 
+// DynamicTarget returns the DynamicTarget configuration.
+func (s Service) DynamicTarget() DynamicTargetConfig {
+	return s.dynamicTarget
+}
+
 // GetActiveSyncJob returns (true, jobID) if there is an active sync job for the given repo.
 func (s Service) GetActiveSyncJob(repo string) (bool, string, error) {
 	if s.cacheStore == nil {
@@ -2679,10 +2684,6 @@ func buildCollapsedCorpus(
 			if c.SynthesisScore > bestScore[c.PRNumber] {
 				bestScore[c.PRNumber] = c.SynthesisScore
 			}
-		}
-		// Ensure canonical itself has a score
-		if bestScore[canonical] == 0 {
-			bestScore[canonical] = 0
 		}
 	}
 

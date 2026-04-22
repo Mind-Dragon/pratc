@@ -69,6 +69,10 @@ Examples:
 				return err
 			}
 
+			if err := validateTargetRatio(targetRatio); err != nil {
+				return err
+			}
+
 			if !cmd.Flags().Changed("dry-run") {
 				dryRun = true
 			}
@@ -137,4 +141,13 @@ func parseMode(raw string) (formula.Mode, error) {
 	default:
 		return "", fmt.Errorf("invalid mode %q", raw)
 	}
+}
+
+// validateTargetRatio checks that target-ratio is within valid bounds.
+// A ratio > 1.0 means more than 100% of the pool, which is nonsensical.
+func validateTargetRatio(ratio float64) error {
+	if ratio > 1.0 {
+		return fmt.Errorf("target-ratio %.2f exceeds maximum of 1.0", ratio)
+	}
+	return nil
 }

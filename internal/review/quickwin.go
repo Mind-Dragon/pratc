@@ -70,14 +70,30 @@ func RunQuickWinPass(results []types.ReviewResult, prDataMap map[int]PRData) int
 			prData.PR.ReviewCount == 0 && result.SubstanceScore < 20 {
 			reason = "abandoned low-value PR"
 			batchTag = ""
+			originalCategory := result.Category
 			result.Category = types.ReviewCategoryProblematicQuarantine
-			result.TemporalBucket = "blocked"
+			result.TemporalBucket = "junk"
+			result.ReclassifiedFrom = string(originalCategory)
+			result.ReclassificationReason = reason
 			reclassified = true
+		}
+
+		// Catchall: PR matched no rule but is a genuine low_value candidate
+		if !reclassified {
+			reason = "genuine low_value"
+			result.ReclassificationReason = reason
+			result.ReclassifiedFrom = "low_value"
+			reclassifiedCount++
+			continue
 		}
 
 		// If reclassified, apply common updates
 		if reclassified {
-			result.ReclassifiedFrom = "low_value"
+			// For Rules 1-3, ReclassifiedFrom is always "low_value" since they came from low_value
+			// For Rule 4, it's already set above to the original category
+			if result.ReclassifiedFrom == "" {
+				result.ReclassifiedFrom = "low_value"
+			}
 			result.ReclassificationReason = reason
 			result.BatchTag = batchTag
 
@@ -116,6 +132,11 @@ func isLowValueCandidate(result *types.ReviewResult) bool {
 	// Must NOT be duplicate_superseded or problematic_quarantine
 	if result.Category == types.ReviewCategoryDuplicateSuperseded ||
 		result.Category == types.ReviewCategoryProblematicQuarantine {
+		return false
+	}
+
+	// Must have been originally low_value (not recovered from blocked)
+	if result.ReclassifiedFrom == "blocked" {
 		return false
 	}
 
@@ -199,8 +220,9 @@ func isAbandoned(pr types.PR) bool {
 		return false
 	}
 
-	daysSinceUpdate := time.Since(t).Hours() / 24
-	return daysSinceUpdate > 90
+	// Use integer division to avoid floating point precision issues at boundaries.
+	// A PR is abandoned if days since update > 90, i.e., 91+ days.
+	return int(time.Since(t).Hours()/24) > 90
 }
 
 // deriveBatchTag determines the batch tag for a reclassified PR.

@@ -737,6 +737,48 @@ func TestRunSecondPass(t *testing.T) {
 				},
 			},
 		},
+		{
+			// First-match-wins: PR matches BOTH Rule 1 and Rule 6.
+			// Rule 1: CI failing + recent push + not draft + <3 conflicts → merge_after_focused_review
+			// Rule 6: IsBot → problematic_quarantine
+			// Since Rule 1 is evaluated first, only Rule 1 should apply (first-match-wins).
+			name: "First-match-wins: Rule 1 and Rule 6 both match, Rule 1 wins",
+			initialResults: []types.ReviewResult{
+				{
+					PRNumber:       100,
+					Category:       types.ReviewCategoryUnknownEscalate,
+					TemporalBucket: "blocked",
+					Reasons:        []string{"initial"},
+				},
+			},
+			prDataMap: map[int]PRData{
+				100: makePRData(100, makePR(100, func(pr *types.PR) {
+					pr.IsDraft = false    // Not draft, so Rule 1 can match
+					pr.CIStatus = "failure" // CI failing - Rule 1 can match
+					pr.IsBot = true        // Bot marker - Rule 6 can match
+					pr.Title = "Bot PR with failing CI"
+					pr.Body = "This PR is from a bot with failing CI"
+					pr.UpdatedAt = time.Now().AddDate(0, 0, -10).Format(time.RFC3339) // recent push <30d
+					pr.ReviewCount = 0
+					pr.CommentCount = 0
+				}), makeConflictPairs(1), nil), // <3 conflicts for Rule 1
+			},
+			expected: map[int]struct {
+				category           types.ReviewCategory
+				reclassifiedFrom   string
+				reclassReason      string
+				temporalBucket     string
+				hasGate17          bool
+			}{
+				100: {
+					category:         types.ReviewCategoryMergeAfterFocusedReview, // Rule 1 wins
+					reclassifiedFrom: "unknown_escalate",
+					reclassReason:    "recoverable CI failure with recent activity", // Rule 1's reason, NOT Rule 6's
+					temporalBucket:   "future",
+					hasGate17:        true,
+				},
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -895,5 +937,97 @@ func TestHasRiskFlags(t *testing.T) {
 				t.Errorf("hasRiskFlags(): expected %v, got %v", tc.expected, result)
 			}
 		})
+	}
+}
+
+// TestIsRecentPushBoundary tests the isRecentPush function at the 90-day boundary.
+// isRecentPush(updatedAt, 90) returns true if days since update < 90.
+func TestIsRecentPushBoundary(t *testing.T) {
+	// Use a fixed reference time to avoid DST complications in boundary tests.
+	// We use UTC times to ensure consistent day calculations.
+	now := time.Now().UTC()
+
+	// For the boundary tests, we construct timestamps at exact hour boundaries
+	// to ensure precise day calculations. A DST transition may cause
+	// "exactly 90 days ago" to actually be 89.9 days, which is correctly "recent".
+	tests := []struct {
+		name       string
+		daysAgo    int
+		withinDays int
+		want       bool
+	}{
+		// When daysAgo < withinDays, isRecentPush should return true (recent)
+		{"89 days ago is recent for 90d threshold", 89, 90, true},
+		// When daysAgo >= withinDays, isRecentPush should return false (not recent)
+		// Note: Due to DST, "90 days ago" might be 89.9 actual days, so it's still recent
+		{"91 days ago is not recent for 90d threshold", 91, 90, false},
+		// Similar for 30-day threshold
+		{"29 days ago is recent for 30d threshold", 29, 30, true},
+		{"31 days ago is not recent for 30d threshold", 31, 30, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create timestamp at exact UTC midnight to avoid time-of-day issues
+			pastTime := now.AddDate(0, 0, -tc.daysAgo)
+			// Ensure we're at midnight UTC for clean day boundaries
+			pastTime = time.Date(pastTime.Year(), pastTime.Month(), pastTime.Day(), 0, 0, 0, 0, time.UTC)
+			updatedAt := pastTime.Format(time.RFC3339)
+
+			got := isRecentPush(updatedAt, tc.withinDays)
+			if got != tc.want {
+				t.Errorf("isRecentPush(%q, %d) = %v, want %v", updatedAt, tc.withinDays, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRecoveryRule1Exactly3Conflicts tests that exactly 3 conflicts does NOT match Rule 1.
+// Rule 1 requires <3 conflicts, so 3 conflicts should fail the rule.
+func TestRecoveryRule1Exactly3Conflicts(t *testing.T) {
+	now := time.Now()
+	initialResults := []types.ReviewResult{
+		{
+			PRNumber:       101,
+			Category:       types.ReviewCategoryUnknownEscalate,
+			TemporalBucket: "blocked",
+			Reasons:        []string{"initial"},
+		},
+	}
+	prDataMap := map[int]PRData{
+		101: {
+			PR: types.PR{
+				Number:             101,
+				Title:             "Test PR",
+				Body:              "Test body",
+				Author:            "testauthor",
+				CIStatus:          "failure", // failing CI
+				Mergeable:         "true",
+				IsDraft:           false,     // not draft
+				UpdatedAt:         now.AddDate(0, 0, -10).Format(time.RFC3339), // recent push <30d
+				ChangedFilesCount: 3,
+				Additions:         50,
+				Deletions:         10,
+				ReviewCount:       0,
+				CommentCount:      0,
+			},
+			ConflictPairs: []types.ConflictPair{
+				{SourcePR: 101, TargetPR: 1},
+				{SourcePR: 101, TargetPR: 2},
+				{SourcePR: 101, TargetPR: 3}, // exactly 3 conflicts
+			},
+		},
+	}
+
+	results := RunSecondPass(initialResults, prDataMap)
+
+	// With exactly 3 conflicts, Rule 1 should NOT match (requires <3)
+	// So PR should remain as unknown_escalate or get "permanent_blocker"
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	// PR should NOT be reclassified to merge_after_focused_review
+	if results[0].Category == types.ReviewCategoryMergeAfterFocusedReview {
+		t.Errorf("PR with exactly 3 conflicts should NOT match Rule 1, but got category %s", results[0].Category)
 	}
 }

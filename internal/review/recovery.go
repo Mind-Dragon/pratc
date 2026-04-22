@@ -217,6 +217,7 @@ func isCIFailing(ciStatus string) bool {
 }
 
 // isRecentPush returns true if the PR was pushed within the specified number of days.
+// A PR is NOT recent if it was last updated >= withinDays days ago.
 func isRecentPush(updatedAt string, withinDays int) bool {
 	if updatedAt == "" {
 		return false
@@ -225,7 +226,9 @@ func isRecentPush(updatedAt string, withinDays int) bool {
 	if err != nil {
 		return false
 	}
-	return time.Since(t).Hours()/24 < float64(withinDays)
+	// Use integer division to avoid floating point precision issues at boundaries.
+	// A PR is recent if days since update < withinDays, i.e., NOT recent if >= withinDays.
+	return int(time.Since(t).Hours()/24) < withinDays
 }
 
 // isMergeableUnknown returns true if the mergeable status is unknown or empty.

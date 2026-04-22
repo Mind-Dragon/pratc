@@ -551,9 +551,10 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 	planService := service
 	if !collapseDuplicates {
 		cfg := app.Config{
-			AllowLive:        service.Health().Status == "ok",
-			UseCacheFirst:    true,
-			CollapseDuplicates: false,
+			AllowLive:           service.Health().Status == "ok",
+			UseCacheFirst:       true,
+			CollapseDuplicates:  false,
+			DynamicTarget:       service.DynamicTarget(),
 		}
 		planService = app.NewService(cfg)
 	}
