@@ -82,7 +82,7 @@ Cache-backed verification run `projects/openclaw_openclaw/runs/final-wave` now p
 
 ## Version 1.7 — Evidence Enrichment (Q4 2026)
 
-**Goal:** Enhance analyzer evidence beyond metadata to include diff analysis, subsystem detection, and test coverage impact.
+**Goal:** Enhance analyzer evidence beyond metadata to include diff analysis, subsystem detection, test coverage impact, and the P1 reliability fixes needed to keep the product contract trustworthy.
 
 ### Diff Analysis
 
@@ -101,6 +101,25 @@ Cache-backed verification run `projects/openclaw_openclaw/runs/final-wave` now p
 - Identify test files changed alongside source files
 - Estimate coverage impact (lines changed in tested vs untested code)
 - Flag PRs that modify production code without test changes
+
+### P1 Reliability + API Contract Repair
+
+- Plan API: honor documented query params (`exclude_conflicts`, `stale_score_threshold`, `candidate_pool_cap`, `score_min`)
+- Plan/Analyze parity: make `dry_run` explicit and consistent across HTTP and CLI paths
+- Review propagation: stop swallowing review errors; return or surface them clearly
+- CORS + auth headers: preserve response headers on 401/429 paths
+- Settings API correctness: validate `scope`, align GET/POST/DELETE behavior, and keep import/export scoped
+- GitHub auth/retry: fix `ResolveTokenForLogin`, `IsRetryableError`, and token-rotation fallback behavior
+- Backoff/rate-limit handling: keep transient retry windows within documented caps and report `unlimited` correctly
+- Cache/scheduler consistency: atomic sync-job updates and resume-state bookkeeping must remain transaction-safe
+- SQL/YAML import safety: fail atomically on import and avoid partial writes
+
+### P1 Verification Gates
+
+- Add contract tests before each fix
+- Verify HTTP handlers against the route contract in `internal/cmd/AGENTS.md`
+- Verify cache and sync paths under `-race`
+- Keep `go test ./...`, `go test ./... -race`, and Python tests green after every merge
 
 ## Version 1.8 — Multi-Repo + ML Feedback (Q1 2027)
 
