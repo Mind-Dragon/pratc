@@ -22,6 +22,8 @@ export interface PR {
   deletions: number;
   changed_files_count: number;
   provenance?: Record<string, string>;
+  is_collapsed_canonical?: boolean;
+  superseded_prs?: number[];
 }
 
 export interface PRCluster {
@@ -107,6 +109,14 @@ export interface Counts {
   overlap_groups: number;
   conflict_pairs: number;
   stale_prs: number;
+  collapsed_duplicate_groups?: number;
+}
+
+export interface CollapsedCorpus {
+  canonical_to_superseded?: Record<number, number[]>;
+  superseded_to_canonical?: Record<number, number>;
+  collapsed_group_count: number;
+  total_superseded: number;
 }
 
 export interface Thresholds {
@@ -195,6 +205,7 @@ export interface AnalysisResponse {
   overlaps: DuplicateGroup[];
   conflicts: ConflictPair[];
   stalenessSignals: StalenessReport[];
+  collapsed_corpus?: CollapsedCorpus;
 }
 
 export interface GraphResponse {
@@ -214,6 +225,7 @@ export interface PlanResponse {
   selected: MergePlanCandidate[];
   ordering: MergePlanCandidate[];
   rejections: PlanRejection[];
+  collapsed_corpus?: CollapsedCorpus;
 }
 
 export interface HealthResponse {
@@ -320,4 +332,5 @@ export interface AnalysisResponse {
   conflicts: ConflictPair[];
   stalenessSignals: StalenessReport[];
   review_payload: ReviewResponse;
+  collapsed_corpus?: CollapsedCorpus;
 }

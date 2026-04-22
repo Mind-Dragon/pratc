@@ -287,7 +287,7 @@ func buildAnalyzeConfig(useCacheFirst, resync, forceCache bool, maxPRs int) app.
 }
 
 func buildCacheFirstConfig(useCacheFirst, resync, forceCache bool, cacheStore *cache.Store) app.Config {
-	return app.Config{AllowLive: resync, AllowForceCache: forceCache, UseCacheFirst: useCacheFirst, CacheStore: cacheStore}
+	return app.Config{AllowLive: resync, AllowForceCache: forceCache, UseCacheFirst: useCacheFirst, CacheStore: cacheStore, CollapseDuplicates: true}
 }
 
 func buildClusterConfig(useCacheFirst, resync, forceCache bool) app.Config {

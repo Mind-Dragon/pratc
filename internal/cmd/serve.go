@@ -537,7 +537,28 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 			return
 		}
 	}
-	result, err := service.Plan(r.Context(), repo, target, mode)
+
+	// Allow per-request override of duplicate collapse. The server default is true.
+	collapseDuplicates := true
+	if v := r.URL.Query().Get("collapse_duplicates"); v != "" {
+		if parsed, err := strconv.ParseBool(v); err == nil {
+			collapseDuplicates = parsed
+		} else {
+			writeHTTPError(w, r, http.StatusBadRequest, "invalid collapse_duplicates")
+			return
+		}
+	}
+	planService := service
+	if !collapseDuplicates {
+		cfg := app.Config{
+			AllowLive:        service.Health().Status == "ok",
+			UseCacheFirst:    true,
+			CollapseDuplicates: false,
+		}
+		planService = app.NewService(cfg)
+	}
+
+	result, err := planService.Plan(r.Context(), repo, target, mode)
 	if err != nil {
 		log.Error("handlePlan: service.Plan failed", "error", err.Error(), "repo", repo, "target", target, "mode", mode)
 		writeHTTPError(w, r, http.StatusInternalServerError, sanitizedError(err))

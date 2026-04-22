@@ -126,6 +126,10 @@ func TestTypeScriptInterfacesMirrorCanonicalFields(t *testing.T) {
 		"stalenessSignals: StalenessReport[];",
 		"export interface PlanResponse",
 		"candidatePoolSize: number;",
+		"export interface CollapsedCorpus",
+		"collapsed_corpus?: CollapsedCorpus;",
+		"is_collapsed_canonical?: boolean;",
+		"superseded_prs?: number[];",
 	} {
 		if !bytes.Contains(raw, []byte(token)) {
 			t.Fatalf("expected token %q in api.ts", token)

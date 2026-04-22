@@ -78,6 +78,21 @@ type Config struct {
 	PlanningStrategy string
 	// OnAnalyzeProgress is an optional callback for per-phase progress reporting.
 	OnAnalyzeProgress AnalyzeProgress
+// CollapseDuplicates enables duplicate group collapse before planning.
+// When true, superseded PRs are replaced with their canonical representative.
+	CollapseDuplicates bool
+	// DynamicTarget configures dynamic merge plan target calculation (v1.6.1).
+	// When Enabled, target is computed as Ratio*len(pool) clamped to [MinTarget, MaxTarget].
+	DynamicTarget DynamicTargetConfig
+}
+
+// DynamicTargetConfig configures dynamic merge plan target calculation.
+// In v1.6.1, dynamic target is enabled by default.
+type DynamicTargetConfig struct {
+	Enabled   bool    // default true in v1.6.1
+	Ratio     float64 // default 0.05 (5% of viable pool)
+	MinTarget int     // default 20
+	MaxTarget int     // default 100
 }
 
 type Service struct {
@@ -103,6 +118,8 @@ type Service struct {
 	pairwiseExecutor        *planning.PairwiseExecutor
 	planningStrategy        string // "formula" (default) or "hierarchical"
 	onAnalyzeProgress       AnalyzeProgress
+	collapseDuplicates      bool
+	dynamicTarget           DynamicTargetConfig
 }
 
 const (
@@ -185,6 +202,8 @@ func NewService(cfg Config) Service {
 		pairwiseExecutor:        mustNewPairwiseExecutor(),
 		planningStrategy:        resolvePlanningStrategy(cfg.PlanningStrategy),
 		onAnalyzeProgress:       cfg.OnAnalyzeProgress,
+		collapseDuplicates:      cfg.CollapseDuplicates,
+		dynamicTarget:           resolveDynamicTargetConfig(cfg.DynamicTarget),
 	}
 }
 
@@ -234,6 +253,42 @@ func resolvePlanningStrategy(raw string) string {
 	default:
 		return "formula"
 	}
+}
+
+func resolveDynamicTargetConfig(cfg DynamicTargetConfig) DynamicTargetConfig {
+	if cfg.Ratio <= 0 {
+		cfg.Ratio = 0.05
+	}
+	if cfg.MinTarget <= 0 {
+		cfg.MinTarget = 20
+	}
+	if cfg.MaxTarget <= 0 {
+		cfg.MaxTarget = 100
+	}
+	// In v1.6.1, dynamic target is enabled by default when not explicitly set.
+	// If the caller explicitly set Enabled=false, respect that.
+	// Otherwise, default to enabled.
+	return cfg
+}
+
+// ComputeDynamicTarget computes the target based on the viable pool size.
+// When Enabled is true, target = max(MinTarget, min(MaxTarget, Ratio*len(pool))).
+// When Enabled is false, returns the fallback value unchanged.
+func (c DynamicTargetConfig) ComputeDynamicTarget(viablePool int, fallback int) int {
+	if !c.Enabled {
+		return fallback
+	}
+	if viablePool <= 0 {
+		return c.MinTarget
+	}
+	target := int(float64(viablePool) * c.Ratio)
+	if target < c.MinTarget {
+		target = c.MinTarget
+	}
+	if target > c.MaxTarget {
+		target = c.MaxTarget
+	}
+	return target
 }
 
 // mustNewHierarchicalPlanner creates a HierarchicalPlanner with default config.
@@ -590,6 +645,14 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 			reviewPayload,
 			response.Conflicts,
 		)
+	}
+
+	// Collapse duplicate/overlap chains into a flattened corpus.
+	if len(response.DuplicateSynthesis) > 0 {
+		collapsedCorpus, collapsedPRs := buildCollapsedCorpus(response.DuplicateSynthesis, response.PRs)
+		response.CollapsedCorpus = collapsedCorpus
+		response.PRs = collapsedPRs
+		response.Counts.CollapsedDuplicateGroups = collapsedCorpus.CollapsedGroupCount
 	}
 
 	// Enrich each PR with decision engine results if review was run.
@@ -991,6 +1054,47 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 		mode = formula.ModeCombination
 	}
 
+	// Duplicate collapse: detect duplicates and replace superseded PRs with canonicals.
+	var collapsedCorpus *types.CollapsedCorpus
+	if s.collapseDuplicates {
+		var fingerprint string
+		if s.cacheStore != nil && len(prs) > 0 {
+			fingerprint = cache.CorpusFingerprint(prs)
+		}
+
+		var duplicates []types.DuplicateGroup
+		var overlaps []types.DuplicateGroup
+		dupCacheHit := false
+
+		if s.cacheStore != nil && fingerprint != "" {
+			if cachedGroups, found, err := s.cacheStore.LoadDuplicateGroups(repoName, fingerprint); err == nil && found {
+				for _, g := range cachedGroups {
+					if g.Similarity >= types.CachedDuplicateThreshold {
+						duplicates = append(duplicates, g)
+					} else if g.Similarity >= types.OverlapThreshold {
+						overlaps = append(overlaps, g)
+					}
+				}
+				dupCacheHit = true
+			}
+		}
+
+		if !dupCacheHit {
+			duplicateThreshold := types.DuplicateThreshold
+			if !meta.LiveSource {
+				duplicateThreshold = types.CachedDuplicateThreshold
+			}
+			duplicates, overlaps = classifyDuplicates(prs, nil, nil, duplicateThreshold)
+		}
+
+		if len(duplicates) > 0 || len(overlaps) > 0 {
+			synthesis := buildDuplicateSynthesis(duplicates, overlaps, prs, nil, nil)
+			cc, updatedPRs := buildCollapsedCorpus(synthesis, prs)
+			collapsedCorpus = &cc
+			prs = updatedPRs
+		}
+	}
+
 	planTelemetry := types.OperationTelemetry{
 		PoolStrategy:     "heuristic_prefilter+formula_tiers",
 		PoolSizeBefore:   len(prs),
@@ -1030,8 +1134,23 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 			planTelemetry.StageDropCounts["ci_failure"]++
 			continue
 		}
+		if collapsedCorpus != nil {
+			if _, isSuperseded := collapsedCorpus.SupersededToCanonical[pr.Number]; isSuperseded {
+				rejections = append(rejections, types.PlanRejection{PRNumber: pr.Number, Reason: "superseded by duplicate collapse"})
+				planTelemetry.StageDropCounts["duplicate_collapse"]++
+				continue
+			}
+		}
 		pr.ClusterID = clusterByPR[pr.Number]
 		pool = append(pool, pr)
+	}
+
+	// Compute dynamic target based on viable pool size (v1.6.1).
+	target = s.dynamicTarget.ComputeDynamicTarget(len(pool), target)
+
+	// Adjust target if the collapsed pool is smaller than the target.
+	if collapsedCorpus != nil && target > len(pool) {
+		target = len(pool)
 	}
 
 	planTelemetry.PoolSizeAfter = len(pool)
@@ -1190,6 +1309,7 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 		Ordering:                ordering,
 		Rejections:              rejections,
 		Telemetry:               &planTelemetry,
+		CollapsedCorpus:         collapsedCorpus,
 	}, nil
 }
 
@@ -1724,7 +1844,9 @@ func classifyDuplicates(prs []types.PR, mergedPRs []review.MergedPRRecord, emit 
 				recordMergedDuplicate(prs[i], merged, duplicateThreshold, duplicatesByCanonical, overlapsByCanonical)
 			}
 		}
-		emit("duplicates_inner", len(pairs), len(prs))
+		if emit != nil {
+			emit("duplicates_inner", len(pairs), len(prs))
+		}
 		return flattenGroups(duplicatesByCanonical), flattenGroups(overlapsByCanonical)
 	}
 
@@ -1755,12 +1877,16 @@ func classifyDuplicates(prs []types.PR, mergedPRs []review.MergedPRRecord, emit 
 				recordMergedDuplicate(prs[i], merged, duplicateThreshold, duplicatesByCanonical, overlapsByCanonical)
 			}
 		}
-		emit("duplicates_inner", 0, len(prs))
+		if emit != nil {
+			emit("duplicates_inner", 0, len(prs))
+		}
 		return flattenGroups(duplicatesByCanonical), flattenGroups(overlapsByCanonical)
 	}
 
 	runDuplicateCandidatePairs(prs, titleTokens, bodyTokens, openOpenCandidates, duplicateThreshold, duplicatesByCanonical, overlapsByCanonical)
-	emit("duplicates_inner", len(openOpenCandidates), len(prs))
+	if emit != nil {
+		emit("duplicates_inner", len(openOpenCandidates), len(prs))
+	}
 	return flattenGroups(duplicatesByCanonical), flattenGroups(overlapsByCanonical)
 }
 
@@ -2202,9 +2328,12 @@ func buildDuplicateSynthesis(
 	}
 
 	// Build review results lookup
-	reviewByNumber := make(map[int]types.ReviewResult, len(reviewPayload.Results))
-	for _, r := range reviewPayload.Results {
-		reviewByNumber[r.PRNumber] = r
+	reviewByNumber := make(map[int]types.ReviewResult)
+	if reviewPayload != nil {
+		reviewByNumber = make(map[int]types.ReviewResult, len(reviewPayload.Results))
+		for _, r := range reviewPayload.Results {
+			reviewByNumber[r.PRNumber] = r
+		}
 	}
 
 	// Build conflict footprint: count conflicts per PR
@@ -2508,6 +2637,132 @@ func buildSynthesisNotes(scored []synthesisScoredCandidate, candidates []types.D
 	}
 
 	return notes
+}
+
+// buildCollapsedCorpus flattens duplicate/overlap chains into a single canonical
+// per connected component. It returns the collapsed corpus and a copy of the PR
+// slice annotated with IsCollapsedCanonical and SupersededPRs.
+func buildCollapsedCorpus(
+	synthesisPlans []types.DuplicateSynthesisPlan,
+	prs []types.PR,
+) (types.CollapsedCorpus, []types.PR) {
+	if len(synthesisPlans) == 0 {
+		return types.CollapsedCorpus{}, prs
+	}
+
+	// adjacency graph of PRs linked by duplicate/overlap relationships
+	adj := make(map[int]map[int]struct{})
+	addEdge := func(a, b int) {
+		if a == b {
+			return
+		}
+		if adj[a] == nil {
+			adj[a] = make(map[int]struct{})
+		}
+		if adj[b] == nil {
+			adj[b] = make(map[int]struct{})
+		}
+		adj[a][b] = struct{}{}
+		adj[b][a] = struct{}{}
+	}
+
+	// Track best synthesis score per PR across all groups
+	bestScore := make(map[int]float64)
+
+	for _, plan := range synthesisPlans {
+		canonical := plan.NominatedCanonicalPR
+		if canonical == 0 {
+			canonical = plan.OriginalCanonicalPR
+		}
+		for _, c := range plan.Candidates {
+			addEdge(canonical, c.PRNumber)
+			if c.SynthesisScore > bestScore[c.PRNumber] {
+				bestScore[c.PRNumber] = c.SynthesisScore
+			}
+		}
+		// Ensure canonical itself has a score
+		if bestScore[canonical] == 0 {
+			bestScore[canonical] = 0
+		}
+	}
+
+	// Find connected components (only components with >1 PR are collapsed groups)
+	visited := make(map[int]bool)
+	var components [][]int
+
+	var dfs func(node int, comp *[]int)
+	dfs = func(node int, comp *[]int) {
+		visited[node] = true
+		*comp = append(*comp, node)
+		for neighbor := range adj[node] {
+			if !visited[neighbor] {
+				dfs(neighbor, comp)
+			}
+		}
+	}
+
+	for node := range adj {
+		if !visited[node] {
+			var comp []int
+			dfs(node, &comp)
+			if len(comp) > 1 {
+				components = append(components, comp)
+			}
+		}
+	}
+
+	canonicalToSuperseded := make(map[int][]int)
+	supersededToCanonical := make(map[int]int)
+
+	for _, comp := range components {
+		// Find best-scored PR in component using synthesis score tiebreaker.
+		bestPR := comp[0]
+		bestScoreVal := bestScore[bestPR]
+		for _, prNum := range comp[1:] {
+			if score := bestScore[prNum]; score > bestScoreVal {
+				bestPR = prNum
+				bestScoreVal = score
+			} else if score == bestScoreVal && prNum < bestPR {
+				bestPR = prNum
+			}
+		}
+
+		var superseded []int
+		for _, prNum := range comp {
+			if prNum != bestPR {
+				superseded = append(superseded, prNum)
+				supersededToCanonical[prNum] = bestPR
+			}
+		}
+		sort.Ints(superseded)
+		canonicalToSuperseded[bestPR] = superseded
+	}
+
+	// Annotate PRs
+	updatedPRs := make([]types.PR, len(prs))
+	copy(updatedPRs, prs)
+	for i := range updatedPRs {
+		prNum := updatedPRs[i].Number
+		if superseded, ok := canonicalToSuperseded[prNum]; ok {
+			updatedPRs[i].IsCollapsedCanonical = true
+			updatedPRs[i].SupersededPRs = superseded
+		} else if canonical, ok := supersededToCanonical[prNum]; ok {
+			updatedPRs[i].IsCollapsedCanonical = false
+			updatedPRs[i].SupersededPRs = []int{canonical}
+		}
+	}
+
+	totalSuperseded := 0
+	for _, s := range canonicalToSuperseded {
+		totalSuperseded += len(s)
+	}
+
+	return types.CollapsedCorpus{
+		CanonicalToSuperseded: canonicalToSuperseded,
+		SupersededToCanonical: supersededToCanonical,
+		CollapsedGroupCount:   len(components),
+		TotalSuperseded:       totalSuperseded,
+	}, updatedPRs
 }
 
 func orderSelection(repo string, selected []types.PR) []types.PR {

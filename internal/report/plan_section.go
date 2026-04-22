@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-pdf/fpdf"
+	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
 // PlanSection renders the merge plan with selected PRs and rejections.
@@ -17,6 +18,10 @@ type PlanSection struct {
 	Target            int
 	CandidatePoolSize int
 	Strategy          string
+	PoolSizeBefore    int
+	PoolSizeAfter     int
+	CollapsedGroups   int
+	TotalSuperseded   int
 	Selected          []SelectedPRData
 	Ordering          []OrderedPRData
 	Rejections        []RejectionData
@@ -72,7 +77,19 @@ func (s *PlanSection) Render(pdf *fpdf.Fpdf) {
 	pdf.SetXY(15, 70)
 	pdf.Cell(180, 6, fmt.Sprintf("Selected: %d PRs | Rejected: %d PRs", len(s.Selected), len(s.Rejections)))
 
-	yPos := pdf.GetY() + 15
+	yPos := pdf.GetY() + 12
+	pdf.SetFont("Arial", "B", 12)
+	pdf.SetXY(15, yPos)
+	pdf.Cell(180, 8, "Expanded Plan Surface")
+	yPos += 10
+	pdf.SetFont("Arial", "", 10)
+	for _, line := range s.expansionSummaryLines() {
+		pdf.SetXY(15, yPos)
+		pdf.MultiCell(180, 6, line, "", "L", false)
+		yPos = pdf.GetY()
+	}
+
+	yPos += 9
 
 	pdf.SetFont("Arial", "B", 12)
 	pdf.SetXY(15, yPos)
@@ -230,6 +247,34 @@ func (s *PlanSection) Render(pdf *fpdf.Fpdf) {
 	}
 }
 
+func (s *PlanSection) expansionSummaryLines() []string {
+	lines := []string{}
+	if s.PoolSizeBefore > 0 || s.PoolSizeAfter > 0 {
+		if s.PoolSizeBefore > 0 && s.PoolSizeAfter > 0 {
+			lines = append(lines, fmt.Sprintf("• viable pool moved from %d to %d after planning filters", s.PoolSizeBefore, s.PoolSizeAfter))
+		} else {
+			lines = append(lines, fmt.Sprintf("• viable pool after filters: %d", maxInt(s.PoolSizeBefore, s.PoolSizeAfter)))
+		}
+	}
+	if s.CollapsedGroups > 0 || s.TotalSuperseded > 0 {
+		lines = append(lines, fmt.Sprintf("• duplicate collapse contributed %d canonical groups and removed %d superseded PRs from the working set", s.CollapsedGroups, s.TotalSuperseded))
+	}
+	if s.CandidatePoolSize > 0 {
+		lines = append(lines, fmt.Sprintf("• final candidate pool was %d PRs; dynamic target resolved to %d", s.CandidatePoolSize, s.Target))
+	}
+	if len(lines) == 0 {
+		lines = append(lines, fmt.Sprintf("• final candidate pool was %d PRs; target resolved to %d", s.CandidatePoolSize, s.Target))
+	}
+	return lines
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 // containsIgnoreCase checks if a string contains a substring (case-insensitive).
 func containsIgnoreCase(s, substr string) bool {
 	if len(s) < len(substr) {
@@ -276,39 +321,11 @@ func LoadPlanSection(inputDir, repo string) (*PlanSection, error) {
 		return nil, fmt.Errorf("failed to read plan file: %w", err)
 	}
 
-	var planResult struct {
-		Repo              string `json:"repo"`
-		GeneratedAt       string `json:"generatedAt"`
-		Target            int    `json:"target"`
-		CandidatePoolSize int    `json:"candidatePoolSize"`
-		Strategy          string `json:"strategy"`
-		Selected          []struct {
-			PRNumber         int      `json:"pr_number"`
-			Title            string   `json:"title"`
-			Score            float64  `json:"score"`
-			Rationale        string   `json:"rationale"`
-			FilesTouched     []string `json:"files_touched"`
-			ConflictWarnings []string `json:"conflict_warnings"`
-		} `json:"selected"`
-		Ordering []struct {
-			PRNumber         int      `json:"pr_number"`
-			Title            string   `json:"title"`
-			Score            float64  `json:"score"`
-			Rationale        string   `json:"rationale"`
-			FilesTouched     []string `json:"files_touched"`
-			ConflictWarnings []string `json:"conflict_warnings"`
-		} `json:"ordering"`
-		Rejections []struct {
-			PRNumber int    `json:"pr_number"`
-			Reason   string `json:"reason"`
-		} `json:"rejections"`
-	}
-
+	var planResult types.PlanResponse
 	if err := json.Unmarshal(planData, &planResult); err != nil {
 		return nil, fmt.Errorf("failed to parse plan JSON: %w", err)
 	}
 
-	// Parse generatedAt timestamp
 	if planResult.GeneratedAt != "" {
 		if t, err := time.Parse(time.RFC3339, planResult.GeneratedAt); err == nil {
 			section.GeneratedAt = t
@@ -318,8 +335,15 @@ func LoadPlanSection(inputDir, repo string) (*PlanSection, error) {
 	section.Target = planResult.Target
 	section.CandidatePoolSize = planResult.CandidatePoolSize
 	section.Strategy = planResult.Strategy
+	if planResult.Telemetry != nil {
+		section.PoolSizeBefore = planResult.Telemetry.PoolSizeBefore
+		section.PoolSizeAfter = planResult.Telemetry.PoolSizeAfter
+	}
+	if planResult.CollapsedCorpus != nil {
+		section.CollapsedGroups = planResult.CollapsedCorpus.CollapsedGroupCount
+		section.TotalSuperseded = planResult.CollapsedCorpus.TotalSuperseded
+	}
 
-	// Map selected PRs
 	for _, pr := range planResult.Selected {
 		section.Selected = append(section.Selected, SelectedPRData{
 			Number:    pr.PRNumber,
@@ -329,19 +353,16 @@ func LoadPlanSection(inputDir, repo string) (*PlanSection, error) {
 		})
 	}
 
-	// Map ordering (with order index)
 	for i, pr := range planResult.Ordering {
 		section.Ordering = append(section.Ordering, OrderedPRData{
 			Number:    pr.PRNumber,
 			Title:     pr.Title,
 			Score:     pr.Score,
-			Order:     i + 1, // 1-based order
+			Order:     i + 1,
 			Rationale: pr.Rationale,
 		})
 	}
 
-	// For rejections, we need to also get titles from the selected/ordering lists
-	// Build a map of PR number to title
 	prTitles := make(map[int]string)
 	for _, pr := range planResult.Selected {
 		prTitles[pr.PRNumber] = pr.Title
@@ -350,7 +371,6 @@ func LoadPlanSection(inputDir, repo string) (*PlanSection, error) {
 		prTitles[pr.PRNumber] = pr.Title
 	}
 
-	// Map rejections
 	for _, rej := range planResult.Rejections {
 		title := prTitles[rej.PRNumber]
 		if title == "" {
@@ -363,7 +383,6 @@ func LoadPlanSection(inputDir, repo string) (*PlanSection, error) {
 		})
 	}
 
-	// Sort rejections by PR number for deterministic output
 	sort.Slice(section.Rejections, func(i, j int) bool {
 		return section.Rejections[i].Number < section.Rejections[j].Number
 	})

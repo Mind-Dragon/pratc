@@ -24,6 +24,8 @@ type PR struct {
 	Additions         int               `json:"additions"`
 	Deletions         int               `json:"deletions"`
 	ChangedFilesCount int               `json:"changed_files_count"`
+	ReviewCount       int               `json:"review_count"`
+	CommentCount      int               `json:"comment_count"`
 	Provenance        map[string]string `json:"provenance,omitempty"`
 	// Review fields: populated by the decision engine when IncludeReview is true.
 	// These fields are derived from ReviewResult for each PR.
@@ -34,6 +36,10 @@ type PR struct {
 	DecisionLayers []DecisionLayer `json:"decision_layers,omitempty"`
 	Category       ReviewCategory  `json:"category,omitempty"`
 	PriorityTier   PriorityTier    `json:"priority_tier,omitempty"`
+	// IsCollapsedCanonical is true when this PR is the canonical representative
+	// of a flattened duplicate group. SupersededPRs lists the PRs it replaces.
+	IsCollapsedCanonical bool  `json:"is_collapsed_canonical,omitempty"`
+	SupersededPRs        []int `json:"superseded_prs,omitempty"`
 }
 
 type PRCluster struct {
@@ -165,6 +171,21 @@ type StalenessReport struct {
 	SupersededBy []int    `json:"superseded_by"`
 }
 
+// CollapsedCorpus maps canonical PRs to their full superseded sets after
+// chain-flattening of duplicate and overlap groups. It is built from
+// DuplicateSynthesisPlan results and used by the planner to replace
+// CollapsedCorpus maps canonical PRs to their full superseded sets after chain flattening.
+type CollapsedCorpus struct {
+	// CanonicalToSuperseded maps each canonical PR number to the PRs it supersedes.
+	CanonicalToSuperseded map[int][]int `json:"canonical_to_superseded,omitempty"`
+	// SupersededToCanonical maps each superseded PR back to its canonical.
+	SupersededToCanonical map[int]int `json:"superseded_to_canonical,omitempty"`
+	// CollapsedGroupCount is the number of groups after collapse.
+	CollapsedGroupCount int `json:"collapsed_group_count"`
+	// TotalSuperseded is the total number of PRs replaced by canonicals.
+	TotalSuperseded int `json:"total_superseded"`
+}
+
 type MergePlanCandidate struct {
 	PRNumber         int      `json:"pr_number"`
 	Title            string   `json:"title"`
@@ -200,13 +221,15 @@ type GraphEdge struct {
 }
 
 type Counts struct {
-	TotalPRs        int `json:"total_prs"`
-	ClusterCount    int `json:"cluster_count"`
-	DuplicateGroups int `json:"duplicate_groups"`
-	OverlapGroups   int `json:"overlap_groups"`
-	ConflictPairs   int `json:"conflict_pairs"`
-	StalePRs        int `json:"stale_prs"`
-	GarbagePRs      int `json:"garbage_prs"`
+	TotalPRs                 int `json:"total_prs"`
+	ClusterCount             int `json:"cluster_count"`
+	DuplicateGroups          int `json:"duplicate_groups"`
+	OverlapGroups            int `json:"overlap_groups"`
+	ConflictPairs            int `json:"conflict_pairs"`
+	StalePRs                 int `json:"stale_prs"`
+	GarbagePRs               int `json:"garbage_prs"`
+	CollapsedDuplicateGroups int `json:"collapsed_duplicate_groups"`
+	CandidatePoolSize        int `json:"candidate_pool_size,omitempty"`
 }
 
 type Thresholds struct {
@@ -324,6 +347,8 @@ type AnalysisResponse struct {
 	// produce a merged artifact from the group. This is advisory-only: no GitHub
 	// mutations are performed based on this field.
 	DuplicateSynthesis []DuplicateSynthesisPlan `json:"duplicate_synthesis,omitempty"`
+	// CollapsedCorpus is the chain-flattened duplicate group mapping used by the planner.
+	CollapsedCorpus CollapsedCorpus `json:"collapsed_corpus,omitempty"`
 }
 
 type GraphResponse struct {
@@ -351,6 +376,8 @@ type PlanResponse struct {
 	Ordering                []MergePlanCandidate `json:"ordering"`
 	Rejections              []PlanRejection      `json:"rejections"`
 	Telemetry               *OperationTelemetry  `json:"telemetry,omitempty"`
+	// CollapsedCorpus is set when duplicate collapse was applied during planning.
+	CollapsedCorpus *CollapsedCorpus `json:"collapsed_corpus,omitempty"`
 }
 
 // OmniPlanStage represents one processing stage in omni-batch mode.
@@ -610,6 +637,12 @@ type ReviewResult struct {
 	SignalQuality string `json:"signal_quality,omitempty"`
 	// AnalyzerFindings contains detailed output from each analyzer that contributed to this result.
 	AnalyzerFindings []AnalyzerFinding `json:"analyzer_findings"`
+	// ReclassifiedFrom records the original category if this PR was reclassified by the second-pass recovery.
+	ReclassifiedFrom string `json:"reclassified_from,omitempty"`
+	// ReclassificationReason describes why the PR was reclassified in the second-pass recovery.
+	ReclassificationReason string `json:"reclassification_reason,omitempty"`
+	// BatchTag is an optional tag for batch operations and tracking.
+	BatchTag string `json:"batch_tag,omitempty"`
 }
 
 // AnalyzerMetadata provides metadata about an analyzer in the agentic review system.

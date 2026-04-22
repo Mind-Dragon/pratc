@@ -28,6 +28,10 @@ func RegisterPlanCommand() {
 	var reserveBuffer int
 	var resetBuffer int
 	var planningStrategy string
+	var collapseDuplicates bool
+	var targetRatio float64
+	var minTarget int
+	var maxTarget int
 
 	command := &cobra.Command{
 		Use:   "plan",
@@ -74,6 +78,13 @@ Examples:
 				cfg.MaxPRs = maxPRs
 			}
 			cfg.PlanningStrategy = planningStrategy
+			cfg.CollapseDuplicates = collapseDuplicates
+			cfg.DynamicTarget = app.DynamicTargetConfig{
+				Enabled:   true,
+				Ratio:     targetRatio,
+				MinTarget: minTarget,
+				MaxTarget: maxTarget,
+			}
 			service := app.NewService(cfg)
 			log.Info("starting plan", "repo", repo, "target", target, "mode", selectedMode, "budget", budget.String())
 			response, err := service.Plan(ctx, repo, target, selectedMode)
@@ -81,7 +92,7 @@ Examples:
 				return err
 			}
 
-			details := fmt.Sprintf("target=%d mode=%s dry_run=%t include_bots=%t", target, selectedMode, dryRun, includeBots)
+			details := fmt.Sprintf("target=%d mode=%s dry_run=%t include_bots=%t collapse_duplicates=%t", target, selectedMode, dryRun, includeBots, collapseDuplicates)
 			logAuditEntry("plan", repo, details)
 
 			switch strings.ToLower(format) {
@@ -106,6 +117,10 @@ Examples:
 	command.Flags().IntVar(&reserveBuffer, "reserve-buffer", 200, "Minimum requests to keep in reserve")
 	command.Flags().IntVar(&resetBuffer, "reset-buffer", 15, "Seconds to wait after rate limit reset")
 	command.Flags().StringVar(&planningStrategy, "planning-strategy", "", "Planning strategy: formula (default) or hierarchical")
+	command.Flags().BoolVar(&collapseDuplicates, "collapse-duplicates", true, "Collapse duplicate groups before planning (default true)")
+	command.Flags().Float64Var(&targetRatio, "target-ratio", 0.05, "Dynamic target ratio: proportion of viable pool to plan (0.05=5%)")
+	command.Flags().IntVar(&minTarget, "min-target", 20, "Minimum target when using dynamic target calculation")
+	command.Flags().IntVar(&maxTarget, "max-target", 100, "Maximum target when using dynamic target calculation")
 	_ = command.Flags().MarkHidden("force-cache")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)

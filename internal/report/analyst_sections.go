@@ -13,17 +13,21 @@ import (
 )
 
 type AnalystRow struct {
-	PRNumber       int
-	Title          string
-	Author         string
-	Age            string
-	Cluster        string
-	Classification string
-	Action         string
-	ProblemType    string
-	Score          float64
-	Reasons        []string
-	DecisionLayers []types.DecisionLayer
+	PRNumber               int
+	Title                  string
+	Author                 string
+	Age                    string
+	Cluster                string
+	Classification         string
+	OriginalClassification string
+	Action                 string
+	ProblemType            string
+	Score                  float64
+	Reasons                []string
+	DecisionLayers         []types.DecisionLayer
+	ReclassifiedFrom       string
+	ReclassificationReason string
+	BatchTag               string
 }
 
 type AnalystDuplicateEntry struct {
@@ -35,17 +39,20 @@ type AnalystDuplicateEntry struct {
 }
 
 type analystDataset struct {
-	Repo             string
-	GeneratedAt      time.Time
-	Rows             []AnalystRow
-	JunkRows         []AnalystRow
-	TopUsefulRows    []AnalystRow
-	Duplicates       []AnalystDuplicateEntry
-	NearDuplicates   []AnalystDuplicateEntry
-	CategoryCounts   map[string]int
-	CategoryExamples map[string][]AnalystRow
-	PlanSelected     []AnalystRow
-	PlanRejected     []AnalystRow
+	Repo                 string
+	GeneratedAt          time.Time
+	Rows                 []AnalystRow
+	JunkRows             []AnalystRow
+	TopUsefulRows        []AnalystRow
+	Duplicates           []AnalystDuplicateEntry
+	NearDuplicates       []AnalystDuplicateEntry
+	CategoryCounts       map[string]int
+	CategoryExamples     map[string][]AnalystRow
+	PlanSelected         []AnalystRow
+	PlanRejected         []AnalystRow
+	ReclassifiedBlocked  []AnalystRow
+	ReclassifiedLowValue []AnalystRow
+	BatchTagged          []AnalystRow
 }
 
 func LoadAnalystDataset(inputDir, repo string) (*analystDataset, error) {
@@ -99,25 +106,39 @@ func loadAnalystDataset(inputDir, repo string) (*analystDataset, error) {
 		result := resultForPR(analyze.ReviewPayload, analyze.PRs, pr.Number, idx)
 		stale := staleByPR[pr.Number]
 		classification := classifyAnalystRow(result, stale)
+		originalClassification := originalAnalystClassification(result, stale, classification)
 		reasons := mergeAnalystReasonLists(result.Reasons, result.Blockers, stale.Reasons, duplicateReasons(dupByPR[pr.Number]))
 		row := AnalystRow{
-			PRNumber:       pr.Number,
-			Title:          pr.Title,
-			Author:         pr.Author,
-			Age:            relativeAge(pr.UpdatedAt, pr.CreatedAt, dataset.GeneratedAt),
-			Cluster:        clusterLabel(pr),
-			Classification: classification,
-			Action:         analystAction(result, classification),
-			ProblemType:    result.ProblemType,
-			Score:          result.Confidence,
-			Reasons:        mergeAnalystReasonLists(reasons, decisionLayerSummaries(result.DecisionLayers)),
-			DecisionLayers: result.DecisionLayers,
+			PRNumber:               pr.Number,
+			Title:                  pr.Title,
+			Author:                 pr.Author,
+			Age:                    relativeAge(pr.UpdatedAt, pr.CreatedAt, dataset.GeneratedAt),
+			Cluster:                clusterLabel(pr),
+			Classification:         classification,
+			OriginalClassification: originalClassification,
+			Action:                 analystAction(result, classification),
+			ProblemType:            result.ProblemType,
+			Score:                  result.Confidence,
+			Reasons:                mergeAnalystReasonLists(reasons, decisionLayerSummaries(result.DecisionLayers)),
+			DecisionLayers:         result.DecisionLayers,
+			ReclassifiedFrom:       strings.TrimSpace(result.ReclassifiedFrom),
+			ReclassificationReason: strings.TrimSpace(result.ReclassificationReason),
+			BatchTag:               strings.TrimSpace(result.BatchTag),
 		}
 		rowsByPR[row.PRNumber] = row
 		dataset.Rows = append(dataset.Rows, row)
 		dataset.CategoryCounts[classification]++
 		if len(dataset.CategoryExamples[classification]) < 3 {
 			dataset.CategoryExamples[classification] = append(dataset.CategoryExamples[classification], row)
+		}
+		switch row.ReclassifiedFrom {
+		case "blocked":
+			dataset.ReclassifiedBlocked = append(dataset.ReclassifiedBlocked, row)
+		case "low_value":
+			dataset.ReclassifiedLowValue = append(dataset.ReclassifiedLowValue, row)
+		}
+		if row.BatchTag != "" {
+			dataset.BatchTagged = append(dataset.BatchTagged, row)
 		}
 		if classification == "junk" || result.ProblemType == "spam" || result.ProblemType == "junk" {
 			dataset.JunkRows = append(dataset.JunkRows, row)
@@ -154,6 +175,14 @@ func loadAnalystDataset(inputDir, repo string) (*analystDataset, error) {
 				return dataset.JunkRows[i].Score > dataset.JunkRows[j].Score
 			}
 			return dataset.JunkRows[i].PRNumber < dataset.JunkRows[j].PRNumber
+		})
+	}
+	for _, rows := range [][]AnalystRow{dataset.ReclassifiedBlocked, dataset.ReclassifiedLowValue, dataset.BatchTagged} {
+		sort.Slice(rows, func(i, j int) bool {
+			if rows[i].Score != rows[j].Score {
+				return rows[i].Score > rows[j].Score
+			}
+			return rows[i].PRNumber < rows[j].PRNumber
 		})
 	}
 
@@ -332,6 +361,25 @@ func classifyAnalystRow(result types.ReviewResult, stale types.StalenessReport) 
 			return "stale"
 		}
 		return "low_value"
+	}
+}
+
+func originalAnalystClassification(result types.ReviewResult, stale types.StalenessReport, fallback string) string {
+	from := strings.TrimSpace(result.ReclassifiedFrom)
+	if from == "" {
+		return fallback
+	}
+	switch from {
+	case "blocked":
+		return "blocked"
+	case "low_value":
+		return "low_value"
+	default:
+		clone := result
+		clone.ReclassifiedFrom = ""
+		clone.ReclassificationReason = ""
+		clone.BatchTag = ""
+		return classifyAnalystRow(clone, stale)
 	}
 }
 
@@ -600,13 +648,24 @@ func (s *AnalystSummarySection) Render(pdf *fpdf.Fpdf) {
 }
 
 type DecisionTrailRow struct {
-	PRNumber       int
-	Title          string
-	Classification string
-	Action         string
-	Confidence     float64
-	Layers         []string
-	TerminalGate   string
+	PRNumber               int
+	Title                  string
+	Classification         string
+	OriginalClassification string
+	Action                 string
+	Confidence             float64
+	Layers                 []string
+	TerminalGate           string
+	ReclassificationReason string
+	BatchTag               string
+}
+
+type ReclassificationSection struct {
+	Repo         string
+	GeneratedAt  time.Time
+	FromBlocked  []AnalystRow
+	FromLowValue []AnalystRow
+	BatchTagged  []AnalystRow
 }
 
 type DecisionTrailSection struct {
@@ -627,13 +686,16 @@ func LoadDecisionTrailSection(inputDir, repo string) (*DecisionTrailSection, err
 	allRows := make([]DecisionTrailRow, 0, len(data.Rows))
 	for _, row := range data.Rows {
 		trailRow := DecisionTrailRow{
-			PRNumber:       row.PRNumber,
-			Title:          row.Title,
-			Classification: row.Classification,
-			Action:         row.Action,
-			Confidence:     row.Score,
-			Layers:         row.Reasons,
-			TerminalGate:   terminalGateFromLayers(row.DecisionLayers),
+			PRNumber:               row.PRNumber,
+			Title:                  row.Title,
+			Classification:         row.Classification,
+			OriginalClassification: row.OriginalClassification,
+			Action:                 row.Action,
+			Confidence:             row.Score,
+			Layers:                 row.Reasons,
+			TerminalGate:           terminalGateFromLayers(row.DecisionLayers),
+			ReclassificationReason: row.ReclassificationReason,
+			BatchTag:               row.BatchTag,
 		}
 		allRows = append(allRows, trailRow)
 		grouped[row.Classification] = append(grouped[row.Classification], trailRow)
@@ -647,6 +709,20 @@ func LoadDecisionTrailSection(inputDir, repo string) (*DecisionTrailSection, err
 	}, nil
 }
 
+func LoadReclassificationSection(inputDir, repo string) (*ReclassificationSection, error) {
+	data, err := loadAnalystDataset(inputDir, repo)
+	if err != nil {
+		return nil, err
+	}
+	return &ReclassificationSection{
+		Repo:         repo,
+		GeneratedAt:  data.GeneratedAt,
+		FromBlocked:  data.ReclassifiedBlocked,
+		FromLowValue: data.ReclassifiedLowValue,
+		BatchTagged:  data.BatchTagged,
+	}, nil
+}
+
 // renderOrder defines the display order for classification groups.
 var renderOrder = []string{"merge_candidate", "high_value", "needs_review", "near_duplicate", "duplicate", "blocked", "re_engage", "stale", "low_value", "junk"}
 
@@ -654,7 +730,7 @@ var renderOrder = []string{"merge_candidate", "high_value", "needs_review", "nea
 func classificationColor(class string) (int, int, int) {
 	switch class {
 	case "merge_candidate":
-		return 39, 174, 96  // green
+		return 39, 174, 96 // green
 	case "high_value":
 		return 41, 128, 185 // blue
 	case "needs_review":
@@ -664,7 +740,7 @@ func classificationColor(class string) (int, int, int) {
 	case "duplicate":
 		return 149, 165, 166 // grey
 	case "blocked":
-		return 231, 76, 60  // red
+		return 231, 76, 60 // red
 	case "re_engage":
 		return 155, 89, 182 // purple
 	case "stale":
@@ -672,9 +748,9 @@ func classificationColor(class string) (int, int, int) {
 	case "low_value":
 		return 189, 195, 199 // light grey
 	case "junk":
-		return 192, 57, 43  // dark red
+		return 192, 57, 43 // dark red
 	default:
-		return 52, 73, 94   // dark blue
+		return 52, 73, 94 // dark blue
 	}
 }
 
@@ -783,11 +859,11 @@ func (s *DecisionTrailSection) Render(pdf *fpdf.Fpdf) {
 			pdf.SetFont("Arial", "", 7)
 			pdf.SetXY(15, y)
 			pdf.CellFormat(14, 6, fmt.Sprintf("#%d", row.PRNumber), "1", 0, "L", false, 0, "")
-			pdf.CellFormat(44, 6, truncate(row.Title, 28), "1", 0, "L", false, 0, "")
+			pdf.CellFormat(44, 6, truncate(decisionTrailTitle(row), 28), "1", 0, "L", false, 0, "")
 			pdf.CellFormat(14, 6, truncate(row.Action, 8), "1", 0, "L", false, 0, "")
 			pdf.CellFormat(10, 6, fmt.Sprintf("%.2f", row.Confidence), "1", 0, "C", false, 0, "")
 			pdf.CellFormat(30, 6, truncate(row.TerminalGate, 25), "1", 0, "L", false, 0, "")
-			pdf.CellFormat(68, 6, truncate(strings.Join(row.Layers, " | "), 55), "1", 1, "L", false, 0, "")
+			pdf.CellFormat(68, 6, truncate(strings.Join(decisionTrailDetails(row), " | "), 55), "1", 1, "L", false, 0, "")
 			y += 6
 			rendered++
 		}
@@ -803,6 +879,47 @@ func (s *DecisionTrailSection) Render(pdf *fpdf.Fpdf) {
 		pdf.SetXY(15, y)
 		pdf.Cell(180, 6, fmt.Sprintf("Showing %d of %d PRs. Full table in appendix.", maxDetailed, s.TotalRows))
 	}
+}
+
+func decisionTrailTitle(row DecisionTrailRow) string {
+	if row.OriginalClassification != "" && row.OriginalClassification != row.Classification {
+		return fmt.Sprintf("%s [%s -> %s]", row.Title, row.OriginalClassification, row.Classification)
+	}
+	return row.Title
+}
+
+func decisionTrailDetails(row DecisionTrailRow) []string {
+	details := make([]string, 0, len(row.Layers)+2)
+	if row.ReclassificationReason != "" {
+		details = append(details, row.ReclassificationReason)
+	}
+	if row.BatchTag != "" {
+		details = append(details, "batch="+row.BatchTag)
+	}
+	details = append(details, row.Layers...)
+	return details
+}
+
+func (s *ReclassificationSection) Render(pdf *fpdf.Fpdf) {
+	pdf.AddPage()
+	pdf.SetFillColor(41, 128, 185)
+	pdf.Rect(0, 0, 210, 35, "F")
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetFont("Arial", "B", 18)
+	pdf.SetXY(15, 12)
+	pdf.Cell(180, 10, "Reclassification Impact")
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFont("Arial", "", 10)
+	pdf.SetXY(15, 40)
+	pdf.Cell(180, 6, fmt.Sprintf("Repository: %s | Generated: %s", s.Repo, s.GeneratedAt.Format(time.RFC1123)))
+	y := 54.0
+	pdf.SetFont("Arial", "", 10)
+	pdf.SetXY(15, y)
+	pdf.MultiCell(180, 6, fmt.Sprintf("Recovered from blocked: %d | Re-ranked from low value: %d | Batch-tagged quick wins: %d", len(s.FromBlocked), len(s.FromLowValue), len(s.BatchTagged)), "", "L", false)
+	y = pdf.GetY() + 4
+	y = renderRecommendationList(pdf, y, "Reclassified from Blocked", s.FromBlocked, 8)
+	y = renderRecommendationList(pdf, y+4, "Reclassified from Low Value", s.FromLowValue, 8)
+	_ = renderRecommendationList(pdf, y+4, "Batch-tagged Quick Wins", s.BatchTagged, 8)
 }
 
 type FullPRTableSection struct {
@@ -1054,6 +1171,100 @@ func (s *NearDuplicateDetailSection) Render(pdf *fpdf.Fpdf) {
 	}
 }
 
+type CollapseImpactSection struct {
+	Repo                  string
+	GeneratedAt           time.Time
+	CollapsedGroups       int
+	TotalSuperseded       int
+	OriginalGroups        int
+	CanonicalToSuperseded map[int][]int
+}
+
+func LoadCollapseImpactSection(inputDir, repo string) (*CollapseImpactSection, error) {
+	analyzeData, err := readAnalyzeArtifact(inputDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read analyze artifact: %w", err)
+	}
+	var analyze types.AnalysisResponse
+	if err := json.Unmarshal(analyzeData, &analyze); err != nil {
+		return nil, fmt.Errorf("parse analyze artifact: %w", err)
+	}
+
+	collapsed := analyze.CollapsedCorpus
+	if collapsed.CollapsedGroupCount == 0 {
+		planPath := inputDir + "/step-5-plan.json"
+		if planData, err := os.ReadFile(planPath); err == nil {
+			var plan types.PlanResponse
+			if err := json.Unmarshal(planData, &plan); err == nil && plan.CollapsedCorpus != nil {
+				collapsed = *plan.CollapsedCorpus
+			}
+		}
+	}
+	if collapsed.CollapsedGroupCount == 0 {
+		return nil, fmt.Errorf("no collapsed corpus data")
+	}
+	generatedAt := time.Now()
+	if analyze.GeneratedAt != "" {
+		if t, err := time.Parse(time.RFC3339, analyze.GeneratedAt); err == nil {
+			generatedAt = t
+		}
+	}
+	return &CollapseImpactSection{
+		Repo:                  repo,
+		GeneratedAt:           generatedAt,
+		CollapsedGroups:       collapsed.CollapsedGroupCount,
+		TotalSuperseded:       collapsed.TotalSuperseded,
+		OriginalGroups:        analyze.Counts.DuplicateGroups + analyze.Counts.OverlapGroups,
+		CanonicalToSuperseded: collapsed.CanonicalToSuperseded,
+	}, nil
+}
+
+func (s *CollapseImpactSection) Render(pdf *fpdf.Fpdf) {
+	if s.CollapsedGroups == 0 {
+		return
+	}
+	pdf.AddPage()
+	pdf.SetFillColor(155, 89, 182)
+	pdf.Rect(0, 0, 210, 35, "F")
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetFont("Arial", "B", 18)
+	pdf.SetXY(15, 12)
+	pdf.Cell(180, 10, "Duplicate Collapse Impact")
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetFont("Arial", "", 10)
+	pdf.SetXY(15, 40)
+	pdf.Cell(180, 6, fmt.Sprintf("Repository: %s | Generated: %s", s.Repo, s.GeneratedAt.Format(time.RFC1123)))
+
+	y := 52.0
+	pdf.SetFont("Arial", "B", 12)
+	pdf.SetXY(15, y)
+	pdf.Cell(180, 8, "Summary")
+	y += 10
+
+	pdf.SetFont("Arial", "", 10)
+	summary := fmt.Sprintf("• %d duplicate/overlap groups collapsed into %d canonical groups\n• %d PRs replaced by canonical representatives\n• Corpus size delta: -%d PRs", s.OriginalGroups, s.CollapsedGroups, s.TotalSuperseded, s.TotalSuperseded)
+	pdf.SetXY(15, y)
+	pdf.MultiCell(180, 6, summary, "", "L", false)
+	y = pdf.GetY() + 6
+
+	if len(s.CanonicalToSuperseded) > 0 {
+		pdf.SetFont("Arial", "B", 12)
+		pdf.SetXY(15, y)
+		pdf.Cell(180, 8, "Collapsed Groups")
+		y += 10
+		pdf.SetFont("Arial", "", 9)
+		for canonical, superseded := range s.CanonicalToSuperseded {
+			pdf.SetXY(15, y)
+			pdf.Cell(180, 5, fmt.Sprintf("Canonical PR #%d superseded %d PRs: %v", canonical, len(superseded), superseded))
+			y += 5
+			if y > 260 {
+				pdf.AddPage()
+				y = 20
+			}
+		}
+	}
+}
+
 type AnalystRecommendationsSection struct {
 	Repo        string
 	GeneratedAt time.Time
@@ -1126,8 +1337,20 @@ func renderRecommendationList(pdf *fpdf.Fpdf, y float64, title string, rows []An
 			pdf.AddPage()
 			y = 20
 		}
+		label := fmt.Sprintf("#%d %s", row.PRNumber, row.Title)
+		if row.OriginalClassification != "" && row.OriginalClassification != row.Classification {
+			label = fmt.Sprintf("#%d [%s -> %s] %s", row.PRNumber, row.OriginalClassification, row.Classification, row.Title)
+		}
+		detailParts := []string{row.Action}
+		if row.ReclassificationReason != "" {
+			detailParts = append(detailParts, row.ReclassificationReason)
+		}
+		if row.BatchTag != "" {
+			detailParts = append(detailParts, "batch="+row.BatchTag)
+		}
+		detailParts = append(detailParts, truncate(strings.Join(row.Reasons, "; "), 60))
 		pdf.SetXY(20, y)
-		pdf.MultiCell(170, 5, fmt.Sprintf("• #%d %s — %s — %s", row.PRNumber, truncate(row.Title, 60), row.Action, truncate(strings.Join(row.Reasons, "; "), 60)), "", "L", false)
+		pdf.MultiCell(170, 5, fmt.Sprintf("• %s — %s", truncate(label, 78), strings.Join(detailParts, " — ")), "", "L", false)
 		y = pdf.GetY()
 	}
 	return y

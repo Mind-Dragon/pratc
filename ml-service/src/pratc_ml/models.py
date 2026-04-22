@@ -39,6 +39,8 @@ if BaseModel is not None:
         additions: int
         deletions: int
         changed_files_count: int
+        review_count: int
+        comment_count: int
 
 
     class PRCluster(BaseModel):
@@ -141,6 +143,16 @@ if BaseModel is not None:
         conflict_pairs: int
         stale_prs: int
         garbage_prs: int = 0
+        collapsed_duplicate_groups: int = 0
+
+
+    class CollapsedCorpus(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
+        canonical_to_superseded: dict[int, list[int]] | None = None
+        superseded_to_canonical: dict[int, int] | None = None
+        collapsed_group_count: int = 0
+        total_superseded: int = 0
 
 
     class Thresholds(BaseModel):
@@ -232,6 +244,7 @@ if BaseModel is not None:
         conflicts: list[ConflictPair]
         stalenessSignals: list[StalenessReport]
         garbagePRs: list[GarbagePR] | None = None
+        collapsed_corpus: CollapsedCorpus | None = None
 
 
     class GraphResponse(BaseModel):
@@ -255,6 +268,7 @@ if BaseModel is not None:
         selected: list[MergePlanCandidate]
         ordering: list[MergePlanCandidate]
         rejections: list[PlanRejection]
+        collapsed_corpus: CollapsedCorpus | None = None
 
 
     class HealthResponse(BaseModel):
@@ -325,6 +339,8 @@ else:
         additions: int = 0
         deletions: int = 0
         changed_files_count: int = 0
+        review_count: int = 0
+        comment_count: int = 0
 
 
     @dataclass
@@ -417,6 +433,15 @@ else:
         conflict_pairs: int
         stale_prs: int
         garbage_prs: int = 0
+        collapsed_duplicate_groups: int = 0
+
+
+    @dataclass
+    class CollapsedCorpus(_BootstrapModel):
+        canonical_to_superseded: dict[int, list[int]] = field(default_factory=dict)
+        superseded_to_canonical: dict[int, int] = field(default_factory=dict)
+        collapsed_group_count: int = 0
+        total_superseded: int = 0
 
 
     @dataclass
@@ -498,6 +523,7 @@ else:
         conflicts: list[ConflictPair] = field(default_factory=list)
         stalenessSignals: list[StalenessReport] = field(default_factory=list)
         garbagePRs: list[GarbagePR] = field(default_factory=list)
+        collapsed_corpus: CollapsedCorpus = field(default_factory=CollapsedCorpus)
 
 
     @dataclass
@@ -519,6 +545,7 @@ else:
         selected: list[MergePlanCandidate] = field(default_factory=list)
         ordering: list[MergePlanCandidate] = field(default_factory=list)
         rejections: list[PlanRejection] = field(default_factory=list)
+        collapsed_corpus: CollapsedCorpus = field(default_factory=CollapsedCorpus)
 
 
     @dataclass

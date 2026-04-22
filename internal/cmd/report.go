@@ -108,6 +108,11 @@ func generatePDFReport(repo, inputDir, outputPath string, skipReview, skipCharts
 	} else {
 		fmt.Fprintf(stderr, "Warning: could not load decision trail section: %v\n", err)
 	}
+	if reclassifications, err := report.LoadReclassificationSection(resolvedInputDir, repo); err == nil {
+		exporter.AddSection(reclassifications)
+	} else {
+		fmt.Fprintf(stderr, "Warning: could not load reclassification section: %v\n", err)
+	}
 	if junk, err := report.LoadSpamJunkSection(resolvedInputDir, repo); err == nil {
 		exporter.AddSection(junk)
 	} else {
@@ -122,6 +127,11 @@ func generatePDFReport(repo, inputDir, outputPath string, skipReview, skipCharts
 		exporter.AddSection(nearDups)
 	} else {
 		fmt.Fprintf(stderr, "Warning: could not load near-duplicate detail section: %v\n", err)
+	}
+	if collapseImpact, err := report.LoadCollapseImpactSection(resolvedInputDir, repo); err == nil {
+		exporter.AddSection(collapseImpact)
+	} else {
+		fmt.Fprintf(stderr, "Warning: could not load collapse impact section: %v\n", err)
 	}
 	if !skipReview {
 		if review, err := report.LoadReviewSection(resolvedInputDir, repo); err == nil {
