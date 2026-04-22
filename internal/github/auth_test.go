@@ -491,6 +491,32 @@ func TestAttemptWithTokenFallback_SingleTokenSucceeds(t *testing.T) {
 	}
 }
 
+// B2: AttemptWithTokenFallback continues after success at auth.go line 488-500
+// Bug: After first successful token, attemptFn should not be called again.
+// The loop should return immediately when attemptFn returns nil, but due to
+// a logic error it continues iterating through remaining tokens.
+func TestAttemptWithTokenFallback_StopsAfterSuccess(t *testing.T) {
+	tokens := []string{"token-first", "token-second", "token-third"}
+	attemptCount := 0
+
+	err := AttemptWithTokenFallback(context.Background(), tokens, func(token string) error {
+		attemptCount++
+		if token == "token-first" {
+			return nil // Success on first token
+		}
+		// Should not reach here
+		t.Errorf("attemptFn called with %q after first token succeeded", token)
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("AttemptWithTokenFallback() error = %v, want nil", err)
+	}
+	if attemptCount != 1 {
+		t.Fatalf("attemptCount = %d, want 1 (only first token should be tried after success)", attemptCount)
+	}
+}
+
 // TestAttemptWithTokenFallback_NoTokens verifies error when no tokens provided.
 func TestAttemptWithTokenFallback_NoTokens(t *testing.T) {
 	err := AttemptWithTokenFallback(context.Background(), nil, func(token string) error {

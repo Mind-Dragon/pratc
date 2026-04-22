@@ -93,6 +93,8 @@ func averageReviewStatusScore(prs []types.PR) float64 {
 			total += 0
 		case "changes_requested":
 			total -= 1
+		case "pending", "in_progress":
+			total += 0.3
 		}
 	}
 

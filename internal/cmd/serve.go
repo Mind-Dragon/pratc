@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -1030,17 +1031,16 @@ func getClientIP(r *http.Request) string {
 
 // getRateLimitHeader returns the applicable rate limit for the endpoint.
 func getRateLimitHeader(rl *ipRateLimiter, path string) string {
+	var cfgRate float64
 	if isCriticalEndpoint(path) {
-		requestsPerMin := int(rl.cfg.critical * 60)
-		if requestsPerMin == 0 {
-			return "unlimited"
-		}
-		return fmt.Sprintf("%d/min", requestsPerMin)
+		cfgRate = float64(rl.cfg.critical)
+	} else {
+		cfgRate = float64(rl.cfg.general)
 	}
-	requestsPerMin := int(rl.cfg.general * 60)
-	if requestsPerMin == 0 {
+	if math.IsInf(cfgRate, 1) || cfgRate == math.MaxFloat64 || cfgRate <= 0 {
 		return "unlimited"
 	}
+	requestsPerMin := int(cfgRate * 60)
 	return fmt.Sprintf("%d/min", requestsPerMin)
 }
 

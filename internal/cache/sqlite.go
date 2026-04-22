@@ -825,9 +825,19 @@ func (s *Store) resumeSyncJob(jobID, repo string) error {
 	return nil
 }
 
-func (s *Store) PauseSyncJob(jobID string, nextScheduledAt time.Time, reason string) error {
+func (s *Store) PauseSyncJob(jobID string, nextScheduledAt time.Time, reason string) (err error) {
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("begin pause sync job transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
 	now := s.now().UTC().Format(time.RFC3339)
-	_, err := s.db.Exec(`
+	_, err = tx.Exec(`
 		UPDATE sync_jobs
 		SET status = ?, error_message = ?, updated_at = ?
 		WHERE id = ?
@@ -837,7 +847,7 @@ func (s *Store) PauseSyncJob(jobID string, nextScheduledAt time.Time, reason str
 	}
 
 	var repo string
-	if err := s.db.QueryRow(`SELECT repo FROM sync_jobs WHERE id = ?`, jobID).Scan(&repo); err != nil {
+	if err := tx.QueryRow(`SELECT repo FROM sync_jobs WHERE id = ?`, jobID).Scan(&repo); err != nil {
 		return fmt.Errorf("lookup sync job repo after pause: %w", err)
 	}
 
@@ -847,13 +857,17 @@ func (s *Store) PauseSyncJob(jobID string, nextScheduledAt time.Time, reason str
 	}
 	lastBudgetCheck := s.now().UTC().Format(time.RFC3339)
 
-	_, err = s.db.Exec(`
+	_, err = tx.Exec(`
 		UPDATE sync_progress
 		SET next_scheduled_at = ?, scheduled_resume_at = ?, pause_reason = ?, last_budget_check = ?, updated_at = ?
 		WHERE repo = ?
 	`, nextScheduled, nextScheduled, reason, lastBudgetCheck, now, repo)
 	if err != nil {
 		return fmt.Errorf("persist next scheduled after pause: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("commit pause sync job transaction: %w", err)
 	}
 
 	return nil

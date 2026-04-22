@@ -358,3 +358,66 @@ func assertTitles(t *testing.T, prs []types.PR, want ...string) {
 		}
 	}
 }
+
+// TestTierResult_EmptyNotAppended tests C7: When pool is empty, result.Tiers
+// should not contain a TierResult with nil Best.Selected.
+//
+// BUG: engine.go lines 77-80 and 84-87 append an empty tierResult to
+// result.Tiers when pool is empty, resulting in TierResult with nil Best.Selected.
+// These empty tiers should not be appended at all.
+func TestTierResult_EmptyNotAppended(t *testing.T) {
+	tests := []struct {
+		name          string
+		pool          []types.PR
+		target        int
+		wantEmptyTier bool
+	}{
+		{
+			name:          "empty pool should produce no tiers with empty best",
+			pool:          []types.PR{},
+			target:        2,
+			wantEmptyTier: false,
+		},
+		{
+			name: "single PR that gets filtered out",
+			pool: []types.PR{
+				fixturePR(1, "Draft").withCreatedAt("2026-02-01T00:00:00Z").withSignals("success", "approved", "cluster-a", 10, 20, 2).build(),
+			},
+			target:        2,
+			wantEmptyTier: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			engine := NewEngine(Config{
+				Mode:               ModeCombination,
+				MaxPoolSize:        10,
+				RequirePreFiltered:  true,
+				Tiers:              []TierConfig{{Name: TierQuick, MaxCandidates: 2}},
+			})
+
+			result, err := engine.Search(SearchInput{
+				Pool:        tc.pool,
+				Target:      tc.target,
+				PreFiltered: true,
+				Now:         time.Date(2026, 3, 12, 0, 0, 0, 0, time.UTC),
+			})
+
+			// Empty pool may return ErrNoCandidates, which is acceptable
+			if err == ErrNoCandidates {
+				return
+			}
+			if err != nil {
+				t.Fatalf("Search() error = %v", err)
+			}
+
+			for i, tier := range result.Tiers {
+				if len(tier.Best.Selected) == 0 && tc.wantEmptyTier == false {
+					t.Errorf("tier[%d] (%s) has empty Best.Selected, expected non-empty or no tier at all",
+						i, tier.Name)
+				}
+			}
+		})
+	}
+}

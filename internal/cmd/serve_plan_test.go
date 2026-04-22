@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"golang.org/x/time/rate"
 
 	"github.com/jeffersonnunn/pratc/internal/app"
 )
@@ -137,4 +140,94 @@ func TestServePlanHandler(t *testing.T) {
 		t.Error("failed to create request")
 	}
 	_ = req
+}
+
+// TestRateLimitHeader_Unlimited tests D4: Rate limit header wrong for Inf.
+//
+// BUG: serve.go lines 1032-1045 show that getRateLimitHeader checks
+// `int(rl.cfg.critical * 60) == 0` to determine if rate is unlimited.
+// However, when rl.cfg.critical is rate.Inf (which equals math.Inf(1)),
+// multiplying by 60 still gives Inf, not 0. The comparison would never
+// be true for Inf. The code should use math.IsInf() to check for Inf values.
+// When critical rate is Inf, the header should show "unlimited", not a large number.
+func TestRateLimitHeader_Unlimited(t *testing.T) {
+	tests := []struct {
+		name        string
+		critical    rate.Limit
+		general     rate.Limit
+		path        string
+		wantHeader  string
+	}{
+		{
+			name:        "critical endpoint with Inf rate",
+			critical:    rate.Inf,
+			general:     100 / 60.0,
+			path:        "/api/repos/owner/repo/analyze",
+			wantHeader:  "unlimited",
+		},
+		{
+			name:        "general endpoint with Inf rate",
+			critical:    10 / 60.0,
+			general:     rate.Inf,
+			path:        "/api/repos/owner/repo/plan",
+			wantHeader:  "unlimited",
+		},
+		{
+			name:        "critical endpoint with finite rate",
+			critical:    100 / 60.0,
+			general:     100 / 60.0,
+			path:        "/api/repos/owner/repo/analyze",
+			wantHeader:  "100/min",
+		},
+		{
+			name:        "general endpoint with finite rate",
+			critical:    100 / 60.0,
+			general:     200 / 60.0,
+			path:        "/api/repos/owner/repo/plan",
+			wantHeader:  "200/min",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rl := &ipRateLimiter{
+				cfg: rateLimiterConfig{
+					general:   tc.general,
+					critical:  tc.critical,
+					burstSize: 10,
+				},
+			}
+
+			got := getRateLimitHeader(rl, tc.path)
+
+			if got != tc.wantHeader {
+				t.Errorf("getRateLimitHeader() = %q, want %q", got, tc.wantHeader)
+			}
+
+			// Additional check: verify that Inf is handled correctly
+			if tc.critical == rate.Inf && tc.path == "/api/repos/owner/repo/plan" {
+				if got != "unlimited" {
+					t.Errorf("critical endpoint with rate.Inf should return 'unlimited', got %q", got)
+				}
+			}
+			if tc.general == rate.Inf && tc.path == "/api/repos/owner/repo/analyze" {
+				if got != "unlimited" {
+					t.Errorf("general endpoint with rate.Inf should return 'unlimited', got %q", got)
+				}
+			}
+		})
+	}
+
+	// Direct test for the bug: verify math.Inf behavior
+	t.Run("math.Inf multiplication check", func(t *testing.T) {
+		infRate := rate.Inf
+		multiplied := infRate * 60
+		if !math.IsInf(float64(multiplied), 1) {
+			t.Errorf("rate.Inf * 60 should be Inf, got %v", multiplied)
+		}
+		intConversion := int(multiplied)
+		if intConversion != 0 {
+			t.Logf("BUG: int(Inf * 60) = %d (on some systems this might panic)", intConversion)
+		}
+	})
 }
