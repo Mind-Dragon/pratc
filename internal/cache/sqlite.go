@@ -471,9 +471,19 @@ func (s *Store) CreateSyncJob(repo string) (SyncJob, error) {
 	return job, nil
 }
 
-func (s *Store) UpdateSyncJobProgress(jobID string, progress SyncProgress) error {
+func (s *Store) UpdateSyncJobProgress(jobID string, progress SyncProgress) (err error) {
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("begin update sync job progress transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
 	var repo string
-	err := s.db.QueryRow(`SELECT repo FROM sync_jobs WHERE id = ?`, jobID).Scan(&repo)
+	err = tx.QueryRow(`SELECT repo FROM sync_jobs WHERE id = ?`, jobID).Scan(&repo)
 	if err != nil {
 		return fmt.Errorf("lookup sync job repo: %w", err)
 	}
@@ -485,7 +495,7 @@ func (s *Store) UpdateSyncJobProgress(jobID string, progress SyncProgress) error
 	}
 
 	// Transition job from queued to running when first progress is reported
-	_, err = s.db.Exec(`
+	_, err = tx.Exec(`
 		UPDATE sync_jobs
 		SET status = CASE WHEN status = ? THEN ? ELSE status END,
 		    updated_at = ?
@@ -495,7 +505,7 @@ func (s *Store) UpdateSyncJobProgress(jobID string, progress SyncProgress) error
 		return fmt.Errorf("transition job to running: %w", err)
 	}
 
-	_, err = s.db.Exec(`
+	_, err = tx.Exec(`
 		INSERT INTO sync_progress (repo, job_id, cursor, processed_prs, total_prs, snapshot_ceiling, last_sync_at, last_budget_check, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, '', ?, ?)
 		ON CONFLICT(repo) DO UPDATE SET
@@ -512,6 +522,10 @@ func (s *Store) UpdateSyncJobProgress(jobID string, progress SyncProgress) error
 	`, repo, jobID, progress.Cursor, progress.ProcessedPRs, progress.TotalPRs, progress.SnapshotCeiling, lastBudgetCheck, now)
 	if err != nil {
 		return fmt.Errorf("update sync progress: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("commit update sync job progress transaction: %w", err)
 	}
 
 	return nil
@@ -853,9 +867,9 @@ func (s *Store) ListPausedSyncJobs() ([]SyncJob, error) {
 			COALESCE(p.next_scheduled_at, ''), COALESCE(p.scheduled_resume_at, ''), COALESCE(p.pause_reason, ''), COALESCE(p.last_budget_check, '')
 		FROM sync_jobs j
 		LEFT JOIN sync_progress p ON p.repo = j.repo
-		WHERE j.status = ?
-		ORDER BY j.updated_at ASC
-	`, SyncJobStatusPausedRateLimit)
+	WHERE j.status IN (?, ?)
+	ORDER BY j.updated_at ASC
+	`, SyncJobStatusPaused, SyncJobStatusPausedRateLimit)
 	if err != nil {
 		return nil, fmt.Errorf("list paused sync jobs: %w", err)
 	}
@@ -964,10 +978,10 @@ func (s *Store) GetPausedSyncJobByRepo(repo string) (SyncJob, error) {
 		       COALESCE(p.scheduled_resume_at, ''), COALESCE(p.pause_reason, ''), COALESCE(p.last_budget_check, '')
 		FROM sync_jobs j
 		LEFT JOIN sync_progress p ON j.repo = p.repo
-		WHERE j.repo = ? AND j.status = ?
-		ORDER BY j.updated_at DESC
-		LIMIT 1
-	`, repo, string(SyncJobStatusPausedRateLimit))
+	WHERE j.repo = ? AND j.status IN (?, ?)
+	ORDER BY j.updated_at DESC
+	LIMIT 1
+	`, repo, SyncJobStatusPaused, SyncJobStatusPausedRateLimit)
 	if err != nil {
 		return SyncJob{}, fmt.Errorf("get paused sync job by repo: %w", err)
 	}
