@@ -1,161 +1,163 @@
-# prATC TODO — v1.6.1 Backlog Surgery
+# prATC TODO — v1.7 Stabilization + Evidence Enrichment Finish
 
 ## Goal
 
-Expand the merge plan surface beyond the current top-20 ceiling by recursively collapsing duplicate groups, automatically reclassifying blocked and low_value PRs through deterministic second passes, and scaling the planner target dynamically with corpus health.
+Finish v1.7 as a bugfix / stabilization release with evidence enrichment as the product-facing payload.
 
-v1.6.1 is a surgical release: it does not change the 16-gate funnel, the diff-grounded evidence layer, or the API contract. It adds three post-review passes that unlock hidden value in the two largest buckets (blocked: 50.3%, low_value: 42.6%).
+v1.6.1 backlog surgery is done enough to stop carrying it as the active TODO surface. The remaining active work is:
+1. finish the last v1.7 feature blocks in roadmap order
+2. land the queued P1 reliability / API-contract fixes inside v1.7
+3. leave the repo in a state that can be called debugged: green, race-clean, contract-tested, and docs-aligned
 
 ## Source of truth
 
-- `GUIDELINE.md` — non-negotiable product rules and the mandatory 16-gate funnel contract
-- `ARCHITECTURE.md` — system shape, surfaces, and long-running pipeline model
-- `ROADMAP.md` — release sequencing
-- `CHANGELOG.md` — what has actually shipped
-- `docs/plans/2026-04-21-pratc-v1.6.1-backlog-surgery-plan.md` — this release's detailed plan
-- `internal/app/` — pipeline orchestration
-- `internal/review/` — gate logic, second-pass reclassifiers, decision outputs
-- `internal/planner/` — merge plan target calculation and candidate selection
-- `internal/report/` — PDF output contract
+- `ROADMAP.md` — release sequencing and the canonical v1.7 scope
+- `GUIDELINE.md` — product rules and non-negotiable surfaces
+- `ARCHITECTURE.md` — system shape and contracts
+- `CHANGELOG.md` — shipped facts only
+- `docs/audit-v1.6.1-synthesis.md` — multi-model audit findings
+- `docs/iteration-plan-v1.6.1.md` — precision fix workflow that proved out in v1.6.1
+- `internal/app/` — orchestration and analyzer output assembly
+- `internal/cmd/` — HTTP/API contract surface
+- `internal/github/` — auth, retry, rate-limit behavior
+- `internal/cache/`, `internal/sync/`, `internal/settings/` — persistence and control-plane correctness
+- `internal/report/` — operator packet / analyst packet output
 
-## v1.6.1 contract
+## v1.7 release contract
 
-v1.6.1 is done when all of these are true:
+v1.7 is done when all of these are true:
 
-- [ ] Recursive duplicate expansion collapses all duplicate/overlap groups to canonical representatives before planning
-- [ ] Flattened chains (A→B→C) resolve to a single canonical with full superseded list
-- [ ] Blocked PRs (3,334 in openclaw) receive an automatic second pass; recoverable PRs are reclassified into viable buckets
-- [ ] Low_value PRs (2,824 in openclaw) receive an automatic second pass; quick wins and hidden high-value PRs are promoted
-- [ ] Stale/abandoned PRs in blocked/low_value are downgraded to junk automatically
-- [ ] Merge plan target is dynamic: `clamp(viable_pool * 0.05, min=20, max=100)`
-- [ ] Report PDF shows collapse impact, reclassification arrows, recovery queue, and quick-win batch tags
-- [ ] All changes are deterministic, auditable, and covered by focused tests
+- [ ] Diff analysis emits real subsystem / risky-change evidence, not just metadata-derived hints
+- [ ] Dependency impact emits API / shared-library / schema-change signals that can influence review output
+- [ ] Test evidence flags production-code changes without corresponding test movement
+- [ ] P1 HTTP/API contract issues are fixed and covered by focused tests
+- [ ] P1 error propagation gaps are fixed; failures are surfaced instead of silently dropped
+- [ ] P1 GitHub auth / retry issues are fixed and documented
+- [ ] P1 settings / sync / cache consistency issues are fixed atomically
+- [ ] `go test ./...`, `go test ./... -race`, `go vet ./...`, `go build ./cmd/pratc`, and Python tests are all green
+- [ ] `ROADMAP.md`, `TODO.md`, and release docs describe the same reality
 
-## Workstream 1 — Recursive Duplicate Expansion
+---
 
-### 1. Collapse duplicate groups before planning
-- [ ] Implement `CollapsedCorpus` builder in `internal/app/duplicate_synthesis.go`
-- [ ] Map each canonical PR to its full superseded list
-- [ ] Detect and flatten chains (A→B→C becomes canonical A with [B, C] superseded)
-- [ ] Ensure no PR is both canonical and superseded in the final collapsed corpus
-- [ ] Replace superseded PRs in the planning pool with canonical representatives
-- [ ] Mark canonical PRs with `IsCollapsedCanonical = true`
+## Workstream 1 — Diff Analysis (first active v1.7 feature block)
 
-### 2. Planner integration
-- [ ] Add `plan --collapse-duplicates` flag (default: true in v1.6.1)
-- [ ] Planner runs on collapsed corpus: `len(PRs) - len(superseded)` candidates
-- [ ] Target auto-adjusts when corpus shrinks
+### 1. Subsystem detection from diffs
+- [ ] Identify the current entry point where raw diff evidence is assembled (`internal/app/`, `internal/review/`, `internal/github/`)
+- [ ] Add deterministic subsystem tagging for changed paths (`security/`, `auth/`, `api/`, config, infra, tests)
+- [ ] Emit subsystem evidence into the analyzer / review payload
+- [ ] Add tests proving path-based subsystem detection on realistic PR fixtures
 
-### 3. Report surface
-- [ ] New PDF section: "Duplicate Collapse Impact"
-- [ ] Show original PR count → collapsed PR count, groups collapsed, plan slots freed
-- [ ] List top canonical PRs nominated
+### 2. Risky pattern detection
+- [ ] Detect auth-sensitive edits (permission checks, token handling, session logic)
+- [ ] Detect data-safety edits (SQL, migrations, schema-affecting code)
+- [ ] Detect crypto / secrets / credential-touching changes
+- [ ] Ensure detections are additive evidence, not silent auto-reclassification
+- [ ] Add focused fixtures for each risky pattern class
 
-## Workstream 2 — Automatic Second Pass: Blocked PR Reclassification
+### 3. Diff evidence surface
+- [ ] Add reviewer-facing diff evidence summary fields to response types if needed
+- [ ] Ensure `analyze` JSON and PDF/operator surfaces can render the evidence cleanly
+- [ ] Keep output deterministic and bounded for large PRs
 
-### 4. Second pass architecture
-- [ ] Add `RunSecondPass()` to `internal/review/orchestrator.go` (called after main review)
-- [ ] Collect PRs where `Category == blocked`
-- [ ] Implement `ReclassifyBlocked(prData, firstPassResult)` in `internal/review/recovery.go`
-- [ ] Update `ReviewResult` fields on reclassification:
-  - `Category` — needs_review | high_value | merge_candidate | junk | blocked
-  - `DecisionLayers` — append Gate 17: Recovery Assessment
-  - `ReclassifiedFrom` — original category string
-  - `ReclassificationReason` — human-readable path forward
-  - `NextAction` — updated action
+---
 
-### 5. Recovery rules (deterministic)
-- [ ] CI failing + last push <30d + not draft + <3 conflicts → needs_review
-- [ ] Draft + ≥2 reviews/activity + not stale → high_value
-- [ ] Mergeable=unknown + small size + no risk flags → needs_review
-- [ ] CI failing + last push >90d + no reviews → junk
-- [ ] >10 conflict pairs + stale → junk
-- [ ] Spam/junk markers → junk
-- [ ] All others → blocked (permanent_blocker reason)
+## Workstream 2 — Dependency Impact (second active v1.7 feature block)
 
-### 6. Report surface
-- [ ] Decision Trail shows reclassified PRs: `#5649 [blocked → needs_review]`
-- [ ] New PDF subsection: "Reclassified from Blocked" with count and top examples
+### 4. API / shared surface change detection
+- [ ] Detect public API signature or contract file changes
+- [ ] Detect shared-library or shared-module edits that likely impact downstream consumers
+- [ ] Detect migration / config / schema changes requiring coordinated rollout
+- [ ] Attach dependency-impact evidence to review results and plan reasoning
 
-## Workstream 3 — Automatic Second Pass: Low_Value PR Reclassification
+### 5. Verification
+- [ ] Add tests showing API surface changes are detected from representative fixtures
+- [ ] Add tests showing schema/config changes produce explicit rollout signals
+- [ ] Verify false-positive rate stays tolerable on existing fixtures
 
-### 7. Second pass architecture
-- [ ] Extend `RunSecondPass()` to handle `Category == low_value`
-- [ ] Implement `ReclassifyLowValue(prData, firstPassResult)` in `internal/review/quickwin.go`
-- [ ] Update `ReviewResult` fields on reclassification (same pattern as blocked)
-- [ ] Append Gate 17: Value Reassessment to `DecisionLayers`
+---
 
-### 8. Re-rank rules (deterministic)
-- [ ] size_XS/S + CI passing + not draft + <3 conflicts + substance >30 → merge_candidate
-- [ ] Docs cluster + CI passing + no conflicts + substance >25 → high_value
-- [ ] Security/reliability/perf findings + substance >40 → needs_review
-- [ ] No activity >90d + CI failing + no reviews + substance <20 → junk
-- [ ] All others → low_value (genuine low_value)
+## Workstream 3 — Test Evidence (third active v1.7 feature block)
 
-### 9. Batch-merge tagging
-- [ ] Add `BatchTag` field to `ReviewResult` for promoted PRs
-- [ ] Derive tags from cluster or file patterns: `docs-batch`, `typo-batch`, `dependency-batch`
-- [ ] Planner optionally batch-selects tagged PRs
+### 6. Test movement detection
+- [ ] Detect whether PRs modify production code, test code, or both
+- [ ] Emit a `test evidence` signal into review output
+- [ ] Flag production-code changes with no matching test changes
+- [ ] Distinguish harmless docs/config-only edits from real missing-test cases
 
-### 10. Report surface
-- [ ] Decision Trail shows reclassified PRs: `#10195 [low_value → merge_candidate]`
-- [ ] New PDF subsection: "Reclassified from Low Value" with count and examples
-- [ ] Batch tags rendered where applicable
+### 7. Coverage-impact estimation
+- [ ] Estimate whether changed code appears covered vs untouched by tests in the diff
+- [ ] Keep the heuristic simple and auditable; no opaque scoring layer
+- [ ] Add fixture-backed tests for covered, partially covered, and untested changes
 
-## Workstream 4 — Expanded Merge Plan Target
+---
 
-### 11. Dynamic target calculation
-- [ ] Replace hardcoded target-20 with dynamic formula
-- [ ] `target = clamp(viable_pool * 0.05, min_target, max_target)`
-- [ ] Default `min_target = 20`, `max_target = 100`
-- [ ] `viable_pool` = non-junk, non-abandoned PRs after all passes
+## Workstream 4 — P1 Reliability + API Contract Repair (fourth active v1.7 block)
 
-### 12. CLI flags
-- [ ] `--target-ratio float` — % of viable pool (default: 0.05)
-- [ ] `--min-target int` — minimum target (default: 20)
-- [ ] `--max-target int` — maximum target (default: 100)
+### 8. Plan API parameter correctness
+- [ ] Honor documented params: `exclude_conflicts`, `stale_score_threshold`, `candidate_pool_cap`, `score_min`
+- [ ] Make `dry_run` behavior explicit and consistent between CLI and HTTP
+- [ ] Add contract tests that fail on ignored params and pass once wired through
 
-### 13. Planner behavior
-- [ ] Calculate target before candidate selection
-- [ ] Report shows: "Target: X PRs (Y% of viable pool Z)"
-- [ ] Runtime does not degrade when target increases
+### 9. Error propagation and response integrity
+- [ ] Stop swallowing review / per-PR errors in the analyze path
+- [ ] Preserve structured headers/body on auth and rate-limit failures
+- [ ] Ensure HTTP responses remain machine-readable on 401/429/error paths
+- [ ] Add handler tests covering these cases
 
-## Workstream 5 — Operator Packet Report Enhancements
+### 10. Settings API correctness
+- [ ] Validate `scope` uniformly across GET/POST/DELETE/import/export paths
+- [ ] Make settings behavior match `internal/cmd/AGENTS.md` or update docs to match reality
+- [ ] Ensure import/export failures are atomic and properly surfaced
 
-### 14. PDF sections
-- [ ] "Duplicate Collapse Impact" — original vs collapsed counts, slots freed
-- [ ] "Reclassified from Blocked" — count, arrows, reasons
-- [ ] "Reclassified from Low Value" — count, arrows, batch tags
-- [ ] "Expanded Plan Summary" — target formula, pool breakdown
-- [ ] "Before / After" PR counts — original corpus → collapsed → viable pool
+### 11. GitHub auth / retry correctness
+- [ ] Fix `ResolveTokenForLogin` semantics so named account selection is real
+- [ ] Tighten `IsRetryableError` logic to avoid fragile string-only behavior
+- [ ] Ensure REST fallback honors token rotation / retry policy
+- [ ] Keep transient backoff inside documented caps
 
-### 15. Report integrity
-- [ ] All new sections fit within 30-page limit
-- [ ] Report generation stays under 30 seconds
-- [ ] No overflow or truncation on 6,632-PR corpus
+### 12. Sync / cache / scheduler consistency
+- [ ] Re-audit sync job transitions after the atomic fixes already landed
+- [ ] Verify paused/resume state bookkeeping stays consistent through scheduler paths
+- [ ] Add regression tests for resume / pause / import edge cases that previously caused drift
 
-## Immediate execution order
+---
 
-1. Workstream 1: Recursive duplicate expansion
-2. Workstream 4: Dynamic target calculation (depends on 1 for corpus shrink)
-3. Workstream 2: Blocked second pass (adds recoverable PRs to viable pool)
-4. Workstream 3: Low_value second pass (adds quick wins to viable pool)
-5. Workstream 5: Report enhancements (surfaces all passes in PDF)
+## Workstream 5 — Release hardening
 
-## Non-goals for v1.6.1
+### 13. Contract reconciliation
+- [ ] Re-read `ROADMAP.md`, `GUIDELINE.md`, `ARCHITECTURE.md`, `internal/cmd/AGENTS.md`, and active tests after each major merge
+- [ ] Remove stale statements that still describe pre-fix behavior
+- [ ] Keep `TODO.md` as the active execution ledger only
 
-- [ ] No changes to the 16-gate funnel semantics
-- [ ] No changes to diff-grounded evidence layer
-- [ ] No changes to API response schemas (only additive fields)
-- [ ] No GitHub mutations or auto-merge behavior
-- [ ] No ML models or probabilistic classification
-- [ ] No dashboard or web surface work
+### 14. Final debug sweep
+- [ ] Run full green suite: Go, Python, race, vet, build
+- [ ] Repeat a fresh final codebase examination after the last v1.7 fix lands
+- [ ] List any residual deferred work explicitly instead of leaving it implicit
+- [ ] Write the final release-ready remediation note if anything remains out of scope
+
+---
+
+## Execution order
+
+1. Diff Analysis
+2. Dependency Impact
+3. Test Evidence
+4. P1 Reliability + API Contract Repair
+5. Release hardening / final debug sweep
+
+## Rules for execution
+
+- [ ] Every bugfix gets a failing contract test before the code change
+- [ ] Every merge keeps `main` green
+- [ ] Prefer one-purpose commits; no grab-bag edits
+- [ ] Use `go test ./... -race` whenever concurrency, sync, or cache code changes
+- [ ] Do not reopen v1.6.1 scope unless a v1.7 task proves it was not actually complete
 
 ## Exit note
 
-v1.6.1 should leave prATC with a larger actionable merge queue:
-- fewer duplicate PRs competing for plan slots
-- blocked PRs with paths forward re-entering the planning pool
-- low_value PRs with hidden value surfaced and batch-tagged
-- a planner target that scales with corpus health
-- a PDF that tells the full before/after story
+v1.7 should finish as the release that makes prATC trustworthy under pressure:
+- richer evidence
+- fewer silent failures
+- tighter HTTP/API behavior
+- cleaner auth/retry handling
+- a codebase that can plausibly be called debugged rather than merely working on happy paths
