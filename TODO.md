@@ -41,23 +41,34 @@ v1.7 is done when all of these are true:
 
 ## Workstream 1 — Diff Analysis (first active v1.7 feature block)
 
-### 1. Subsystem detection from diffs
-- [ ] Identify the current entry point where raw diff evidence is assembled (`internal/app/`, `internal/review/`, `internal/github/`)
-- [ ] Add deterministic subsystem tagging for changed paths (`security/`, `auth/`, `api/`, config, infra, tests)
-- [ ] Emit subsystem evidence into the analyzer / review payload
-- [ ] Add tests proving path-based subsystem detection on realistic PR fixtures
+### 1. Current wired path confirmed
+- [x] Verified live diff path: `internal/repo/mirror.go:GetDiffPatch()` → `parseDiffOutput()` → `internal/app/service.go` diff population → `types.PRAnalysisData`
+- [x] Verified only `internal/review/analyzer_security.go` currently uses diff-grounded evidence in production
+- [x] Verified `ReviewResult.AnalyzerFindings` is the lowest-blast-radius evidence surface
+- [x] Verified report gap: analyst/report path does not strongly surface analyzer findings today
+- [x] Detailed plan written: `docs/plans/2026-04-22-pratc-v1.7-ws1-diff-analysis-plan.md`
 
-### 2. Risky pattern detection
+### 2. Subsystem detection from diffs
+- [ ] Add contract tests locking the current diff evidence path (`internal/repo/`, `internal/app/`)
+- [ ] Add additive subsystem evidence fields in `internal/types/models.go`
+- [ ] Implement deterministic path-based subsystem classifier in `internal/review/diff_subsystems.go`
+- [ ] Emit subsystem evidence into `ReviewResult.AnalyzerFindings`
+- [ ] Add tests proving subsystem detection on realistic PR fixtures
+
+### 3. Risky pattern detection
+- [ ] Implement diff-content detectors in `internal/review/diff_patterns.go`
 - [ ] Detect auth-sensitive edits (permission checks, token handling, session logic)
 - [ ] Detect data-safety edits (SQL, migrations, schema-affecting code)
 - [ ] Detect crypto / secrets / credential-touching changes
 - [ ] Ensure detections are additive evidence, not silent auto-reclassification
 - [ ] Add focused fixtures for each risky pattern class
 
-### 3. Diff evidence surface
-- [ ] Add reviewer-facing diff evidence summary fields to response types if needed
-- [ ] Ensure `analyze` JSON and PDF/operator surfaces can render the evidence cleanly
+### 4. Diff evidence surface
+- [ ] Wire subsystem / risky-pattern findings through the non-security analyzers
+- [ ] Surface findings into analyst/report paths via `internal/report/analyst_sections.go`
+- [ ] Add reviewer-facing bounded diff evidence summaries to JSON/PDF outputs
 - [ ] Keep output deterministic and bounded for large PRs
+- [ ] Reuse analyzer findings inside duplicate-synthesis output if useful
 
 ---
 
