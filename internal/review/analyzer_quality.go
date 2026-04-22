@@ -107,6 +107,7 @@ func (q *QualityAnalyzer) Analyze(ctx context.Context, prData PRData) (AnalyzerR
 				reasons = append(reasons, fmt.Sprintf("test gap detected: %s", f.Finding))
 			}
 		}
+		findings = append(findings, subsystemFindings("quality", prData.Files)...)
 	}
 
 	// Classify based on findings
@@ -379,6 +380,8 @@ func (q *QualityAnalyzer) detectTestGap(files []types.PRFile) []types.AnalyzerFi
 				AnalyzerVersion: "0.1.0",
 				Finding:         fmt.Sprintf("production code changed without test evidence: %s", topProdFile.Path),
 				Confidence:      0.75,
+				Subsystem:       classifySubsystem(topProdFile.Path),
+				SignalType:      "test_gap",
 				Location: &types.CodeLocation{
 					FilePath: topProdFile.Path,
 					Snippet: extractTestGapSnippet(topProdFile.Patch, 200),

@@ -87,6 +87,10 @@ type DuplicateSynthesisCandidate struct {
 	Mergeable string `json:"mergeable"`
 	// HasTestEvidence is true if analyzer findings include test-gap evidence.
 	HasTestEvidence bool `json:"has_test_evidence"`
+	// SubsystemTags lists the distinct subsystems implicated by analyzer findings.
+	SubsystemTags []string `json:"subsystem_tags,omitempty"`
+	// RiskyPatterns lists the distinct risky-pattern signals attached to this candidate.
+	RiskyPatterns []string `json:"risky_patterns,omitempty"`
 	// ConflictFootprint is the number of conflicts this PR has with other PRs
 	// in the corpus. Lower is better for synthesis candidacy.
 	ConflictFootprint int `json:"conflict_footprint"`

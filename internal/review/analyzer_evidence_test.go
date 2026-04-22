@@ -357,13 +357,80 @@ func TestQualityAnalyzer_Analyze_WithDiffEvidence(t *testing.T) {
 
 	// Verify location evidence is present in test gap finding
 	foundLocationEvidence := false
+	foundSubsystemEvidence := false
 	for _, f := range result.Result.AnalyzerFindings {
 		if f.Location != nil && f.Location.FilePath == "src/feature.go" {
 			foundLocationEvidence = true
-			break
+		}
+		if f.SignalType == "subsystem_tag" && f.Subsystem == "unknown" {
+			foundSubsystemEvidence = true
 		}
 	}
 	if !foundLocationEvidence {
 		t.Error("expected test gap finding to have location evidence for src/feature.go")
+	}
+	if !foundSubsystemEvidence {
+		t.Error("expected subsystem finding for src/feature.go")
+	}
+}
+
+func TestSecurityAnalyzer_Analyze_WithRiskyDiffPatterns(t *testing.T) {
+	t.Parallel()
+
+	sec := NewSecurityAnalyzer()
+	prData := PRData{
+		PR: types.PR{
+			Number: 7,
+			Title:  "Adjust auth and db handling",
+			Body:   "Touches auth and SQL paths",
+		},
+		Files: []types.PRFile{
+			{
+				Path:      "internal/auth/session.go",
+				Status:    "modified",
+				Additions: 12,
+				Patch:     "+token := readToken()\n+if role == \"admin\" { allow = true }\n",
+			},
+			{
+				Path:      "internal/db/query.go",
+				Status:    "modified",
+				Additions: 10,
+				Patch:     "+query := \"SELECT * FROM users WHERE id = \" + userID\n",
+			},
+		},
+		DiffHunks: []types.DiffHunk{
+			{
+				OldPath:  "a/internal/auth/session.go",
+				NewPath:  "b/internal/auth/session.go",
+				OldStart: 10,
+				OldLines: 1,
+				NewStart: 10,
+				NewLines: 2,
+				Section:  "func ValidateSession() {",
+				Content:  "+token := readToken()\n+if role == \"admin\" { allow = true }",
+			},
+		},
+	}
+
+	result, err := sec.Analyze(context.Background(), prData)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	foundAuthPattern := false
+	foundDatabasePattern := false
+	for _, f := range result.Result.AnalyzerFindings {
+		if f.SignalType == "risky_pattern" && f.Subsystem == "auth" {
+			foundAuthPattern = true
+		}
+		if f.SignalType == "risky_pattern" && f.Subsystem == "database" {
+			foundDatabasePattern = true
+		}
+	}
+	if !foundAuthPattern {
+		t.Fatal("expected auth risky pattern finding")
+	}
+	if !foundDatabasePattern {
+		t.Fatal("expected database risky pattern finding")
 	}
 }

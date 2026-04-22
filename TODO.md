@@ -49,26 +49,26 @@ v1.7 is done when all of these are true:
 - [x] Detailed plan written: `docs/plans/2026-04-22-pratc-v1.7-ws1-diff-analysis-plan.md`
 
 ### 2. Subsystem detection from diffs
-- [ ] Add contract tests locking the current diff evidence path (`internal/repo/`, `internal/app/`)
-- [ ] Add additive subsystem evidence fields in `internal/types/models.go`
-- [ ] Implement deterministic path-based subsystem classifier in `internal/review/diff_subsystems.go`
-- [ ] Emit subsystem evidence into `ReviewResult.AnalyzerFindings`
-- [ ] Add tests proving subsystem detection on realistic PR fixtures
+- [x] Add contract tests locking the current diff evidence path (`internal/repo/`, `internal/app/`)
+- [x] Add additive subsystem evidence fields in `internal/types/models.go`
+- [x] Implement deterministic path-based subsystem classifier in `internal/review/diff_subsystems.go`
+- [x] Emit subsystem evidence into `ReviewResult.AnalyzerFindings`
+- [x] Add tests proving subsystem detection on realistic PR fixtures
 
 ### 3. Risky pattern detection
-- [ ] Implement diff-content detectors in `internal/review/diff_patterns.go`
-- [ ] Detect auth-sensitive edits (permission checks, token handling, session logic)
-- [ ] Detect data-safety edits (SQL, migrations, schema-affecting code)
-- [ ] Detect crypto / secrets / credential-touching changes
-- [ ] Ensure detections are additive evidence, not silent auto-reclassification
-- [ ] Add focused fixtures for each risky pattern class
+- [x] Implement diff-content detectors in `internal/review/diff_patterns.go`
+- [x] Detect auth-sensitive edits (permission checks, token handling, session logic)
+- [x] Detect data-safety edits (SQL, migrations, schema-affecting code)
+- [x] Detect crypto / secrets / credential-touching changes
+- [x] Ensure detections are additive evidence, not silent auto-reclassification
+- [x] Add focused fixtures for each risky pattern class
 
 ### 4. Diff evidence surface
-- [ ] Wire subsystem / risky-pattern findings through the non-security analyzers
-- [ ] Surface findings into analyst/report paths via `internal/report/analyst_sections.go`
-- [ ] Add reviewer-facing bounded diff evidence summaries to JSON/PDF outputs
-- [ ] Keep output deterministic and bounded for large PRs
-- [ ] Reuse analyzer findings inside duplicate-synthesis output if useful
+- [x] Wire subsystem / risky-pattern findings through the non-security analyzers
+- [x] Surface findings into analyst/report paths via `internal/report/analyst_sections.go`
+- [x] Add reviewer-facing bounded diff evidence summaries to JSON/PDF outputs
+- [x] Keep output deterministic and bounded for large PRs
+- [x] Reuse analyzer findings inside duplicate-synthesis output if useful
 
 ---
 

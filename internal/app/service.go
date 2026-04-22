@@ -2525,11 +2525,31 @@ func scoreSynthesisCandidate(
 
 	// Test evidence bonus
 	hasTestEvidence := false
+	subsystemTags := make([]string, 0)
+	riskyPatterns := make([]string, 0)
+	subsystemSeen := make(map[string]struct{})
+	patternSeen := make(map[string]struct{})
 	for _, finding := range review.AnalyzerFindings {
+		findingText := strings.ToLower(finding.Finding)
 		if strings.Contains(strings.ToLower(finding.AnalyzerName), "test") ||
-			strings.Contains(strings.ToLower(finding.Finding), "test") {
+			strings.Contains(findingText, "test") {
 			hasTestEvidence = true
-			break
+		}
+		if finding.Subsystem != "" {
+			if _, ok := subsystemSeen[finding.Subsystem]; !ok {
+				subsystemSeen[finding.Subsystem] = struct{}{}
+				subsystemTags = append(subsystemTags, finding.Subsystem)
+			}
+		}
+		if finding.SignalType == "risky_pattern" {
+			label := strings.TrimSpace(finding.Finding)
+			if label == "" {
+				label = "risky_pattern"
+			}
+			if _, ok := patternSeen[label]; !ok {
+				patternSeen[label] = struct{}{}
+				riskyPatterns = append(riskyPatterns, label)
+			}
 		}
 	}
 	if hasTestEvidence {
@@ -2567,6 +2587,8 @@ func scoreSynthesisCandidate(
 		SubstanceScore:     review.SubstanceScore,
 		Mergeable:          pr.Mergeable,
 		HasTestEvidence:    hasTestEvidence,
+		SubsystemTags:      subsystemTags,
+		RiskyPatterns:      riskyPatterns,
 		ConflictFootprint:  conflictCount,
 		IsDraft:            pr.IsDraft,
 		SignalQuality:      signalQuality,

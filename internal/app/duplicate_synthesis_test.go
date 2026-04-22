@@ -369,7 +369,8 @@ func TestScoreSynthesisCandidate(t *testing.T) {
 		SubstanceScore: 80,
 		SignalQuality:  "high",
 		AnalyzerFindings: []types.AnalyzerFinding{
-			{AnalyzerName: "quality", Finding: "test coverage adequate"},
+			{AnalyzerName: "quality", Finding: "test coverage adequate", Subsystem: "api", SignalType: "test_gap"},
+			{AnalyzerName: "security", Finding: "auth-sensitive diff pattern detected", Subsystem: "auth", SignalType: "risky_pattern"},
 		},
 	}
 
@@ -387,6 +388,12 @@ func TestScoreSynthesisCandidate(t *testing.T) {
 	}
 	if candidate.HasTestEvidence != true {
 		t.Error("expected HasTestEvidence to be true (finding contains 'test')")
+	}
+	if len(candidate.SubsystemTags) == 0 || candidate.SubsystemTags[0] != "api" {
+		t.Errorf("expected subsystem tags to include api, got %#v", candidate.SubsystemTags)
+	}
+	if len(candidate.RiskyPatterns) == 0 || candidate.RiskyPatterns[0] != "auth-sensitive diff pattern detected" {
+		t.Errorf("expected risky patterns to include auth finding, got %#v", candidate.RiskyPatterns)
 	}
 	if candidate.SignalQuality != "high" {
 		t.Errorf("expected signal quality 'high', got %q", candidate.SignalQuality)

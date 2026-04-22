@@ -160,6 +160,14 @@ func (s *SecurityAnalyzer) Analyze(ctx context.Context, prData PRData) (Analyzer
 	deletionFindings := s.detectSecuritySensitiveDeletions(pr.FilesChanged, pr.Deletions)
 	findings = append(findings, deletionFindings...)
 
+	// 5. Detect risky diff content patterns and subsystem tags when evidence is available.
+	if len(prData.Files) > 0 || len(prData.DiffHunks) > 0 {
+		findings = append(findings, detectRiskyDiffPatterns(prData.Files, prData.DiffHunks)...)
+	}
+	if len(prData.Files) > 0 {
+		findings = append(findings, subsystemFindings("security", prData.Files)...)
+	}
+
 	// Determine overall category and priority based on findings.
 	// The confidence returned by classifySecurityRisk is deliberately discarded;
 	// evidence-backed confidence is computed below from the actual findings.

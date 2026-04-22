@@ -167,6 +167,8 @@ if BaseModel is not None:
         substance_score: int = 0
         mergeable: str = "unknown"
         has_test_evidence: bool = False
+        subsystem_tags: list[str] = []
+        risky_patterns: list[str] = []
         conflict_footprint: int = 0
         is_draft: bool = False
         signal_quality: str = "medium"
@@ -498,6 +500,8 @@ else:
         substance_score: int = 0
         mergeable: str = "unknown"
         has_test_evidence: bool = False
+        subsystem_tags: list[str] = field(default_factory=list)
+        risky_patterns: list[str] = field(default_factory=list)
         conflict_footprint: int = 0
         is_draft: bool = False
         signal_quality: str = "medium"

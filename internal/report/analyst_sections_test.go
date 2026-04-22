@@ -35,7 +35,7 @@ func TestLoadAnalystDataset_BuildsRowsAndRecommendations(t *testing.T) {
 			TotalPRs:    3,
 			ReviewedPRs: 3,
 			Results: []types.ReviewResult{
-				{PRNumber: 11, Title: "Useful feature", Author: "alice", Category: types.ReviewCategoryMergeNow, PriorityTier: types.PriorityTierFastMerge, Confidence: 0.93, Reasons: []string{"approved", "CI passing"}, DecisionLayers: []types.DecisionLayer{{Layer: 1, Name: "Garbage", Bucket: "low_value", Status: "clear", Reasons: []string{"no garbage"}}, {Layer: 16, Name: "Signal quality", Bucket: "high_value", Status: "observed", Reasons: []string{"confidence 0.93"}}}, NextAction: "merge", ReclassifiedFrom: "low_value", ReclassificationReason: "quick win: small focused PR with passing CI", BatchTag: "typo-batch"},
+				{PRNumber: 11, Title: "Useful feature", Author: "alice", Category: types.ReviewCategoryMergeNow, PriorityTier: types.PriorityTierFastMerge, Confidence: 0.93, Reasons: []string{"approved", "CI passing"}, DecisionLayers: []types.DecisionLayer{{Layer: 1, Name: "Garbage", Bucket: "low_value", Status: "clear", Reasons: []string{"no garbage"}}, {Layer: 16, Name: "Signal quality", Bucket: "high_value", Status: "observed", Reasons: []string{"confidence 0.93"}}}, NextAction: "merge", ReclassifiedFrom: "low_value", ReclassificationReason: "quick win: small focused PR with passing CI", BatchTag: "typo-batch", AnalyzerFindings: []types.AnalyzerFinding{{AnalyzerName: "quality", AnalyzerVersion: "0.1.0", Finding: "production code changed without test evidence", Confidence: 0.75, Subsystem: "api", SignalType: "subsystem_tag"}}},
 				{PRNumber: 12, Title: "Duplicate feature", Author: "bob", Category: types.ReviewCategoryDuplicateSuperseded, PriorityTier: types.PriorityTierBlocked, Confidence: 0.87, Reasons: []string{"duplicate"}, NextAction: "duplicate"},
 				{PRNumber: 13, Title: "Bump deps", Author: "dependabot[bot]", Category: types.ReviewCategoryProblematicQuarantine, PriorityTier: types.PriorityTierBlocked, Confidence: 0.91, Reasons: []string{"bot author", "empty body"}, ProblemType: "junk", NextAction: "close", ReclassifiedFrom: "blocked", ReclassificationReason: "abandoned failing PR"},
 			},
@@ -73,6 +73,12 @@ func TestLoadAnalystDataset_BuildsRowsAndRecommendations(t *testing.T) {
 	}
 	if !containsSubstring(data.Rows[0].Reasons, "L1 Garbage:") {
 		t.Fatalf("expected decision layer summary in reasons, got %#v", data.Rows[0].Reasons)
+	}
+	if !containsSubstring(data.Rows[0].Reasons, "quality/api") {
+		t.Fatalf("expected analyzer finding summary in reasons, got %#v", data.Rows[0].Reasons)
+	}
+	if len(data.Rows[0].AnalyzerFindings) != 1 {
+		t.Fatalf("expected analyzer findings to be preserved on analyst row, got %#v", data.Rows[0].AnalyzerFindings)
 	}
 	if len(data.ReclassifiedLowValue) != 1 || data.ReclassifiedLowValue[0].PRNumber != 11 {
 		t.Fatalf("expected PR #11 in low-value reclassified rows, got %#v", data.ReclassifiedLowValue)

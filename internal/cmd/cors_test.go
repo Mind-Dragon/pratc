@@ -4,8 +4,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 )
+
+var corsEnvMu sync.Mutex
+
+func lockCorsEnv(t *testing.T) {
+	t.Helper()
+	corsEnvMu.Lock()
+	t.Cleanup(corsEnvMu.Unlock)
+}
 
 func TestIsOriginAllowed(t *testing.T) {
 	t.Parallel()
@@ -66,6 +75,7 @@ func TestIsOriginAllowed(t *testing.T) {
 
 func TestCorsAllowedOrigins(t *testing.T) {
 	t.Parallel()
+	lockCorsEnv(t)
 
 	// Save original env value
 	origEnv := os.Getenv("PRATC_CORS_ALLOWED_ORIGINS")
@@ -129,6 +139,7 @@ func TestCorsAllowedOrigins(t *testing.T) {
 
 func TestCorsMiddlewareAllowedOrigin(t *testing.T) {
 	t.Parallel()
+	lockCorsEnv(t)
 
 	// Set allowed origins for this test
 	os.Setenv("PRATC_CORS_ALLOWED_ORIGINS", "http://localhost:3000")
@@ -169,6 +180,7 @@ func TestCorsMiddlewareAllowedOrigin(t *testing.T) {
 
 func TestCorsMiddlewareDisallowedOrigin(t *testing.T) {
 	t.Parallel()
+	lockCorsEnv(t)
 
 	// Set allowed origins for this test - only localhost:3000 is allowed
 	os.Setenv("PRATC_CORS_ALLOWED_ORIGINS", "http://localhost:3000")
@@ -200,6 +212,7 @@ func TestCorsMiddlewareDisallowedOrigin(t *testing.T) {
 
 func TestCorsMiddlewareNoOriginHeader(t *testing.T) {
 	t.Parallel()
+	lockCorsEnv(t)
 
 	// Set allowed origins for this test
 	os.Setenv("PRATC_CORS_ALLOWED_ORIGINS", "http://localhost:3000")
@@ -230,6 +243,7 @@ func TestCorsMiddlewareNoOriginHeader(t *testing.T) {
 
 func TestCorsMiddlewarePreflightRequestAllowedOrigin(t *testing.T) {
 	t.Parallel()
+	lockCorsEnv(t)
 
 	// Set allowed origins for this test
 	os.Setenv("PRATC_CORS_ALLOWED_ORIGINS", "http://localhost:3000")
@@ -270,6 +284,7 @@ func TestCorsMiddlewarePreflightRequestAllowedOrigin(t *testing.T) {
 
 func TestCorsMiddlewarePreflightRequestDisallowedOrigin(t *testing.T) {
 	t.Parallel()
+	lockCorsEnv(t)
 
 	// Set allowed origins for this test
 	os.Setenv("PRATC_CORS_ALLOWED_ORIGINS", "http://localhost:3000")
@@ -301,6 +316,7 @@ func TestCorsMiddlewarePreflightRequestDisallowedOrigin(t *testing.T) {
 
 func TestCorsMiddlewareMultipleAllowedOrigins(t *testing.T) {
 	t.Parallel()
+	lockCorsEnv(t)
 
 	// Set multiple allowed origins for this test
 	os.Setenv("PRATC_CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8080,https://app.example.com")
@@ -345,6 +361,7 @@ func TestCorsMiddlewareMultipleAllowedOrigins(t *testing.T) {
 
 func TestCorsMiddlewarePostRequest(t *testing.T) {
 	t.Parallel()
+	lockCorsEnv(t)
 
 	// Set allowed origins for this test
 	os.Setenv("PRATC_CORS_ALLOWED_ORIGINS", "http://localhost:3000")
@@ -381,6 +398,7 @@ func TestCorsMiddlewarePostRequest(t *testing.T) {
 
 func TestCorsMiddlewareDeleteRequest(t *testing.T) {
 	t.Parallel()
+	lockCorsEnv(t)
 
 	// Set allowed origins for this test
 	os.Setenv("PRATC_CORS_ALLOWED_ORIGINS", "http://localhost:3000")

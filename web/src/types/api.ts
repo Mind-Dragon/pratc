@@ -84,6 +84,8 @@ export interface DuplicateSynthesisCandidate {
   substance_score: number;
   mergeable: string;
   has_test_evidence: boolean;
+  subsystem_tags?: string[];
+  risky_patterns?: string[];
   conflict_footprint: number;
   is_draft: boolean;
   signal_quality: string;

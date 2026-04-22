@@ -196,6 +196,11 @@ func (p *PerformanceAnalyzer) Analyze(ctx context.Context, prData PRData) (Analy
 	configFindings := p.detectConfigChanges(pr.FilesChanged)
 	findings = append(findings, configFindings...)
 
+	// 7. Add subsystem evidence when file-level diff metadata is available.
+	if len(prData.Files) > 0 {
+		findings = append(findings, subsystemFindings("performance", prData.Files)...)
+	}
+
 	// Determine overall category and priority based on findings
 	category, priority, _ := p.classifyPerformanceRisk(findings)
 

@@ -61,6 +61,11 @@ func (r *ReliabilityAnalyzer) Analyze(ctx context.Context, prData PRData) (Analy
 	reviewFindings := r.detectReviewChurn(pr.ReviewStatus, pr.Labels)
 	findings = append(findings, reviewFindings...)
 
+	// 5. Add subsystem evidence when file-level diff metadata is available.
+	if len(prData.Files) > 0 {
+		findings = append(findings, subsystemFindings("reliability", prData.Files)...)
+	}
+
 	// Determine overall category and priority based on findings
 	category, priority, _ := r.classifyReliabilityRisk(findings)
 

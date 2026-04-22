@@ -24,6 +24,7 @@ type AnalystRow struct {
 	ProblemType            string
 	Score                  float64
 	Reasons                []string
+	AnalyzerFindings       []types.AnalyzerFinding
 	DecisionLayers         []types.DecisionLayer
 	ReclassifiedFrom       string
 	ReclassificationReason string
@@ -107,7 +108,7 @@ func loadAnalystDataset(inputDir, repo string) (*analystDataset, error) {
 		stale := staleByPR[pr.Number]
 		classification := classifyAnalystRow(result, stale)
 		originalClassification := originalAnalystClassification(result, stale, classification)
-		reasons := mergeAnalystReasonLists(result.Reasons, result.Blockers, stale.Reasons, duplicateReasons(dupByPR[pr.Number]))
+		reasons := mergeAnalystReasonLists(result.Reasons, result.Blockers, stale.Reasons, duplicateReasons(dupByPR[pr.Number]), analystFindingSummaries(result.AnalyzerFindings))
 		row := AnalystRow{
 			PRNumber:               pr.Number,
 			Title:                  pr.Title,
@@ -120,6 +121,7 @@ func loadAnalystDataset(inputDir, repo string) (*analystDataset, error) {
 			ProblemType:            result.ProblemType,
 			Score:                  result.Confidence,
 			Reasons:                mergeAnalystReasonLists(reasons, decisionLayerSummaries(result.DecisionLayers)),
+			AnalyzerFindings:       result.AnalyzerFindings,
 			DecisionLayers:         result.DecisionLayers,
 			ReclassifiedFrom:       strings.TrimSpace(result.ReclassifiedFrom),
 			ReclassificationReason: strings.TrimSpace(result.ReclassificationReason),
@@ -453,6 +455,31 @@ func duplicateReasons(groups []types.DuplicateGroup) []string {
 		}
 	}
 	return reasons
+}
+
+func analystFindingSummaries(findings []types.AnalyzerFinding) []string {
+	if len(findings) == 0 {
+		return nil
+	}
+	summaries := make([]string, 0, len(findings))
+	for _, finding := range findings {
+		label := strings.TrimSpace(finding.AnalyzerName)
+		if finding.Subsystem != "" {
+			label += "/" + finding.Subsystem
+		}
+		if label == "" {
+			label = "finding"
+		}
+		summary := label + ": " + strings.TrimSpace(finding.Finding)
+		if finding.SignalType != "" {
+			summary += " [" + finding.SignalType + "]"
+		}
+		summaries = append(summaries, summary)
+		if len(summaries) >= 3 {
+			break
+		}
+	}
+	return summaries
 }
 
 func mergeAnalystReasonLists(parts ...[]string) []string {

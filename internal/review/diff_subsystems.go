@@ -1,6 +1,11 @@
 package review
 
-import "strings"
+import (
+	"sort"
+	"strings"
+
+	"github.com/jeffersonnunn/pratc/internal/types"
+)
 
 func classifySubsystem(path string) string {
 	p := strings.ToLower(strings.TrimSpace(path))
@@ -30,4 +35,35 @@ func classifySubsystem(path string) string {
 	default:
 		return "unknown"
 	}
+}
+
+func subsystemFindings(analyzerName string, files []types.PRFile) []types.AnalyzerFinding {
+	seen := make(map[string]struct{})
+	for _, file := range files {
+		subsystem := classifySubsystem(file.Path)
+		if subsystem == "tests" || subsystem == "docs" {
+			continue
+		}
+		seen[subsystem] = struct{}{}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(seen))
+	for subsystem := range seen {
+		keys = append(keys, subsystem)
+	}
+	sort.Strings(keys)
+	findings := make([]types.AnalyzerFinding, 0, len(keys))
+	for _, subsystem := range keys {
+		findings = append(findings, types.AnalyzerFinding{
+			AnalyzerName:    analyzerName,
+			AnalyzerVersion: "0.1.0",
+			Finding:         "subsystem change detected",
+			Confidence:      0.60,
+			Subsystem:       subsystem,
+			SignalType:      "subsystem_tag",
+		})
+	}
+	return findings
 }
