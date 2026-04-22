@@ -76,14 +76,18 @@ func (e Engine) Search(input SearchInput) (SearchResult, error) {
 
 		if len(pool) == 0 || pickCount == 0 {
 			result.Telemetry.StageLatenciesMS["tier_"+tier.Name+"_ms"] = int(time.Since(tierStart).Milliseconds())
-			result.Tiers = append(result.Tiers, tierResult)
+			if len(tierResult.Best.Selected) > 0 {
+				result.Tiers = append(result.Tiers, tierResult)
+			}
 			continue
 		}
 
 		total := Count(tierMode, len(pool), pickCount)
 		if total.Sign() == 0 {
 			result.Telemetry.StageLatenciesMS["tier_"+tier.Name+"_ms"] = int(time.Since(tierStart).Milliseconds())
-			result.Tiers = append(result.Tiers, tierResult)
+			if len(tierResult.Best.Selected) > 0 {
+				result.Tiers = append(result.Tiers, tierResult)
+			}
 			continue
 		}
 
