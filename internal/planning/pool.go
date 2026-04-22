@@ -209,7 +209,7 @@ func (ps *PoolSelector) scoreAllPRs(prs []types.PR, now time.Time, decayConfig T
 	candidates := make([]PoolCandidate, 0, len(prs))
 
 	for _, pr := range prs {
-		scores := ps.calculateComponentScores(pr, now, decayConfig)
+		scores := ps.calculateComponentScores(pr, prs, now, decayConfig)
 		totalScore := ps.computeWeightedScore(scores)
 		reasonCodes := ps.generateReasonCodes(pr, scores)
 
@@ -225,12 +225,12 @@ func (ps *PoolSelector) scoreAllPRs(prs []types.PR, now time.Time, decayConfig T
 }
 
 // calculateComponentScores computes individual component scores for a PR.
-func (ps *PoolSelector) calculateComponentScores(pr types.PR, now time.Time, decayConfig TimeDecayConfig) ComponentScores {
+func (ps *PoolSelector) calculateComponentScores(pr types.PR, allPRs []types.PR, now time.Time, decayConfig TimeDecayConfig) ComponentScores {
 	return ComponentScores{
 		StalenessScore:     ps.scoreStaleness(pr, now),
 		CIStatusScore:      ps.scoreCIStatus(pr),
 		SecurityLabelScore: ps.scoreSecurityLabels(pr),
-		ClusterScore:       ps.scoreClusterCoherence(pr),
+		ClusterScore:       ps.scoreClusterCoherenceWithContext(pr, allPRs),
 		TimeDecayScore:     ps.scoreTimeDecay(pr, now, decayConfig),
 	}
 }
@@ -297,17 +297,6 @@ func (ps *PoolSelector) scoreSecurityLabels(pr types.PR) float64 {
 		return 1.0
 	}
 	return 0.0
-}
-
-// scoreClusterCoherence calculates cluster affinity score.
-// PRs with cluster assignments get a coherence boost when there are other PRs in the same cluster.
-func (ps *PoolSelector) scoreClusterCoherence(pr types.PR) float64 {
-	if pr.ClusterID == "" {
-		return 0.0
-	}
-	// This will be calculated in context of the full PR list
-	// Placeholder - actual implementation needs cluster size context
-	return 0.5
 }
 
 // scoreClusterCoherenceWithContext calculates cluster coherence given all PRs.

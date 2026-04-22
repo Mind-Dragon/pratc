@@ -715,3 +715,73 @@ func generateTestPRs(count int) []types.PR {
 
 	return prs
 }
+
+// TestScoreClusterCoherence_C8 tests C8: cluster coherence scoring.
+// FIXED: scoreClusterCoherence (stub) has been removed. The real implementation
+// scoreClusterCoherenceWithContext is now used directly in calculateComponentScores.
+func TestScoreClusterCoherence_C8(t *testing.T) {
+	selector, _ := NewPoolSelector(DefaultPriorityWeights())
+
+	tests := []struct {
+		name         string
+		pr           types.PR
+		allPRs       []types.PR
+		wantScoreMin float64 // minimum expected score
+		wantScoreMax float64 // maximum expected score
+	}{
+		{
+			name: "PR with no cluster gets 0",
+			pr:   types.PR{Number: 1, ClusterID: ""},
+			allPRs: []types.PR{
+				{Number: 1, ClusterID: ""},
+			},
+			wantScoreMin: 0,
+			wantScoreMax: 0,
+		},
+		{
+			name: "PR in cluster of 1 gets 0 (no other PRs in cluster)",
+			pr:   types.PR{Number: 1, ClusterID: "feat-auth"},
+			allPRs: []types.PR{
+				{Number: 1, ClusterID: "feat-auth"},
+			},
+			wantScoreMin: 0,
+			wantScoreMax: 0.01,
+		},
+		{
+			name: "PR in cluster of 3 gets score based on other PRs",
+			pr:   types.PR{Number: 1, ClusterID: "feat-auth"},
+			allPRs: []types.PR{
+				{Number: 1, ClusterID: "feat-auth"},
+				{Number: 2, ClusterID: "feat-auth"},
+				{Number: 3, ClusterID: "feat-auth"},
+			},
+			wantScoreMin: 0.2,
+			wantScoreMax: 0.6,
+		},
+		{
+			name: "PR in cluster of 6 gets higher score",
+			pr:   types.PR{Number: 1, ClusterID: "feat-auth"},
+			allPRs: []types.PR{
+				{Number: 1, ClusterID: "feat-auth"},
+				{Number: 2, ClusterID: "feat-auth"},
+				{Number: 3, ClusterID: "feat-auth"},
+				{Number: 4, ClusterID: "feat-auth"},
+				{Number: 5, ClusterID: "feat-auth"},
+				{Number: 6, ClusterID: "feat-auth"},
+			},
+			wantScoreMin: 0.8,
+			wantScoreMax: 1.0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := selector.scoreClusterCoherenceWithContext(tc.pr, tc.allPRs)
+
+			if got < tc.wantScoreMin || got > tc.wantScoreMax {
+				t.Errorf("scoreClusterCoherenceWithContext() = %f, want between %f and %f",
+					got, tc.wantScoreMin, tc.wantScoreMax)
+			}
+		})
+	}
+}

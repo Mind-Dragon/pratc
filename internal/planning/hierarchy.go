@@ -228,7 +228,7 @@ func (hp *HierarchicalPlanner) selectClusters(prs []types.PR, now time.Time, dec
 		var sumComponents ComponentScores
 
 		for _, pr := range clusterPRs {
-			scores := hp.poolSelector.calculateComponentScores(pr, now, decayConfig)
+			scores := hp.poolSelector.calculateComponentScores(pr, prs, now, decayConfig)
 			priority := hp.poolSelector.computeWeightedScore(scores)
 
 			totalPriority += priority
@@ -334,7 +334,7 @@ func (hp *HierarchicalPlanner) rankWithinClusters(clusterSelections []ClusterSel
 
 		scored := make([]prWithScore, 0, len(prs))
 		for _, pr := range prs {
-			scores := hp.poolSelector.calculateComponentScores(pr, now, decayConfig)
+			scores := hp.poolSelector.calculateComponentScores(pr, allPRs, now, decayConfig)
 			priority := hp.poolSelector.computeWeightedScore(scores)
 			reasons := hp.poolSelector.generateReasonCodes(pr, scores)
 
