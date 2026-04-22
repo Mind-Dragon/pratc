@@ -43,7 +43,7 @@ def test_duplicate_synthesis_plan_serialization() -> None:
                 title="planner: simplify candidate scoring",
                 author="alice",
                 role="canonical",
-                score=0.85,
+                synthesis_score=0.85,
                 rationale="higher review count",
             ),
             DuplicateSynthesisCandidate(
@@ -51,7 +51,7 @@ def test_duplicate_synthesis_plan_serialization() -> None:
                 title="planner simplify candidate scoring",
                 author="bob",
                 role="alternate",
-                score=0.80,
+                synthesis_score=0.80,
                 rationale="newer but fewer reviews",
             ),
         ],
@@ -84,7 +84,7 @@ def test_duplicate_synthesis_plan_deserialization() -> None:
                 "title": "planner: simplify candidate scoring",
                 "author": "alice",
                 "role": "canonical",
-                "score": 0.85,
+                "synthesis_score": 0.85,
                 "rationale": "higher review count",
             },
         ],
@@ -161,7 +161,7 @@ def test_analysis_response_with_duplicate_synthesis() -> None:
                 title="planner: simplify candidate scoring",
                 author="alice",
                 role="canonical",
-                score=0.85,
+                synthesis_score=0.85,
                 rationale="higher review count",
             ),
             DuplicateSynthesisCandidate(
@@ -169,7 +169,7 @@ def test_analysis_response_with_duplicate_synthesis() -> None:
                 title="planner simplify candidate scoring",
                 author="bob",
                 role="alternate",
-                score=0.80,
+                synthesis_score=0.80,
                 rationale="newer but fewer reviews",
             ),
         ],
@@ -264,7 +264,7 @@ def test_duplicate_synthesis_candidate_roundrip() -> None:
         "title": "feat: add new feature",
         "author": "carol",
         "role": "contributor",
-        "score": 0.65,
+                "synthesis_score": 0.60,
         "rationale": "partial implementation, needs more tests",
     }
 

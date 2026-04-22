@@ -69,6 +69,39 @@ export interface StalenessReport {
   superseded_by: number[];
 }
 
+export interface GarbagePR {
+  pr_number: number;
+  reason: string;
+}
+
+export interface DuplicateSynthesisCandidate {
+  pr_number: number;
+  title: string;
+  author: string;
+  role: string;
+  synthesis_score: number;
+  confidence: number;
+  substance_score: number;
+  mergeable: string;
+  has_test_evidence: boolean;
+  conflict_footprint: number;
+  is_draft: boolean;
+  signal_quality: string;
+  scoring_factors: string[];
+  rationale: string;
+}
+
+export interface DuplicateSynthesisPlan {
+  group_id: string;
+  group_type: string;
+  original_canonical_pr: number;
+  nominated_canonical_pr: number;
+  similarity: number;
+  reason: string;
+  candidates: DuplicateSynthesisCandidate[];
+  synthesis_notes: string[];
+}
+
 export interface MergePlanCandidate {
   pr_number: number;
   title: string;
@@ -109,7 +142,9 @@ export interface Counts {
   overlap_groups: number;
   conflict_pairs: number;
   stale_prs: number;
+  garbage_prs: number;
   collapsed_duplicate_groups?: number;
+  candidate_pool_size?: number;
 }
 
 export interface CollapsedCorpus {
@@ -198,6 +233,12 @@ export interface SemanticConflictResponse {
 export interface AnalysisResponse {
   repo: string;
   generatedAt: string;
+  analysis_truncated?: boolean;
+  truncation_reason?: string;
+  max_prs_applied?: number;
+  pr_window?: PRWindow;
+  precision_mode?: string;
+  deep_candidate_subset_size?: number;
   counts: Counts;
   prs: PR[];
   clusters: PRCluster[];
@@ -205,6 +246,10 @@ export interface AnalysisResponse {
   overlaps: DuplicateGroup[];
   conflicts: ConflictPair[];
   stalenessSignals: StalenessReport[];
+  garbage_prs?: number;
+  telemetry?: OperationTelemetry;
+  review_payload?: ReviewResponse;
+  duplicate_synthesis?: DuplicateSynthesisPlan[];
   collapsed_corpus?: CollapsedCorpus;
 }
 
@@ -214,17 +259,46 @@ export interface GraphResponse {
   nodes: GraphNode[];
   edges: GraphEdge[];
   dot: string;
+  telemetry?: OperationTelemetry;
+}
+
+export interface OperationTelemetry {
+  pool_strategy?: string;
+  planning_strategy?: string;
+  pool_size_before?: number;
+  pool_size_after?: number;
+  graph_delta_edges?: number;
+  decay_policy?: string;
+  pairwise_shards?: number;
+  pairwise_early_exits?: number;
+  pairwise_workers_active?: number;
+  hierarchical_complexity_reduction?: number;
+  stage_latencies_ms?: Record<string, number>;
+  stage_drop_counts?: Record<string, number>;
+}
+
+export interface PRWindow {
+  beginning_pr_number?: number;
+  ending_pr_number?: number;
+  snapshot_ceiling?: number;
 }
 
 export interface PlanResponse {
   repo: string;
   generatedAt: string;
+  analysis_truncated?: boolean;
+  truncation_reason?: string;
+  max_prs_applied?: number;
+  pr_window?: PRWindow;
+  precision_mode?: string;
+  deep_candidate_subset_size?: number;
   target: number;
   candidatePoolSize: number;
   strategy: string;
   selected: MergePlanCandidate[];
   ordering: MergePlanCandidate[];
   rejections: PlanRejection[];
+  telemetry?: OperationTelemetry;
   collapsed_corpus?: CollapsedCorpus;
 }
 
@@ -320,17 +394,4 @@ export interface ReviewResponse {
   risk_buckets: BucketCount[];
   priority_tiers: PriorityTierCount[];
   results: ReviewResult[];
-}
-
-export interface AnalysisResponse {
-  repo: string;
-  generatedAt: string;
-  counts: Counts;
-  clusters: PRCluster[];
-  duplicates: DuplicateGroup[];
-  overlaps: DuplicateGroup[];
-  conflicts: ConflictPair[];
-  stalenessSignals: StalenessReport[];
-  review_payload: ReviewResponse;
-  collapsed_corpus?: CollapsedCorpus;
 }

@@ -104,6 +104,7 @@ describe("DashboardPage", () => {
         overlap_groups: 1,
         conflict_pairs: 3,
         stale_prs: 10,
+        garbage_prs: 5,
       },
       prs: [],
       clusters: [],

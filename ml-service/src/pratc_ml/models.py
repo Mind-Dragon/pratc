@@ -155,6 +155,38 @@ if BaseModel is not None:
         total_superseded: int = 0
 
 
+    class DuplicateSynthesisCandidate(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
+        pr_number: int
+        title: str
+        author: str
+        role: str
+        synthesis_score: float
+        confidence: float = 0.0
+        substance_score: int = 0
+        mergeable: str = "unknown"
+        has_test_evidence: bool = False
+        conflict_footprint: int = 0
+        is_draft: bool = False
+        signal_quality: str = "medium"
+        scoring_factors: list[str] = []
+        rationale: str = ""
+
+
+    class DuplicateSynthesisPlan(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
+        group_id: str
+        group_type: str
+        original_canonical_pr: int
+        nominated_canonical_pr: int
+        similarity: float
+        reason: str
+        candidates: list[DuplicateSynthesisCandidate] = []
+        synthesis_notes: list[str] = []
+
+
     class Thresholds(BaseModel):
         model_config = ConfigDict(populate_by_name=True)
 
@@ -245,6 +277,7 @@ if BaseModel is not None:
         stalenessSignals: list[StalenessReport]
         garbagePRs: list[GarbagePR] | None = None
         collapsed_corpus: CollapsedCorpus | None = None
+        duplicate_synthesis: list[DuplicateSynthesisPlan] | None = None
 
 
     class GraphResponse(BaseModel):
@@ -303,7 +336,17 @@ else:
     def _coerce_dataclass(cls: type[T], value: Any) -> T:
         kwargs = {}
         for item in fields(cls):
-            kwargs[item.name] = _coerce_value(item.type, value[item.name])
+            if item.name in value:
+                kwargs[item.name] = _coerce_value(item.type, value[item.name])
+            else:
+                # Field is missing - use default if available
+                if item.default_factory is not MISSING:
+                    kwargs[item.name] = item.default_factory()
+                elif item.default is not MISSING:
+                    kwargs[item.name] = item.default
+                else:
+                    # No default available - raise KeyError
+                    raise KeyError(item.name)
         return cls(**kwargs)
 
 
@@ -445,6 +488,36 @@ else:
 
 
     @dataclass
+    class DuplicateSynthesisCandidate(_BootstrapModel):
+        pr_number: int
+        title: str
+        author: str
+        role: str
+        synthesis_score: float
+        confidence: float = 0.0
+        substance_score: int = 0
+        mergeable: str = "unknown"
+        has_test_evidence: bool = False
+        conflict_footprint: int = 0
+        is_draft: bool = False
+        signal_quality: str = "medium"
+        scoring_factors: list[str] = field(default_factory=list)
+        rationale: str = ""
+
+
+    @dataclass
+    class DuplicateSynthesisPlan(_BootstrapModel):
+        group_id: str
+        group_type: str
+        original_canonical_pr: int
+        nominated_canonical_pr: int
+        similarity: float
+        reason: str
+        candidates: list[DuplicateSynthesisCandidate] = field(default_factory=list)
+        synthesis_notes: list[str] = field(default_factory=list)
+
+
+    @dataclass
     class Thresholds(_BootstrapModel):
         duplicate: float
         overlap: float
@@ -524,6 +597,7 @@ else:
         stalenessSignals: list[StalenessReport] = field(default_factory=list)
         garbagePRs: list[GarbagePR] = field(default_factory=list)
         collapsed_corpus: CollapsedCorpus = field(default_factory=CollapsedCorpus)
+        duplicate_synthesis: list[DuplicateSynthesisPlan] = field(default_factory=list)
 
 
     @dataclass

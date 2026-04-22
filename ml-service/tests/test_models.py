@@ -212,7 +212,7 @@ class TestCoerceDataclass_MissingKey:
 
         # This should NOT raise KeyError even when fields are missing
         # The implementation should use value.get() and handle defaults
-        result = _coerce_dataclass_buggy(TestConfig, test_data)
+        result = _coerce_dataclass_fixed(TestConfig, test_data)
 
         assert result.id == "1"
         assert result.repo == "owner/repo"
