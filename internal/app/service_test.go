@@ -134,7 +134,7 @@ func TestPlanReturnsTargetedOrdering(t *testing.T) {
 		t.Fatalf("load manifest: %v", err)
 	}
 
-	service := NewService(Config{Now: fixedNow})
+	service := NewService(Config{Now: fixedNow, DynamicTarget: DynamicTargetConfig{Enabled: false}})
 	response, err := service.Plan(context.Background(), manifest.Repo, 5, formula.ModeCombination)
 	if err != nil {
 		t.Fatalf("plan: %v", err)
@@ -465,7 +465,7 @@ func TestPlanDoesNotCapCandidatePoolByDefault(t *testing.T) {
 		t.Fatalf("set last sync: %v", err)
 	}
 
-	service := NewService(Config{Now: fixedNow, CacheStore: store, UseCacheFirst: true})
+	service := NewService(Config{Now: fixedNow, CacheStore: store, UseCacheFirst: true, DynamicTarget: DynamicTargetConfig{Enabled: false}})
 	response, err := service.Plan(context.Background(), repo, 100, formula.ModeCombination)
 	if err != nil {
 		t.Fatalf("plan: %v", err)

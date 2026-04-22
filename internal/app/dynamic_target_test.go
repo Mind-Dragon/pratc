@@ -128,13 +128,28 @@ func TestDynamicTargetConfig_ComputeDynamicTarget(t *testing.T) {
 }
 
 // TestResolveDynamicTargetConfig_ZeroValueEnabledDefault verifies that a zero-valued
-// DynamicTargetConfig (Enabled=false by default) results in Enabled=true per the
-// "default to enabled" contract in the implementation comment.
+// DynamicTargetConfig does NOT auto-enable dynamic targeting. The Enabled field
+// remains false (zero value) and the fallback target in Plan() is used unchanged.
 func TestResolveDynamicTargetConfig_ZeroValueEnabledDefault(t *testing.T) {
-	cfg := DynamicTargetConfig{}
-	got := resolveDynamicTargetConfig(cfg)
-	if got.Enabled != true {
-		t.Errorf("resolveDynamicTargetConfig(DynamicTargetConfig{}) Enabled = %v; want true (default to enabled per comment)", got.Enabled)
+	cfg := resolveDynamicTargetConfig(DynamicTargetConfig{})
+	if cfg.Enabled != false {
+		t.Fatalf("Enabled = %v, want false (zero value should not be auto-enabled)", cfg.Enabled)
+	}
+	if cfg.Ratio != 0.05 {
+		t.Fatalf("Ratio = %v, want 0.05", cfg.Ratio)
+	}
+	if cfg.MinTarget != 20 {
+		t.Fatalf("MinTarget = %v, want 20", cfg.MinTarget)
+	}
+	if cfg.MaxTarget != 50 {
+		t.Fatalf("MaxTarget = %v, want 50", cfg.MaxTarget)
+	}
+
+	// Verify ComputeDynamicTarget returns fallback when Enabled=false
+	fallback := 5
+	target := cfg.ComputeDynamicTarget(100, fallback)
+	if target != fallback {
+		t.Fatalf("ComputeDynamicTarget(100, %d) = %d, want %d (fallback when disabled)", fallback, target, fallback)
 	}
 }
 
@@ -145,12 +160,13 @@ func TestResolveDynamicTargetConfig(t *testing.T) {
 		want  DynamicTargetConfig
 	}{
 		{
-			name:  "zero values get defaults",
+			name: "zero values get defaults",
 			input: DynamicTargetConfig{},
 			want: DynamicTargetConfig{
+				Enabled:   false, // zero value, NOT auto-enabled
 				Ratio:     0.05,
 				MinTarget: 20,
-				MaxTarget: 100,
+				MaxTarget: 50,
 			},
 		},
 		{
@@ -161,6 +177,7 @@ func TestResolveDynamicTargetConfig(t *testing.T) {
 				MaxTarget: 50,
 			},
 			want: DynamicTargetConfig{
+				Enabled:   false, // explicitly non-zero fields, not zero-valued
 				Ratio:     0.05,
 				MinTarget: 10,
 				MaxTarget: 50,
@@ -174,6 +191,7 @@ func TestResolveDynamicTargetConfig(t *testing.T) {
 				MaxTarget: 50,
 			},
 			want: DynamicTargetConfig{
+				Enabled:   false, // explicitly non-zero fields, not zero-valued
 				Ratio:     0.1,
 				MinTarget: 20,
 				MaxTarget: 50,
@@ -184,27 +202,28 @@ func TestResolveDynamicTargetConfig(t *testing.T) {
 			input: DynamicTargetConfig{
 				Ratio:     0.1,
 				MinTarget: 10,
-				MaxTarget: -50,
+				MaxTarget: -10,
 			},
 			want: DynamicTargetConfig{
+				Enabled:   false, // explicitly non-zero fields, not zero-valued
 				Ratio:     0.1,
 				MinTarget: 10,
-				MaxTarget: 100,
+				MaxTarget: 50,
 			},
 		},
 		{
 			name: "explicit enabled false is preserved",
 			input: DynamicTargetConfig{
 				Enabled:   false,
-				Ratio:     0,
-				MinTarget: 0,
-				MaxTarget: 0,
+				Ratio:     0.1, // non-default, so "explicitly configured"
+				MinTarget: 10,
+				MaxTarget: 50,
 			},
 			want: DynamicTargetConfig{
 				Enabled:   false,
-				Ratio:     0.05,
-				MinTarget: 20,
-				MaxTarget: 100,
+				Ratio:     0.1,
+				MinTarget: 10,
+				MaxTarget: 50,
 			},
 		},
 		{

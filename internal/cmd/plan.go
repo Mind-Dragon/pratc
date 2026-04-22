@@ -144,8 +144,11 @@ func parseMode(raw string) (formula.Mode, error) {
 }
 
 // validateTargetRatio checks that target-ratio is within valid bounds.
-// A ratio > 1.0 means more than 100% of the pool, which is nonsensical.
+// A ratio < 0 or > 1.0 is nonsensical for a target.
 func validateTargetRatio(ratio float64) error {
+	if ratio < 0 {
+		return fmt.Errorf("target-ratio %.2f is negative, must be between 0 and 1.0", ratio)
+	}
 	if ratio > 1.0 {
 		return fmt.Errorf("target-ratio %.2f exceeds maximum of 1.0", ratio)
 	}

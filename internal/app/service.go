@@ -263,11 +263,8 @@ func resolveDynamicTargetConfig(cfg DynamicTargetConfig) DynamicTargetConfig {
 		cfg.MinTarget = 20
 	}
 	if cfg.MaxTarget <= 0 {
-		cfg.MaxTarget = 100
+		cfg.MaxTarget = 50
 	}
-	// In v1.6.1, dynamic target is enabled by default when not explicitly set.
-	// If the caller explicitly set Enabled=false, respect that.
-	// Otherwise, default to enabled.
 	return cfg
 }
 

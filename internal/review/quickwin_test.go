@@ -963,36 +963,36 @@ func TestHasQualityFindings(t *testing.T) {
 		{
 			name: "security finding",
 			findings: []types.AnalyzerFinding{
-				{Finding: "security_sql_injection"},
+				{AnalyzerName: "security", Finding: "sql injection detected"},
 			},
 			want: true,
 		},
 		{
 			name: "reliability finding",
 			findings: []types.AnalyzerFinding{
-				{Finding: "reliability_npe"},
+				{AnalyzerName: "reliability", Finding: "null pointer exception"},
 			},
 			want: true,
 		},
 		{
 			name: "performance finding",
 			findings: []types.AnalyzerFinding{
-				{Finding: "performance_slow_query"},
+				{AnalyzerName: "performance", Finding: "slow query detected"},
 			},
 			want: true,
 		},
 		{
 			name: "quality finding is not quality finding",
 			findings: []types.AnalyzerFinding{
-				{Finding: "quality_coding_style"},
+				{AnalyzerName: "quality", Finding: "coding style violation"},
 			},
 			want: false,
 		},
 		{
 			name: "mixed findings with quality",
 			findings: []types.AnalyzerFinding{
-				{Finding: "security_sql_injection"},
-				{Finding: "quality_coding_style"},
+				{AnalyzerName: "security", Finding: "sql injection"},
+				{AnalyzerName: "quality", Finding: "coding style"},
 			},
 			want: true,
 		},

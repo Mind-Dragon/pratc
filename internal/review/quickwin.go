@@ -199,10 +199,10 @@ func isDocsOnly(pr types.PR) bool {
 // hasQualityFindings returns true if there are security, reliability, or performance findings.
 func hasQualityFindings(findings []types.AnalyzerFinding) bool {
 	for _, f := range findings {
-		finding := strings.ToLower(f.Finding)
-		if strings.HasPrefix(finding, "security_") ||
-			strings.HasPrefix(finding, "reliability_") ||
-			strings.HasPrefix(finding, "performance_") {
+		analyzerName := strings.ToLower(f.AnalyzerName)
+		if analyzerName == "security" ||
+			analyzerName == "reliability" ||
+			analyzerName == "performance" {
 			return true
 		}
 	}
