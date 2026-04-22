@@ -122,3 +122,36 @@ func TestHandleExportAndImportSettings(t *testing.T) {
 		t.Fatalf("expected status 200, got %d body=%s", postRR.Code, postRR.Body.String())
 	}
 }
+
+func TestHandleSettingsRejectsInvalidScope(t *testing.T) {
+	t.Parallel()
+	store := &fakeSettingsStore{}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings", strings.NewReader(`{"scope":"invalid","repo":"","key":"duplicate_threshold","value":0.92}`))
+	rr := httptest.NewRecorder()
+	handleSettings(rr, req, store)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for invalid scope, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/api/settings?scope=invalid&key=max_prs", nil)
+	rr = httptest.NewRecorder()
+	handleSettings(rr, req, store)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected delete invalid scope to return 400, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/settings/export?scope=invalid", nil)
+	rr = httptest.NewRecorder()
+	handleExportSettings(rr, req, store)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected export invalid scope to return 400, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/settings/import?scope=invalid", bytes.NewBufferString("max_prs: 1000\n"))
+	rr = httptest.NewRecorder()
+	handleImportSettings(rr, req, store)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected import invalid scope to return 400, got %d body=%s", rr.Code, rr.Body.String())
+	}
+}

@@ -694,6 +694,12 @@ func TestResolveNamedLogin_SelectedLogin(t *testing.T) {
 	script := filepath.Join(dir, "gh")
 	// Fake gh that returns a token for the specified login
 	contents := `#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  if [ "$3" = "--json" ] && [ "$4" = "account" ]; then
+    echo '{"accounts":[{"login":"Mind-Dragon","active":true}]}'
+    exit 0
+  fi
+fi
 if [ "$1" = "auth" ] && [ "$2" = "token" ]; then
   printf '%s' "token-for-Mind-Dragon"
   exit 0

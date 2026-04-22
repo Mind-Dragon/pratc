@@ -220,15 +220,25 @@ func repoFromQuery(r *http.Request, defaultRepo string) string {
 
 type setSettingRequest struct {
 	Scope string `json:"scope"`
-	Repo  string `json:"repo"`
+	Repo  string `json:"repo,omitempty"`
 	Key   string `json:"key"`
 	Value any    `json:"value"`
+}
+
+func isValidSettingsScope(scope string) bool {
+	scope = strings.TrimSpace(scope)
+	return scope == "global" || scope == "repo"
 }
 
 func handleSettings(w http.ResponseWriter, r *http.Request, store settingsStore) {
 	log := logger.FromContext(r.Context())
 	switch r.Method {
 	case http.MethodGet:
+		scope := strings.TrimSpace(r.URL.Query().Get("scope"))
+		if scope != "" && !isValidSettingsScope(scope) {
+			writeHTTPError(w, r, http.StatusBadRequest, "invalid scope")
+			return
+		}
 		repo := strings.TrimSpace(r.URL.Query().Get("repo"))
 		payload, err := store.Get(r.Context(), repo)
 		if err != nil {
@@ -245,6 +255,10 @@ func handleSettings(w http.ResponseWriter, r *http.Request, store settingsStore)
 		}
 		if strings.TrimSpace(req.Key) == "" {
 			writeHTTPError(w, r, http.StatusBadRequest, "key is required")
+			return
+		}
+		if !isValidSettingsScope(req.Scope) {
+			writeHTTPError(w, r, http.StatusBadRequest, "invalid scope")
 			return
 		}
 		validateOnly := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("validateOnly")), "true")
@@ -267,6 +281,10 @@ func handleSettings(w http.ResponseWriter, r *http.Request, store settingsStore)
 		scope := strings.TrimSpace(r.URL.Query().Get("scope"))
 		repo := strings.TrimSpace(r.URL.Query().Get("repo"))
 		key := strings.TrimSpace(r.URL.Query().Get("key"))
+		if !isValidSettingsScope(scope) {
+			writeHTTPError(w, r, http.StatusBadRequest, "invalid scope")
+			return
+		}
 		if key == "" {
 			writeHTTPError(w, r, http.StatusBadRequest, "key is required")
 			return
@@ -288,6 +306,10 @@ func handleExportSettings(w http.ResponseWriter, r *http.Request, store settings
 	}
 	log := logger.FromContext(r.Context())
 	scope := strings.TrimSpace(r.URL.Query().Get("scope"))
+	if !isValidSettingsScope(scope) {
+		writeHTTPError(w, r, http.StatusBadRequest, "invalid scope")
+		return
+	}
 	repo := strings.TrimSpace(r.URL.Query().Get("repo"))
 	content, err := store.ExportYAML(r.Context(), scope, repo)
 	if err != nil {
@@ -307,6 +329,10 @@ func handleImportSettings(w http.ResponseWriter, r *http.Request, store settings
 	}
 	log := logger.FromContext(r.Context())
 	scope := strings.TrimSpace(r.URL.Query().Get("scope"))
+	if !isValidSettingsScope(scope) {
+		writeHTTPError(w, r, http.StatusBadRequest, "invalid scope")
+		return
+	}
 	repo := strings.TrimSpace(r.URL.Query().Get("repo"))
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	body, err := io.ReadAll(r.Body)
@@ -1060,14 +1086,12 @@ func authMiddleware(next http.Handler) http.Handler {
 
 		providedKey := r.Header.Get("X-API-Key")
 		if providedKey == "" {
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "missing API key"})
+			writeHTTPError(w, r, http.StatusUnauthorized, "missing API key")
 			return
 		}
 
 		if providedKey != apiKey {
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid API key"})
+			writeHTTPError(w, r, http.StatusUnauthorized, "invalid API key")
 			return
 		}
 

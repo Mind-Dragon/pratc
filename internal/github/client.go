@@ -573,7 +573,11 @@ func transientBackoff(attempt int) time.Duration {
 	if base > 30*time.Second {
 		base = 30 * time.Second
 	}
-	return addJitter(base)
+	wait := addJitter(base)
+	if wait > 30*time.Second {
+		wait = 30 * time.Second
+	}
+	return wait
 }
 
 func isTransientTransportError(err error) bool {

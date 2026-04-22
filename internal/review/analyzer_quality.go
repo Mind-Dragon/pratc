@@ -107,6 +107,12 @@ func (q *QualityAnalyzer) Analyze(ctx context.Context, prData PRData) (AnalyzerR
 				reasons = append(reasons, fmt.Sprintf("test gap detected: %s", f.Finding))
 			}
 		}
+		if testEvidenceFindings := detectTestEvidence(prData.Files); len(testEvidenceFindings) > 0 {
+			findings = append(findings, testEvidenceFindings...)
+			for _, f := range testEvidenceFindings {
+				reasons = append(reasons, fmt.Sprintf("test evidence detected: %s", f.Finding))
+			}
+		}
 		findings = append(findings, subsystemFindings("quality", prData.Files)...)
 	}
 

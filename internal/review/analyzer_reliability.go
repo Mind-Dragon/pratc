@@ -64,6 +64,7 @@ func (r *ReliabilityAnalyzer) Analyze(ctx context.Context, prData PRData) (Analy
 	// 5. Add subsystem evidence when file-level diff metadata is available.
 	if len(prData.Files) > 0 {
 		findings = append(findings, subsystemFindings("reliability", prData.Files)...)
+		findings = append(findings, detectDependencyImpact(prData.Files)...)
 	}
 
 	// Determine overall category and priority based on findings

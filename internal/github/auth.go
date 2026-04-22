@@ -207,8 +207,21 @@ func ResolveTokenForLogin(ctx context.Context, login string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("gh CLI not found: %w", err)
 	}
+	login = strings.TrimSpace(login)
+	if login != "" {
+		active, err := GetActiveLogin(ctx)
+		if err != nil {
+			return "", fmt.Errorf("resolve active login for %q: %w", login, err)
+		}
+		if active != "" && active != login {
+			return "", fmt.Errorf("requested login %q is not the active gh account (%q)", login, active)
+		}
+	}
 
-	// Use gh auth token with hostname to get token for specific host
+	// Use gh auth token with hostname to get token for specific host.
+	// gh currently returns the token for the active login on that host, so we
+	// explicitly verify the active account above instead of silently returning
+	// the wrong login's token.
 	cmd := exec.CommandContext(ctx, path, "auth", "token", "--hostname", "github.com")
 	output, err := cmd.Output()
 	if err != nil {
