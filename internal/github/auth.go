@@ -488,7 +488,7 @@ func AttemptWithTokenFallback(ctx context.Context, tokens []string, attemptFn fu
 	for i, token := range tokens {
 		lastErr = attemptFn(token)
 		if lastErr == nil {
-			return nil
+			break
 		}
 		// If not retryable, return immediately
 		if !IsRetryableError(lastErr) {
