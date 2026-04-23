@@ -301,6 +301,39 @@ def format_wave_synthesis(tasks):
     return '\n'.join(lines)
 
 
+def session_todos_from_wave_tasks(tasks):
+    """Convert synthesized wave tasks into Hermes session todo items."""
+    todos = []
+    for task in tasks:
+        gid = task['gap_id']
+        todos.append({
+            'id': f"gap-{gid.lower()}",
+            'content': f"{gid}: {task['action']} Verification: {task['verification_note']}",
+            'status': 'pending',
+        })
+    return todos
+
+
+def current_run_dir(state=None):
+    """Return the current run directory from STATE.yaml, without creating it."""
+    state = state or load_state()
+    run_id = state.get('current_run_id')
+    if not run_id:
+        return None
+    return RUNS_DIR / str(run_id)
+
+
+def append_wave_summary_section(run_dir: Path, heading: str, lines: list[str]):
+    """Append a section to wave-summary.md, creating the file if needed."""
+    if not run_dir or not run_dir.exists():
+        return False
+    summary = run_dir / 'wave-summary.md'
+    existing = summary.read_text() if summary.exists() else '# Wave summary\n\n'
+    section = [f'## {heading}', ''] + lines + ['']
+    summary.write_text(existing.rstrip() + '\n\n' + '\n'.join(section))
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -482,21 +515,9 @@ def cmd_resume(_args):
 
 
 def cmd_closeout(args):
-    """
-    Mark verified-gap IDs as closed after a verified wave.
-
-    After the subagent verifies gaps are fixed (audit passes), closeout moves
-    those gap IDs from open_gaps to completed_gaps in STATE.yaml, regenerates
-    GAP_LIST.md from the latest audit, and appends a note to TODO.md.
-
-    Args:
-        gaps: comma-separated list of gap IDs that were verified (e.g. 'G-001,G-002')
-        audit_path: path to AUDIT_RESULTS.json for GAP_LIST.md regeneration (optional)
-        todo_path: path to TODO.md to append closeout note (optional)
-    """
+    """Close out verified gaps from a wave."""
     state = load_state()
     gap_ids = [g.strip() for g in args.gaps.split(',') if g.strip()]
-
     if not gap_ids:
         print('closeout: no gaps specified, nothing to do')
         return
@@ -524,6 +545,16 @@ def cmd_closeout(args):
         _append_closeout_note(Path(args.todo_path), gap_ids, state.get('current_wave', '?'))
 
     wave = state.get('current_wave', '?')
+    append_wave_summary_section(
+        current_run_dir(state),
+        'Post-wave closeout',
+        [
+            f'- wave: {wave}',
+            f'- closed_gaps: {", ".join(gap_ids)}',
+            f'- remaining_open_gaps: {len(open_gaps)}',
+            f'- audit_path: {args.audit_path or "not provided"}',
+        ],
+    )
     print(f'closeout: marked {len(gap_ids)} gap(s) as verified-closed (wave {wave})')
 
 
@@ -616,11 +647,25 @@ def cmd_complete(args):
 
 def cmd_synthesize_wave(_args):
     """Synthesize wave tasks from open gaps; print to stdout."""
+    state = load_state()
     tasks = synthesize_wave()
+    session_todos = session_todos_from_wave_tasks(tasks)
     print(format_wave_synthesis(tasks))
-    # Also emit machine-readable YAML for downstream consumption
+    # Also emit machine-readable YAML and JSON for downstream consumption.
     print('--- YAML ---')
     print(yaml.dump({'wave_tasks': tasks}, default_flow_style=False, sort_keys=False))
+    print('--- TODO JSON ---')
+    print(json.dumps({'session_todos': session_todos}, indent=2))
+    if getattr(_args, 'write_summary', True):
+        append_wave_summary_section(
+            current_run_dir(state),
+            'Pre-wave synthesis',
+            [
+                f'- open_gaps: {len(tasks)}',
+                f'- gap_ids: {", ".join(t["gap_id"] for t in tasks) if tasks else "none"}',
+                f'- session_todos: {len(session_todos)}',
+            ],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -769,6 +814,7 @@ def main():
     p.set_defaults(func=cmd_closeout)
 
     p = sub.add_parser('synthesize-wave')
+    p.add_argument('--no-write-summary', action='store_false', dest='write_summary', default=True, help='do not append pre-wave synthesis to current run wave-summary.md')
     p.set_defaults(func=cmd_synthesize_wave)
 
     p = sub.add_parser('audit-state')

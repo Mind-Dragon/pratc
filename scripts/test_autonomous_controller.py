@@ -457,7 +457,7 @@ def test_synthesize_wave_cmd_executable(tmp_paths, sample_state, sample_gap_list
 
 def test_rebuild_session_todo_cli_output(tmp_paths, sample_state, sample_gap_list, capsys):
     """
-    Verify the synthesize-wave CLI command produces machine-readable YAML
+    Verify the synthesize-wave CLI command produces machine-readable YAML and JSON
     that the /autonomous skill can consume for session todo reconstruction.
 
     This test proves the CLI is usable by external callers (the /autonomous
@@ -467,7 +467,7 @@ def test_rebuild_session_todo_cli_output(tmp_paths, sample_state, sample_gap_lis
     ctrl.save_state(sample_state)
     gap_path.write_text(sample_gap_list)
 
-    args = FakeArgs()
+    args = FakeArgs(write_summary=False)
     ctrl.cmd_synthesize_wave(args)
 
     out = capsys.readouterr().out
@@ -475,9 +475,69 @@ def test_rebuild_session_todo_cli_output(tmp_paths, sample_state, sample_gap_lis
     assert '--- YAML ---' in out
     # Must have wave_tasks key with list value
     assert 'wave_tasks:' in out
+    # Must also have JSON marker for Hermes todo reconstruction
+    assert '--- TODO JSON ---' in out
+    todo_json = out.split('--- TODO JSON ---', 1)[1].strip()
+    payload = yaml.safe_load(todo_json)
+    assert 'session_todos' in payload
+    assert payload['session_todos'][0]['status'] == 'pending'
+    assert {'id', 'content', 'status'} <= set(payload['session_todos'][0])
+    assert payload['session_todos'][0]['id'].startswith('gap-')
     # Must have the gap IDs
     assert 'G-001' in out
     assert 'G-002' in out
+
+
+def test_synthesize_wave_writes_pre_wave_summary(tmp_path, tmp_paths, sample_state, sample_gap_list, monkeypatch, capsys):
+    """synthesize-wave records a pre-wave summary in the current run artifact."""
+    state_path, gap_path = tmp_paths
+    runs_dir = tmp_path / 'autonomous' / 'runs'
+    run_dir = runs_dir / sample_state['current_run_id']
+    run_dir.mkdir(parents=True)
+    monkeypatch.setattr(ctrl, 'RUNS_DIR', runs_dir)
+    ctrl.save_state(sample_state)
+    gap_path.write_text(sample_gap_list)
+
+    args = FakeArgs(write_summary=True)
+    ctrl.cmd_synthesize_wave(args)
+
+    summary = run_dir / 'wave-summary.md'
+    assert summary.exists()
+    text = summary.read_text()
+    assert '## Pre-wave synthesis' in text
+    assert 'G-001' in text
+    assert 'session_todos' in text
+
+
+def test_closeout_appends_post_wave_summary(tmp_path, tmp_paths, sample_state, sample_gap_list, monkeypatch, capsys):
+    """closeout records a post-wave summary in the current run artifact."""
+    state_path, gap_path = tmp_paths
+    runs_dir = tmp_path / 'autonomous' / 'runs'
+    run_dir = runs_dir / sample_state['current_run_id']
+    run_dir.mkdir(parents=True)
+    monkeypatch.setattr(ctrl, 'RUNS_DIR', runs_dir)
+    ctrl.save_state(sample_state)
+    gap_path.write_text(sample_gap_list)
+
+    args = FakeArgs(gaps='G-001,G-002', audit_path=None, todo_path=None)
+    ctrl.cmd_closeout(args)
+
+    summary = run_dir / 'wave-summary.md'
+    assert summary.exists()
+    text = summary.read_text()
+    assert '## Post-wave closeout' in text
+    assert 'G-001, G-002' in text
+    assert 'remaining_open_gaps' in text
+
+
+def test_autonomous_prompts_include_execution_contracts():
+    """Subagent prompts must carry ownership, TDD, verification, and no-scope-creep rules."""
+    prompts_dir = Path('/home/agent/pratc/autonomous/prompts')
+    required = ['file ownership', 'tdd', 'verification', 'no scope creep']
+    for name in ['audit-gap.md', 'fix-gap.md', 'wave-closeout.md']:
+        text = (prompts_dir / name).read_text().lower().replace('-', ' ')
+        for phrase in required:
+            assert phrase in text, f'{name} missing {phrase}'
 
 
 # ---------------------------------------------------------------------------

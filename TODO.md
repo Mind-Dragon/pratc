@@ -177,12 +177,12 @@ python -m pytest -q scripts/test_autonomous_controller.py tests/test_audit_guide
 
 ### D3. Wave/subagent readiness
 
-- [ ] Expand `autonomous/prompts/audit-gap.md`
-- [ ] Expand `autonomous/prompts/fix-gap.md`
-- [ ] Expand `autonomous/prompts/wave-closeout.md`
-- [ ] Add file ownership, TDD, verification, and no-scope-creep rules to prompts
-- [ ] Make `synthesize-wave` emit machine-readable todo JSON for Hermes session todo reconstruction
-- [ ] Write pre-wave and post-wave summaries into `autonomous/runs/<run-id>/wave-summary.md`
+- [x] Expand `autonomous/prompts/audit-gap.md`
+- [x] Expand `autonomous/prompts/fix-gap.md`
+- [x] Expand `autonomous/prompts/wave-closeout.md`
+- [x] Add file ownership, TDD, verification, and no-scope-creep rules to prompts
+- [x] Make `synthesize-wave` emit machine-readable todo JSON for Hermes session todo reconstruction
+- [x] Write pre-wave and post-wave summaries into `autonomous/runs/<run-id>/wave-summary.md`
 
 Verification:
 
