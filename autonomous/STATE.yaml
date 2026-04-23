@@ -1,7 +1,7 @@
 mode: active
 repo: openclaw/openclaw
 branch: main
-baseline_commit: 2245d8fcc891
+baseline_commit: 3a2092681427
 current_run_id: 20260423T203433Z
 corpus_dir: autonomous/runs/20260423T203433Z
 phase: complete
@@ -10,14 +10,15 @@ open_gaps: []
 blocked_gaps: []
 completed_gaps: []
 last_audit_path: autonomous/runs/20260423T203433Z/AUDIT_RESULTS.json
-last_green_commit: 2245d8fcc891
+last_green_commit: 3a2092681427
 paused: false
-stop_reason: fresh current-HEAD audit and D3 wave synthesis readiness tests passed
+stop_reason: v1.8 ML automation priority and OpenClaw test prep recorded
 resume_command: python3 scripts/autonomous_controller.py resume
-updated_at: 2026-04-23T22:09:15.576158+00:00
+updated_at: 2026-04-23T22:17:26.321703+00:00
 notes:
   - Fresh current-HEAD audit has 19 passing checks, 0 failing checks, 0 manual/unverifiable checks.
   - Service proof is recorded in autonomous/runtime/runtime-proof.json and live under tmux session pratc-autonomous.
   - disposal_bucket_persistence and deeper_judgment_layers are now machine-checkable audit checks.
   - Gap history preservation verified - fixed/deferred/blocked gaps survive generated GAP_LIST updates.
   - D3 wave synthesis readiness verified - prompts expanded, TODO JSON emitted, wave summary hooks tested.
+  - v1.8 reprioritized toward ML automation and TUI feedback; web UI and multi-repo deferred; OpenClaw GitHub test prep recorded.
