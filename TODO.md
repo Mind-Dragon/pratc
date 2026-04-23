@@ -1,181 +1,129 @@
-# prATC TODO — v1.7 Stabilization + Evidence Enrichment Finish
+# prATC TODO — ML Reliability + Honesty Slice
 
 ## Goal
 
-Finish v1.7 as a bugfix / stabilization release with evidence enrichment as the product-facing payload.
+Make the optional ML path honest about what it did, reduce avoidable repeat cost, and remove the most misleading shortcuts without expanding into speculative roadmap work.
 
-v1.6.1 backlog surgery is done enough to stop carrying it as the active TODO surface. The remaining active work is:
-1. finish the last v1.7 feature blocks in roadmap order
-2. land the queued P1 reliability / API-contract fixes inside v1.7
-3. leave the repo in a state that can be called debugged: green, race-clean, contract-tested, and docs-aligned
+This slice is done when:
+- ML-backed paths clearly report whether they used embeddings or heuristic fallback
+- fallback is visible and test-covered instead of silently collapsing to a model string
+- embedding requests stop recomputing the same texts every run
+- embedding text stops pretending the first 5 files are the whole PR
+- heuristic scoring constants and duplicate-candidate settings are explicit, centralized, and covered by tests
+- the Python `analyze` action no longer ships as an undocumented empty-success stub
 
 ## Source of truth
 
-- `ROADMAP.md` — release sequencing and the canonical v1.7 scope
-- `GUIDELINE.md` — product rules and non-negotiable surfaces
-- `ARCHITECTURE.md` — system shape and contracts
-- `CHANGELOG.md` — shipped facts only
-- `docs/audit-v1.6.1-synthesis.md` — multi-model audit findings
-- `docs/iteration-plan-v1.6.1.md` — precision fix workflow that proved out in v1.6.1
-- `internal/app/` — orchestration and analyzer output assembly
-- `internal/cmd/` — HTTP/API contract surface
-- `internal/github/` — auth, retry, rate-limit behavior
-- `internal/cache/`, `internal/sync/`, `internal/settings/` — persistence and control-plane correctness
-- `internal/report/` — operator packet / analyst packet output
+- `GUIDELINE.md` — honesty, explainability, no silent exclusion
+- `ARCHITECTURE.md` — optional ML bridge, explicit layered behavior
+- `internal/ml/bridge.go` — Go↔Python subprocess contract
+- `internal/app/service.go` — cluster/analyze orchestration and fallback surface
+- `ml-service/src/pratc_ml/cli.py` — action dispatch and analyze behavior
+- `ml-service/src/pratc_ml/clustering.py` — embedding use and cluster response surface
+- `ml-service/src/pratc_ml/duplicates.py` — duplicate candidate generation and embedding path
+- `ml-service/src/pratc_ml/similarity.py` — heuristic scoring
 
-## v1.7 release contract
+## Workstream 1 — Make ML fallback explicit
 
-v1.7 is done when all of these are true:
+- [x] Extend the Go/Python ML response contract so cluster/duplicate/analyze paths can say:
+  - whether embeddings were used
+  - whether heuristic fallback was used
+  - why fallback happened (`backend_unavailable`, `provider_error`, `timeout`, `local_backend`, etc.)
+- [x] Stop treating ML failure as a silent success path in the bridge/service layer; preserve optional behavior, but surface the degradation explicitly in output/logs
+- [x] Add focused tests covering:
+  - bridge unavailable
+  - provider error
+  - local backend intentional heuristic mode
+  - successful embedding path
 
-- [x] Diff analysis emits real subsystem / risky-change evidence, not just metadata-derived hints
-- [x] Dependency impact emits API / shared-library / schema-change signals that can influence review output
-- [x] Test evidence flags production-code changes without corresponding test movement
-- [x] P1 HTTP/API contract issues are fully fixed and covered by focused tests
-- [x] P1 error propagation gaps are fully fixed; failures are surfaced instead of silently dropped
-- [x] P1 GitHub auth / retry issues are partially fixed and documented (`ResolveTokenForLogin`, backoff cap, 401 JSON integrity)
-- [x] P1 settings / sync / cache consistency issues already landed or were revalidated in this pass
-- [x] `go test ./...`, `go test ./... -race`, `go vet ./...`, `go build ./cmd/pratc`, and Python tests are all green
-- [x] `ROADMAP.md`, `TODO.md`, and release docs describe the same reality
+Files:
+- `internal/ml/bridge.go`
+- `internal/app/service.go`
+- `ml-service/src/pratc_ml/cli.py`
+- `ml-service/src/pratc_ml/clustering.py`
+- `ml-service/src/pratc_ml/duplicates.py`
 
-### WS4 closeout (completed)
+## Workstream 2 — Replace the analyze stub with an honest contract
 
-All P1 contract issues resolved:
-- PlanOptions widened from HTTP/CLI through to service layer with filtering
-- Review failure semantics made explicit (Option 2: partial-success with degradation markers)
-- Token source unified across GraphQL and REST with TokenSource interface
+- [x] Remove the current “empty analyzers” stub behavior as an implicit success case
+- [x] Make `action=analyze` return an explicit not-implemented/degraded response until there is real analyzer output, or wire a minimal real analyzer if that is lower risk
+- [x] Add CLI tests locking the response shape so Go can distinguish “no findings” from “feature not implemented”
 
----
+Files:
+- `ml-service/src/pratc_ml/cli.py`
+- `internal/ml/bridge.go`
+- `ml-service/tests/test_cli.py`
 
-## Workstream 1 — Diff Analysis (first active v1.7 feature block)
+## Workstream 3 — Add embedding-result caching
 
-### 1. Current wired path confirmed
-- [x] Verified live diff path: `internal/repo/mirror.go:GetDiffPatch()` → `parseDiffOutput()` → `internal/app/service.go` diff population → `types.PRAnalysisData`
-- [x] Verified only `internal/review/analyzer_security.go` currently uses diff-grounded evidence in production
-- [x] Verified `ReviewResult.AnalyzerFindings` is the lowest-blast-radius evidence surface
-- [x] Verified report gap: analyst/report path does not strongly surface analyzer findings today
-- [x] Detailed plan written: `docs/plans/2026-04-22-pratc-v1.7-ws1-diff-analysis-plan.md`
+- [x] Add a small, local embedding cache keyed by backend + model + normalized embedding text
+- [x] Use the cache in both clustering and duplicate detection
+- [x] Make cache hits/misses observable in tests and logs
+- [x] Keep the first implementation local and simple; no distributed cache, no cross-host coordination
 
-### 2. Subsystem detection from diffs
-- [x] Add contract tests locking the current diff evidence path (`internal/repo/`, `internal/app/`)
-- [x] Add additive subsystem evidence fields in `internal/types/models.go`
-- [x] Implement deterministic path-based subsystem classifier in `internal/review/diff_subsystems.go`
-- [x] Emit subsystem evidence into `ReviewResult.AnalyzerFindings`
-- [x] Add tests proving subsystem detection on realistic PR fixtures
+Files:
+- `ml-service/src/pratc_ml/clustering.py`
+- `ml-service/src/pratc_ml/duplicates.py`
+- supporting ML service module(s) as needed
+- `ml-service/tests/test_clustering.py`
+- `ml-service/tests/test_duplicates.py`
 
-### 3. Risky pattern detection
-- [x] Implement diff-content detectors in `internal/review/diff_patterns.go`
-- [x] Detect auth-sensitive edits (permission checks, token handling, session logic)
-- [x] Detect data-safety edits (SQL, migrations, schema-affecting code)
-- [x] Detect crypto / secrets / credential-touching changes
-- [x] Ensure detections are additive evidence, not silent auto-reclassification
-- [x] Add focused fixtures for each risky pattern class
+## Workstream 4 — Make embedding text less misleading
 
-### 4. Diff evidence surface
-- [x] Wire subsystem / risky-pattern findings through the non-security analyzers
-- [x] Surface findings into analyst/report paths via `internal/report/analyst_sections.go`
-- [x] Add reviewer-facing bounded diff evidence summaries to JSON/PDF outputs
-- [x] Keep output deterministic and bounded for large PRs
-- [x] Reuse analyzer findings inside duplicate-synthesis output if useful
+- [x] Replace the current “title + body + first 5 files” embedding text builder with a bounded full-file summary that accounts for all changed files
+- [x] Keep the text bounded and deterministic for large PRs
+- [x] Add tests proving:
+  - files beyond the fifth affect the embedding text
+  - very large file lists stay bounded
+  - ordering is deterministic
 
----
+Files:
+- `ml-service/src/pratc_ml/clustering.py`
+- `ml-service/src/pratc_ml/duplicates.py`
+- shared helper module if needed
+- `ml-service/tests/test_clustering.py`
+- `ml-service/tests/test_duplicates.py`
 
-## Workstream 2 — Dependency Impact (second active v1.7 feature block)
+## Workstream 5 — Centralize heuristic knobs and LSH settings
 
-### 4. API / shared surface change detection
-- [x] Detect public API signature or contract file changes
-- [x] Detect shared-library or shared-module edits that likely impact downstream consumers
-- [x] Detect migration / config / schema changes requiring coordinated rollout
-- [x] Attach dependency-impact evidence to review results and plan reasoning
+- [x] Move heuristic weights and duplicate-candidate parameters out of scattered literals into one shared constant/config surface
+- [x] Cover at minimum:
+  - title/files/body heuristic weights
+  - MinHash `num_perm`
+  - LSH threshold derivation
+- [x] Add regression tests so these settings are explicit and stable
+- [x] If `num_perm=128` remains the default, document and test it as an intentional choice instead of an unexplained literal
 
-### 5. Verification
-- [x] Add tests showing API surface changes are detected from representative fixtures
-- [x] Add tests showing schema/config changes produce explicit rollout signals
-- [x] Verify false-positive rate stays tolerable on existing fixtures
+Files:
+- `ml-service/src/pratc_ml/similarity.py`
+- `ml-service/src/pratc_ml/duplicates.py`
+- `ml-service/src/pratc_ml/clustering.py`
+- `ml-service/tests/test_duplicates.py`
+- `ml-service/tests/test_clustering.py`
 
----
+## Execution rules
 
-## Workstream 3 — Test Evidence (third active v1.7 feature block)
+- [x] Keep this slice limited to ML reliability/honesty; no speculative roadmap expansion
+- [x] Every contract change gets a focused failing test before code changes
+- [x] Preserve optional-ML behavior; do not make external embeddings mandatory
+- [x] Do not claim semantic analysis where the system is still using heuristics
+- [x] Keep output deterministic and machine-readable
 
-### 6. Test movement detection
-- [x] Detect whether PRs modify production code, test code, or both
-- [x] Emit a `test evidence` signal into review output
-- [x] Flag production-code changes with no matching test changes
-- [x] Distinguish harmless docs/config-only edits from real missing-test cases
+## Out of scope for this slice
 
-### 7. Coverage-impact estimation
-- [x] Estimate whether changed code appears covered vs untouched by tests in the diff
-- [x] Keep the heuristic simple and auditable; no opaque scoring layer
-- [x] Add fixture-backed tests for covered, partially covered, and untested changes
+- [ ] ML feedback loops, operator-training capture, or model retraining
+- [ ] Multi-repo ML behavior
+- [ ] New hosted provider integrations
+- [ ] Replacing heuristic clustering with a new ML architecture
+- [ ] Large-scale planner/review pipeline changes outside the ML bridge contract
+- [ ] Dashboard/UI work
 
----
+## Verification commands
 
-## Workstream 4 — P1 Reliability + API Contract Repair (fourth active v1.7 block)
-
-### 8. Plan API parameter correctness
-- [x] Honor documented params: `exclude_conflicts`, `stale_score_threshold`, `candidate_pool_cap`, `score_min`
-- [x] Make `dry_run` behavior explicit and consistent between CLI and HTTP
-- [x] Add contract tests that fail on ignored params and pass once wired through
-
-### 9. Error propagation and response integrity
-- [x] Stop swallowing review / per-PR errors in the analyze path
-- [x] Preserve structured headers/body on auth and rate-limit failures
-- [x] Ensure HTTP responses remain machine-readable on 401/429/error paths
-- [x] Add handler tests covering these cases
-
-### 10. Settings API correctness
-- [x] Validate `scope` uniformly across GET/POST/DELETE/import/export paths
-- [x] Make settings behavior match `internal/cmd/AGENTS.md` or update docs to match reality
-- [x] Ensure import/export failures are atomic and properly surfaced
-
-### 11. GitHub auth / retry correctness
-- [x] Fix `ResolveTokenForLogin` semantics so named account selection is real
-- [x] Tighten `IsRetryableError` logic to avoid fragile string-only behavior
-- [x] Ensure REST fallback honors token rotation / retry policy
-- [x] Keep transient backoff inside documented caps
-
-### 12. Sync / cache / scheduler consistency
-- [x] Re-audit sync job transitions after the atomic fixes already landed
-- [x] Verify paused/resume state bookkeeping stays consistent through scheduler paths
-- [x] Add regression tests for resume / pause / import edge cases that previously caused drift
-
----
-
-## Workstream 5 — Release hardening
-
-### 13. Contract reconciliation
-- [x] Re-read `ROADMAP.md`, `GUIDELINE.md`, `ARCHITECTURE.md`, `internal/cmd/AGENTS.md`, and active tests after each major merge
-- [x] Remove stale statements that still describe pre-fix behavior
-- [x] Keep `TODO.md` as the active execution ledger only
-
-### 14. Final debug sweep
-- [x] Run full green suite: Go, Python, race, vet, build
-- [x] Repeat a fresh final codebase examination after the last v1.7 fix lands
-- [x] List any residual deferred work explicitly instead of leaving it implicit
-- [x] Write the final release-ready remediation note if anything remains out of scope
-
----
-
-## Execution order
-
-1. Diff Analysis
-2. Dependency Impact
-3. Test Evidence
-4. P1 Reliability + API Contract Repair
-5. Release hardening / final debug sweep
-
-## Rules for execution
-
-- [ ] Every bugfix gets a failing contract test before the code change
-- [ ] Every merge keeps `main` green
-- [ ] Prefer one-purpose commits; no grab-bag edits
-- [ ] Use `go test ./... -race` whenever concurrency, sync, or cache code changes
-- [ ] Do not reopen v1.6.1 scope unless a v1.7 task proves it was not actually complete
-
-## Exit note
-
-v1.7 should finish as the release that makes prATC trustworthy under pressure:
-- richer evidence
-- fewer silent failures
-- tighter HTTP/API behavior
-- cleaner auth/retry handling
-- a codebase that can plausibly be called debugged rather than merely working on happy paths
+```bash
+cd /home/agent/pratc && go test ./internal/ml ./internal/app
+cd /home/agent/pratc/ml-service && UV_CACHE_DIR=/home/agent/pratc/.cache/uv uv run --extra dev pytest -v tests/test_cli.py tests/test_clustering.py tests/test_duplicates.py
+cd /home/agent/pratc && make test-python
+cd /home/agent/pratc && make test-go
+cd /home/agent/pratc && go test -race ./...
+```

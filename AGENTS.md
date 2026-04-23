@@ -158,3 +158,16 @@ Must not have in v0.1: GitHub App/OAuth/webhooks, ML feedback loops, multi-repo 
 - Coordinator → worker → integrator model. One worktree per task.
 - Task completion: code + tests + evidence + merge to main + passing verification.
 - Evidence under `.sisyphus/evidence/task-*-*.txt|md|png`. Status under `.sisyphus/status/`.
+
+### Subagent delegation policy
+- Prefer Hermes-native delegation first. Do not switch to Codex or another external ACP lane unless the user explicitly asks for that lane.
+- Default path: use Hermes subagent logic / inherited Hermes transport first; keep the controller on Hermes and the children on Hermes.
+- Before any parallel wave, run a single trivial Hermes child as a delegation preflight.
+- Treat these as delegation-lane failures, not task failures: child `api_calls: 0`, immediate interrupt, model mismatch, or no repo-side evidence of execution.
+- If Hermes ACP is needed, use Hermes ACP (`hermes acp`) and Hermes command flags; do not substitute a different ACP binary by default.
+- If Hermes ACP is unavailable or unhealthy, fall back in this order:
+  1. sequential Hermes-native child dispatch
+  2. shell-driven Hermes CLI child execution
+  3. pure controller-local execution
+- After a delegation-lane failure, stop the batch, record the RCA, and avoid retrying the same broken lane blindly.
+- Do not update local delegation doctrine after a failure until the operator/user has confirmed the intended Hermes-first policy.

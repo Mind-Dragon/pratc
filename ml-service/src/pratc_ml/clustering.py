@@ -7,12 +7,17 @@ import numpy as np
 from pratc_ml.providers import ProviderConfig
 from pratc_ml.providers.minimax import MinimaxError, embed_texts as minimax_embed_texts
 from pratc_ml.providers.voyage import VoyageError, embed_texts as voyage_embed_texts
-from pratc_ml.similarity import cosine_similarity, heuristic_similarity
+from pratc_ml.similarity import (
+    HEURISTIC_BODY_WEIGHT,
+    HEURISTIC_FILES_WEIGHT,
+    HEURISTIC_TITLE_WEIGHT,
+    embedding_text,
+    get_cached_embeddings,
+)
 
 
 def _embedding_text(pr: dict[str, Any]) -> str:
-    files = " ".join(pr.get("files_changed", [])[:5])
-    return f"{pr.get('title', '')}\n{pr.get('body', '')}\n{files}".strip()
+    return embedding_text(pr)
 
 
 def _cluster_key(pr: dict[str, Any]) -> str:
@@ -51,28 +56,63 @@ def cluster_pull_requests(payload: dict[str, Any]) -> dict[str, Any]:
     config = ProviderConfig.from_env()
     config.validate()  # Raises BackendConfigError if required config is missing
     embeddings: list[list[float]] | None = None
+    degradation = {
+        "embeddings_used": False,
+        "heuristic_fallback": config.backend == "local",
+        "fallback_reason": "local_backend" if config.backend == "local" else None,
+    }
 
     if config.backend == "minimax" and config.minimax_api_key and prs:
         texts = [_embedding_text(pr) for pr in prs]
         try:
-            embeddings = minimax_embed_texts(
-                api_key=config.minimax_api_key,
+            embeddings = get_cached_embeddings(
+                backend=config.backend,
                 model=config.minimax_embed_model,
                 texts=texts,
+                embedder=lambda: minimax_embed_texts(
+                    api_key=config.minimax_api_key,
+                    model=config.minimax_embed_model,
+                    texts=texts,
+                ),
             )
+            degradation = {
+                "embeddings_used": True,
+                "heuristic_fallback": False,
+                "fallback_reason": None,
+            }
         except MinimaxError:
             embeddings = None
+            degradation = {
+                "embeddings_used": False,
+                "heuristic_fallback": True,
+                "fallback_reason": "minimax_error",
+            }
     elif config.backend == "voyage" and config.voyage_api_key and prs:
         texts = [_embedding_text(pr) for pr in prs]
         try:
-            embeddings = voyage_embed_texts(
-                api_key=config.voyage_api_key,
+            embeddings = get_cached_embeddings(
+                backend=config.backend,
                 model=config.voyage_model,
-                base_url=config.voyage_base_url,
                 texts=texts,
+                embedder=lambda: voyage_embed_texts(
+                    api_key=config.voyage_api_key,
+                    model=config.voyage_model,
+                    base_url=config.voyage_base_url,
+                    texts=texts,
+                ),
             )
+            degradation = {
+                "embeddings_used": True,
+                "heuristic_fallback": False,
+                "fallback_reason": None,
+            }
         except VoyageError:
             embeddings = None
+            degradation = {
+                "embeddings_used": False,
+                "heuristic_fallback": True,
+                "fallback_reason": "voyage_error",
+            }
 
     indexed_prs = list(enumerate(prs))
 
@@ -143,17 +183,19 @@ def cluster_pull_requests(payload: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    model = "heuristic-fallback"
+    if degradation["embeddings_used"]:
+        if config.backend == "minimax":
+            model = config.minimax_embed_model
+        elif config.backend == "voyage":
+            model = config.voyage_model
+
     return {
         "action": "cluster",
         "status": "ok",
         "repo": payload.get("repo"),
-        "model": (
-            config.minimax_embed_model
-            if config.backend == "minimax" and config.minimax_api_key
-            else config.voyage_model
-            if config.backend == "voyage" and config.voyage_api_key
-            else "heuristic-fallback"
-        ),
+        "model": model,
+        "degradation": degradation,
         "clusters": clusters,
     }
 
@@ -189,4 +231,9 @@ def _heuristic_similarity_precomputed(
         union = left_files_set | right_files_set
         files_score = len(left_files_set & right_files_set) / len(union) if union else 0.0
 
-    return round((0.6 * title_score) + (0.3 * files_score) + (0.1 * body_score), 4)
+    return round(
+        (HEURISTIC_TITLE_WEIGHT * title_score)
+        + (HEURISTIC_FILES_WEIGHT * files_score)
+        + (HEURISTIC_BODY_WEIGHT * body_score),
+        4,
+    )

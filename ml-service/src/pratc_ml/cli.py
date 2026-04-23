@@ -13,13 +13,13 @@ from pratc_ml.providers import BackendConfigError
 
 
 def run_analyzer(payload: dict[str, Any]) -> dict[str, Any]:
-    """Run optional Python-backed analyzers on PRs.
-
-    Python analyzers are optional enhancements - Go remains the source of truth
-    and orchestrator for all PR decisions. This function returns empty results
-    as the actual analyzer implementations are add-ons.
-    """
-    return {"analyzers": []}
+    """Return explicit not-implemented status for optional Python analyzers."""
+    return {
+        "error": "not_implemented",
+        "status": "not_implemented",
+        "action": payload.get("action", "analyze"),
+        "message": "Python analyze action is not implemented",
+    }
 
 
 def _handle_action(payload: dict[str, Any]) -> dict[str, Any]:

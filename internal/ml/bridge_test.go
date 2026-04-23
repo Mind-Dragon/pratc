@@ -1,12 +1,28 @@
 package ml
 
 import (
+	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/types"
 )
+
+func writeExecutable(t *testing.T, dir, name, content string) string {
+	t.Helper()
+
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatalf("write executable %s: %v", path, err)
+	}
+
+	return path
+}
 
 func TestNewBridge(t *testing.T) {
 	tests := []struct {
@@ -577,4 +593,125 @@ func TestAnalyzerResultJSONParsing(t *testing.T) {
 			t.Errorf("expected 2 analyzers, got %d", len(result.Analyzers))
 		}
 	})
+}
+
+func TestAnalyzeRejectsEmptyAnalyzerStub(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	python := writeExecutable(t, workDir, "fake-python.sh", `#!/bin/sh
+printf '{"analyzers": []}'
+`)
+
+	b := NewBridge(Config{
+		Python:  python,
+		WorkDir: workDir,
+		Timeout: time.Second,
+	})
+
+	findings, err := b.Analyze(context.Background(), "owner/repo", []types.PR{{Number: 1, Title: "stub"}}, "reliability", "req-empty-stub")
+	if err == nil {
+		t.Fatalf("expected analyze to reject empty analyzer stub, got findings %#v", findings)
+	}
+}
+
+func TestAnalyzeSurfacesStructuredNotImplementedPayload(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	python := writeExecutable(t, workDir, "fake-python.sh", `#!/bin/sh
+printf '{"error":"not_implemented","status":"not_implemented","message":"Python analyze action is not implemented"}'
+exit 1
+`)
+
+	b := NewBridge(Config{
+		Python:  python,
+		WorkDir: workDir,
+		Timeout: time.Second,
+	})
+
+	_, err := b.Analyze(context.Background(), "owner/repo", []types.PR{{Number: 1, Title: "stub"}}, "reliability", "req-not-implemented")
+	if err == nil {
+		t.Fatal("expected analyze to surface not_implemented payload")
+	}
+	if !strings.Contains(err.Error(), "not_implemented") {
+		t.Fatalf("error = %q, want propagated not_implemented status", err)
+	}
+	if !strings.Contains(err.Error(), "Python analyze action is not implemented") {
+		t.Fatalf("error = %q, want propagated Python analyze message", err)
+	}
+}
+
+func TestAnalyzeSurfacesStructuredDegradationPayload(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	python := writeExecutable(t, workDir, "fake-python.sh", `#!/bin/sh
+printf '{"status":"degraded","degradation":{"fallback_reason":"local_backend","heuristic_fallback":true},"analyzers":[]}'
+`)
+
+	b := NewBridge(Config{
+		Python:  python,
+		WorkDir: workDir,
+		Timeout: time.Second,
+	})
+
+	_, err := b.Analyze(context.Background(), "owner/repo", []types.PR{{Number: 1, Title: "stub"}}, "reliability", "req-degraded")
+	if err == nil {
+		t.Fatal("expected analyze to reject degraded analyzer payload")
+	}
+	if !strings.Contains(err.Error(), "degraded") {
+		t.Fatalf("error = %q, want degraded status to be surfaced", err)
+	}
+	if !strings.Contains(err.Error(), "local_backend") {
+		t.Fatalf("error = %q, want degradation reason to be surfaced", err)
+	}
+}
+
+func TestClusterContractIncludesDegradationMetadataReturn(t *testing.T) {
+	t.Parallel()
+
+	clusterMethod := reflect.TypeOf((*Bridge).Cluster)
+	if clusterMethod.NumOut() != 4 {
+		t.Fatalf("Bridge.Cluster return count = %d, want 4 so degradation metadata can be surfaced", clusterMethod.NumOut())
+	}
+
+	degradationType := clusterMethod.Out(2)
+	if degradationType.Kind() != reflect.Struct {
+		t.Fatalf("Bridge.Cluster degradation return type = %v, want struct metadata", degradationType)
+	}
+	if _, ok := degradationType.FieldByName("FallbackReason"); !ok {
+		t.Fatal("Bridge.Cluster degradation metadata missing FallbackReason")
+	}
+	field, ok := degradationType.FieldByName("HeuristicFallback")
+	if !ok {
+		t.Fatal("Bridge.Cluster degradation metadata missing HeuristicFallback")
+	}
+	if field.Type.Kind() != reflect.Bool {
+		t.Fatalf("Bridge.Cluster HeuristicFallback type = %v, want bool", field.Type)
+	}
+}
+
+func TestDuplicatesContractIncludesDegradationMetadataReturn(t *testing.T) {
+	t.Parallel()
+
+	duplicatesMethod := reflect.TypeOf((*Bridge).Duplicates)
+	if duplicatesMethod.NumOut() != 4 {
+		t.Fatalf("Bridge.Duplicates return count = %d, want 4 so degradation metadata can be surfaced", duplicatesMethod.NumOut())
+	}
+
+	degradationType := duplicatesMethod.Out(2)
+	if degradationType.Kind() != reflect.Struct {
+		t.Fatalf("Bridge.Duplicates degradation return type = %v, want struct metadata", degradationType)
+	}
+	if _, ok := degradationType.FieldByName("FallbackReason"); !ok {
+		t.Fatal("Bridge.Duplicates degradation metadata missing FallbackReason")
+	}
+	field, ok := degradationType.FieldByName("HeuristicFallback")
+	if !ok {
+		t.Fatal("Bridge.Duplicates degradation metadata missing HeuristicFallback")
+	}
+	if field.Type.Kind() != reflect.Bool {
+		t.Fatalf("Bridge.Duplicates HeuristicFallback type = %v, want bool", field.Type)
+	}
 }

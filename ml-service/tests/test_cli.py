@@ -41,3 +41,11 @@ def test_invalid_json_returns_structured_error() -> None:
     assert exit_code == 1
     assert response["error"] == "invalid json"
 
+
+@pytest.mark.unit
+def test_analyze_action_returns_explicit_not_implemented_error() -> None:
+    exit_code, response = invoke({"action": "analyze", "repo": "owner/repo", "pullRequests": []})
+
+    assert exit_code == 1
+    assert response["error"] == "not_implemented"
+    assert response["status"] == "not_implemented"

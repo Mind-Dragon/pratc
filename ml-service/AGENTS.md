@@ -39,13 +39,13 @@ Thresholds: `>0.90` = duplicate, `0.70-0.90` = overlapping.
 
 ## Embedding Text Format
 
-Shared by `clustering.py` and `duplicates.py`:
+Shared by `clustering.py` and `duplicates.py` via `similarity.embedding_text()`:
 
 ```
-"{title}\n{body}\n{first 5 files}"
+"{title}\n{body}\n{bounded deterministic file summary}"
 ```
 
-File paths truncated to first 5 to limit token usage.
+File paths are sorted before embedding text generation. Up to `EMBEDDING_TEXT_MAX_FILES` paths are included directly; if additional files exist, the text appends `... and N more files (M files total, digest HASH)` so omitted files still affect the representation. Very large embedding text is capped by `EMBEDDING_TEXT_MAX_CHARS` with a digest suffix.
 
 ## Fallback Chain
 

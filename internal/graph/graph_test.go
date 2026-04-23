@@ -91,6 +91,30 @@ func TestBuildIncludesTelemetry(t *testing.T) {
 	}
 }
 
+func TestBuildPreservesMergeabilitySignalWithoutSharedFiles(t *testing.T) {
+	prs := []types.PR{
+		fixturePR(600, "main", "feature-a", nil, "conflicting"),
+		fixturePR(601, "main", "feature-b", nil, "conflicting"),
+	}
+
+	graph := Build("acme/repo", prs)
+
+	if !hasEdge(graph.Edges, 600, 601, EdgeTypeConflict) {
+		t.Fatalf("Build() missing mergeability-only conflict edge 600 -> 601: %#v", graph.Edges)
+	}
+
+	for _, edge := range graph.Edges {
+		if edge.FromPR == 600 && edge.ToPR == 601 && edge.EdgeType == EdgeTypeConflict {
+			if edge.Reason != "shared files: mergeability_signal" {
+				t.Fatalf("conflict reason = %q, want mergeability_signal sentinel", edge.Reason)
+			}
+			return
+		}
+	}
+
+	t.Fatal("expected to find mergeability_signal conflict edge")
+}
+
 func TestDOTIncludesGraphDeclarationAndEdges(t *testing.T) {
 	prs := []types.PR{
 		fixturePR(400, "main", "feature-a", []string{"pkg/a.go"}, "mergeable"),

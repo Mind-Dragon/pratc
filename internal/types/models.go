@@ -30,9 +30,9 @@ type PR struct {
 	// Review fields: populated by the decision engine when IncludeReview is true.
 	// These fields are derived from ReviewResult for each PR.
 	Confidence     float64         `json:"confidence,omitempty"`
-	Reasons       []string        `json:"reasons,omitempty"`
-	SubstanceScore int            `json:"substance_score,omitempty"`
-	TemporalBucket string         `json:"temporal_bucket,omitempty"`
+	Reasons        []string        `json:"reasons,omitempty"`
+	SubstanceScore int             `json:"substance_score,omitempty"`
+	TemporalBucket string          `json:"temporal_bucket,omitempty"`
 	DecisionLayers []DecisionLayer `json:"decision_layers,omitempty"`
 	Category       ReviewCategory  `json:"category,omitempty"`
 	PriorityTier   PriorityTier    `json:"priority_tier,omitempty"`
@@ -57,6 +57,12 @@ type DuplicateGroup struct {
 	DuplicatePRNums   []int   `json:"duplicate_pr_numbers"`
 	Similarity        float64 `json:"similarity"`
 	Reason            string  `json:"reason"`
+}
+
+type DegradationMetadata struct {
+	EmbeddingsUsed    bool   `json:"embeddings_used,omitempty"`
+	FallbackReason    string `json:"fallback_reason,omitempty"`
+	HeuristicFallback bool   `json:"heuristic_fallback,omitempty"`
 }
 
 // DuplicateSynthesisCandidate represents one PR within a duplicate/near-duplicate group
@@ -274,24 +280,26 @@ type SemanticAnalysisRequest struct {
 }
 
 type ClusterResponse struct {
-	Repo                    string      `json:"repo"`
-	GeneratedAt             string      `json:"generatedAt"`
-	AnalysisTruncated       bool        `json:"analysis_truncated,omitempty"`
-	TruncationReason        string      `json:"truncation_reason,omitempty"`
-	MaxPRsApplied           int         `json:"max_prs_applied,omitempty"`
-	PRWindow                *PRWindow   `json:"pr_window,omitempty"`
-	PrecisionMode           string      `json:"precision_mode,omitempty"`
-	DeepCandidateSubsetSize int         `json:"deep_candidate_subset_size,omitempty"`
-	Model                   string      `json:"model"`
-	Thresholds              Thresholds  `json:"thresholds"`
-	Clusters                []PRCluster `json:"clusters"`
+	Repo                    string               `json:"repo"`
+	GeneratedAt             string               `json:"generatedAt"`
+	AnalysisTruncated       bool                 `json:"analysis_truncated,omitempty"`
+	TruncationReason        string               `json:"truncation_reason,omitempty"`
+	MaxPRsApplied           int                  `json:"max_prs_applied,omitempty"`
+	PRWindow                *PRWindow            `json:"pr_window,omitempty"`
+	PrecisionMode           string               `json:"precision_mode,omitempty"`
+	DeepCandidateSubsetSize int                  `json:"deep_candidate_subset_size,omitempty"`
+	Model                   string               `json:"model"`
+	Thresholds              Thresholds           `json:"thresholds"`
+	Degradation             *DegradationMetadata `json:"degradation,omitempty"`
+	Clusters                []PRCluster          `json:"clusters"`
 }
 
 type DuplicateResponse struct {
-	Repo        string           `json:"repo"`
-	GeneratedAt string           `json:"generatedAt"`
-	Duplicates  []DuplicateGroup `json:"duplicates"`
-	Overlaps    []DuplicateGroup `json:"overlaps"`
+	Repo        string               `json:"repo"`
+	GeneratedAt string               `json:"generatedAt"`
+	Degradation *DegradationMetadata `json:"degradation,omitempty"`
+	Duplicates  []DuplicateGroup     `json:"duplicates"`
+	Overlaps    []DuplicateGroup     `json:"overlaps"`
 }
 
 type SemanticConflictResponse struct {
@@ -322,24 +330,27 @@ type OperationTelemetry struct {
 }
 
 type AnalysisResponse struct {
-	Repo                    string            `json:"repo"`
-	GeneratedAt             string            `json:"generatedAt"`
-	AnalysisTruncated       bool              `json:"analysis_truncated,omitempty"`
-	TruncationReason        string            `json:"truncation_reason,omitempty"`
-	MaxPRsApplied           int               `json:"max_prs_applied,omitempty"`
-	PRWindow                *PRWindow         `json:"pr_window,omitempty"`
-	PrecisionMode           string            `json:"precision_mode,omitempty"`
-	DeepCandidateSubsetSize int               `json:"deep_candidate_subset_size,omitempty"`
-	Counts                  Counts            `json:"counts"`
-	PRs                     []PR              `json:"prs"`
-	Clusters                []PRCluster       `json:"clusters"`
-	Duplicates              []DuplicateGroup  `json:"duplicates"`
-	Overlaps                []DuplicateGroup  `json:"overlaps"`
-	Conflicts               []ConflictPair    `json:"conflicts"`
-	StalenessSignals        []StalenessReport `json:"stalenessSignals"`
+	Repo                    string               `json:"repo"`
+	GeneratedAt             string               `json:"generatedAt"`
+	AnalysisTruncated       bool                 `json:"analysis_truncated,omitempty"`
+	TruncationReason        string               `json:"truncation_reason,omitempty"`
+	MaxPRsApplied           int                  `json:"max_prs_applied,omitempty"`
+	PRWindow                *PRWindow            `json:"pr_window,omitempty"`
+	PrecisionMode           string               `json:"precision_mode,omitempty"`
+	DeepCandidateSubsetSize int                  `json:"deep_candidate_subset_size,omitempty"`
+	Counts                  Counts               `json:"counts"`
+	PRs                     []PR                 `json:"prs"`
+	Clusters                []PRCluster          `json:"clusters"`
+	ClusterModel            string               `json:"cluster_model,omitempty"`
+	ClusterDegradation      *DegradationMetadata `json:"cluster_degradation,omitempty"`
+	DuplicateDegradation    *DegradationMetadata `json:"duplicate_degradation,omitempty"`
+	Duplicates              []DuplicateGroup     `json:"duplicates"`
+	Overlaps                []DuplicateGroup     `json:"overlaps"`
+	Conflicts               []ConflictPair       `json:"conflicts"`
+	StalenessSignals        []StalenessReport    `json:"stalenessSignals"`
 	// GarbagePRs contains PRs classified as junk by the outer peel (Layer 1).
 	// These PRs should be closed and do not enter the duplicate, conflict, or review pipeline.
-	GarbagePRs []GarbagePR `json:"garbagePRs,omitempty"`
+	GarbagePRs []GarbagePR         `json:"garbagePRs,omitempty"`
 	Telemetry  *OperationTelemetry `json:"telemetry,omitempty"`
 	// ReviewPayload contains agentic review results for the analysis snapshot.
 	// v1.3 pipelines populate this field by default so review buckets are first-class

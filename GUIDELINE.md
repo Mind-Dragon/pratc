@@ -126,6 +126,20 @@ The system uses confidence scores to express how much it trusts its own judgment
 - Low-confidence bucket placements must be flagged for human review.
 - The system must never present a low-confidence judgment as certainty.
 
+## ML honesty and fallback behavior
+
+ML-backed judgments must describe what actually happened, not the best-case path the system hoped to use.
+
+- If embeddings, provider calls, or ML subprocess execution fail, the system must say so and must name the fallback path that was used.
+- No silent degradation: a heuristic or rules-based fallback may keep the pipeline running, but it must not be presented as if the embedding-backed path succeeded.
+- Any output that relies on ML-style similarity or clustering must be attributable to the backend and mode that produced it: at minimum the backend class, the model when one was actually used, and whether the result came from embeddings, local heuristics, or a non-ML Go path.
+- `heuristic-fallback` is a distinct mode, not a cosmetic alias for a real embedding model.
+- Local heuristic similarity, cache-first duplicate detection, and embedding-backed similarity are allowed to coexist, but they must not be described as equivalent evidence.
+- If the system falls back from one mode to another, the reason for that downgrade should be visible in logs, telemetry, or the reason trail; operators should not have to infer it from missing fields.
+- The Go orchestrator remains the source of truth for pipeline decisions. Optional Python analyzers and embedding providers may enrich results, but they do not justify stronger claims than the evidence supports.
+- The system must not claim online learning, automatic retraining, feedback-loop improvement, or operator-decision training unless that behavior actually exists in the shipped runtime path and is documented in architecture and contracts.
+- Planned ML feedback work belongs in roadmap or design documents until it is implemented; reports and user-facing outputs must describe current behavior, not intended future behavior.
+
 ## Non-negotiables
 - No auto-merge.
 - No silent exclusion.

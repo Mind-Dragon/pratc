@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/cache"
 	"github.com/jeffersonnunn/pratc/internal/formula"
 	"github.com/jeffersonnunn/pratc/internal/logger"
+	"github.com/jeffersonnunn/pratc/internal/ml"
 	"github.com/jeffersonnunn/pratc/internal/testutil"
 	"github.com/jeffersonnunn/pratc/internal/types"
 )
@@ -98,6 +100,88 @@ func TestClusterReturnsThresholdsAndClusters(t *testing.T) {
 	}
 	if len(response.Clusters) == 0 {
 		t.Fatal("expected non-empty clusters")
+	}
+}
+
+func TestClusterDoesNotAdvertiseConfiguredVoyageModelWhenBridgeUnavailable(t *testing.T) {
+	manifest, err := testutil.LoadManifest()
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	t.Setenv("VOYAGE_API_KEY", "test-key")
+	t.Setenv("VOYAGE_MODEL", "voyage-honesty-check")
+
+	service := NewService(Config{Now: fixedNow})
+	service.mlBridge = &ml.Bridge{}
+
+	response, err := service.Cluster(context.Background(), manifest.Repo)
+	if err != nil {
+		t.Fatalf("cluster: %v", err)
+	}
+
+	if response.Model != "heuristic-fallback" {
+		t.Fatalf("expected explicit heuristic fallback model when ML bridge is unavailable, got %q", response.Model)
+	}
+}
+
+func TestClusterSurfacesDegradationMetadataFromLocalBackend(t *testing.T) {
+	t.Parallel()
+
+	manifest, err := testutil.LoadManifest()
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	bridge := newLocalBackendMLBridge(t)
+	service := NewService(Config{Now: fixedNow})
+	service.mlBridge = bridge
+
+	response, err := service.Cluster(context.Background(), manifest.Repo)
+	if err != nil {
+		t.Fatalf("cluster: %v", err)
+	}
+
+	payload := marshalJSONMap(t, response)
+	degradation, ok := payload["degradation"].(map[string]any)
+	if !ok {
+		t.Fatalf("cluster response missing degradation metadata: %v", payload)
+	}
+	if degradation["fallback_reason"] != "local_backend" {
+		t.Fatalf("cluster degradation fallback_reason = %v, want local_backend", degradation["fallback_reason"])
+	}
+	if degradation["heuristic_fallback"] != true {
+		t.Fatalf("cluster degradation heuristic_fallback = %v, want true", degradation["heuristic_fallback"])
+	}
+}
+
+func TestAnalyzeSurfacesDuplicateDegradationMetadataFromLocalBackend(t *testing.T) {
+	t.Parallel()
+
+	manifest, err := testutil.LoadManifest()
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	bridge := newLocalBackendMLBridge(t)
+	service := NewService(Config{Now: fixedNow})
+	service.mlBridge = bridge
+
+	response, err := service.Analyze(context.Background(), manifest.Repo)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+
+	payload := marshalJSONMap(t, response)
+	degradation, ok := payload["duplicate_degradation"].(map[string]any)
+	if !ok {
+		t.Fatalf("analysis response missing duplicate degradation metadata: %v", payload)
+	}
+	if degradation["fallback_reason"] != "local_backend" {
+		t.Fatalf("duplicate degradation fallback_reason = %v, want local_backend", degradation["fallback_reason"])
+	}
+	if degradation["heuristic_fallback"] != true {
+		t.Fatalf("duplicate degradation heuristic_fallback = %v, want true", degradation["heuristic_fallback"])
 	}
 }
 
@@ -654,6 +738,51 @@ func TestLiveAnalysisProgressReporterEmitsMilestones(t *testing.T) {
 	if strings.Contains(output, `"processed":99`) {
 		t.Fatalf("unexpected non-milestone progress entry: %q", output)
 	}
+}
+
+func marshalJSONMap(t *testing.T, value any) map[string]any {
+	t.Helper()
+
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal json: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("unmarshal json: %v", err)
+	}
+	return payload
+}
+
+func newLocalBackendMLBridge(t *testing.T) *ml.Bridge {
+	t.Helper()
+
+	workDir := t.TempDir()
+	python := filepath.Join(workDir, "fake-python.sh")
+	script := `#!/bin/sh
+payload=$(cat)
+case "$payload" in
+  *'"action":"cluster"'*)
+    printf '%s' '{"model":"heuristic-fallback","degradation":{"fallback_reason":"local_backend","heuristic_fallback":true},"clusters":[{"cluster_id":"local-backend-cluster","cluster_label":"Local backend cluster","summary":"heuristic fallback cluster","pr_ids":[1],"health_status":"healthy","average_similarity":1.0,"sample_titles":["Local backend cluster"]}]}'
+    ;;
+  *'"action":"duplicates"'*)
+    printf '%s' '{"degradation":{"fallback_reason":"local_backend","heuristic_fallback":true},"duplicates":[{"canonical_pr_number":1,"duplicate_pr_numbers":[2],"similarity":0.99,"reason":"heuristic local backend duplicate"}],"overlaps":[]}'
+    ;;
+  *)
+    printf '%s' '{"analyzers":[]}'
+    ;;
+esac
+`
+	if err := os.WriteFile(python, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake python: %v", err)
+	}
+
+	return ml.NewBridge(ml.Config{
+		Python:  python,
+		WorkDir: workDir,
+		Timeout: time.Second,
+	})
 }
 
 func fixedNow() time.Time {

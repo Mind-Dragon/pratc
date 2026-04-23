@@ -4,15 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
 const defaultTimeout = 120 * time.Second
+
+var errEmptyAnalyzerStub = errors.New("ml bridge: empty analyzer stub")
 
 // Bridge invokes the Python ML service via JSON-over-STDIN/STDOUT subprocess.
 type Bridge struct {
@@ -55,15 +59,15 @@ func (b *Bridge) Available() bool {
 
 // Cluster delegates clustering to the Python ML service.
 // Returns nil clusters if the subprocess is unavailable or fails.
-func (b *Bridge) Cluster(ctx context.Context, repo string, prs []types.PR, requestID string) ([]types.PRCluster, string, error) {
+func (b *Bridge) Cluster(ctx context.Context, repo string, prs []types.PR, requestID string) ([]types.PRCluster, string, types.DegradationMetadata, error) {
 	if !b.Available() {
-		return nil, "", nil
+		return nil, "", types.DegradationMetadata{}, nil
 	}
 
 	payload := buildClusterPayload(repo, prs, requestID)
 	var result clusterResult
 	if err := b.invoke(ctx, payload, &result); err != nil {
-		return nil, "", err
+		return nil, "", types.DegradationMetadata{}, err
 	}
 
 	clusters := make([]types.PRCluster, 0, len(result.Clusters))
@@ -84,20 +88,20 @@ func (b *Bridge) Cluster(ctx context.Context, repo string, prs []types.PR, reque
 		model = "unknown"
 	}
 
-	return clusters, model, nil
+	return clusters, model, result.Degradation, nil
 }
 
 // Duplicates delegates duplicate detection to the Python ML service.
 // Returns nil groups if the subprocess is unavailable or fails.
-func (b *Bridge) Duplicates(ctx context.Context, repo string, prs []types.PR, duplicateThreshold, overlapThreshold float64, requestID string) ([]types.DuplicateGroup, []types.DuplicateGroup, error) {
+func (b *Bridge) Duplicates(ctx context.Context, repo string, prs []types.PR, duplicateThreshold, overlapThreshold float64, requestID string) ([]types.DuplicateGroup, []types.DuplicateGroup, types.DegradationMetadata, error) {
 	if !b.Available() {
-		return nil, nil, nil
+		return nil, nil, types.DegradationMetadata{}, nil
 	}
 
 	payload := buildDuplicatePayload(repo, prs, duplicateThreshold, overlapThreshold, requestID)
 	var result duplicateResult
 	if err := b.invoke(ctx, payload, &result); err != nil {
-		return nil, nil, err
+		return nil, nil, types.DegradationMetadata{}, err
 	}
 
 	dups := make([]types.DuplicateGroup, 0, len(result.Duplicates))
@@ -120,7 +124,7 @@ func (b *Bridge) Duplicates(ctx context.Context, repo string, prs []types.PR, du
 		})
 	}
 
-	return dups, overlaps, nil
+	return dups, overlaps, result.Degradation, nil
 }
 
 // Analyze delegates PR analysis to the Python ML service for optional enhanced insights.
@@ -136,6 +140,15 @@ func (b *Bridge) Analyze(ctx context.Context, repo string, prs []types.PR, analy
 	var result AnalyzerResult
 	if err := b.invoke(ctx, payload, &result); err != nil {
 		return nil, err
+	}
+	if structuredErr := result.structuredError(); structuredErr != nil {
+		return nil, structuredErr
+	}
+	if strings.EqualFold(result.Status, "degraded") {
+		return nil, fmt.Errorf("ml bridge: degraded: %s", result.degradationSummary())
+	}
+	if len(result.Analyzers) == 0 {
+		return nil, errEmptyAnalyzerStub
 	}
 
 	findings := make([]types.AnalyzerFinding, 0, len(result.Analyzers))
@@ -168,6 +181,9 @@ func (b *Bridge) invoke(ctx context.Context, payload map[string]any, dest any) e
 
 	output, err := cmd.Output()
 	if err != nil {
+		if structuredErr := decodeStructuredMLError(output, err); structuredErr != nil {
+			return structuredErr
+		}
 		return fmt.Errorf("ml bridge: subprocess: %w", err)
 	}
 
@@ -278,8 +294,9 @@ func findMLServiceDir() string {
 // JSON response shapes from the Python ML service.
 
 type clusterResult struct {
-	Clusters []clusterGroup `json:"clusters"`
-	Model    string         `json:"model"`
+	Clusters    []clusterGroup            `json:"clusters"`
+	Model       string                    `json:"model"`
+	Degradation types.DegradationMetadata `json:"degradation"`
 }
 
 type clusterGroup struct {
@@ -293,8 +310,9 @@ type clusterGroup struct {
 }
 
 type duplicateResult struct {
-	Duplicates []duplicateGroup `json:"duplicates"`
-	Overlaps   []duplicateGroup `json:"overlaps"`
+	Duplicates  []duplicateGroup          `json:"duplicates"`
+	Overlaps    []duplicateGroup          `json:"overlaps"`
+	Degradation types.DegradationMetadata `json:"degradation"`
 }
 
 type duplicateGroup struct {
@@ -317,7 +335,79 @@ type AnalyzerRequest struct {
 
 // AnalyzerResult is the JSON response shape from the Python ML service analyzer action.
 type AnalyzerResult struct {
-	Analyzers []AnalyzerGroup `json:"analyzers"`
+	Status      string                     `json:"status"`
+	Error       string                     `json:"error"`
+	Message     string                     `json:"message"`
+	Degradation *types.DegradationMetadata `json:"degradation"`
+	Analyzers   []AnalyzerGroup            `json:"analyzers"`
+}
+
+type AnalyzerDegradation = types.DegradationMetadata
+
+func (r AnalyzerResult) structuredError() error {
+	status := strings.TrimSpace(r.Status)
+	code := strings.TrimSpace(r.Error)
+	message := strings.TrimSpace(r.Message)
+	if status == "" && code == "" && message == "" {
+		return nil
+	}
+	if strings.EqualFold(status, "degraded") && code == "" && message == "" {
+		return nil
+	}
+
+	parts := make([]string, 0, 2)
+	if code != "" {
+		parts = append(parts, code)
+	} else if status != "" {
+		parts = append(parts, status)
+	}
+	if message != "" {
+		parts = append(parts, message)
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	return fmt.Errorf("ml bridge: %s", strings.Join(parts, ": "))
+}
+
+func (r AnalyzerResult) degradationSummary() string {
+	if r.Degradation == nil {
+		return "analyzer payload marked degraded"
+	}
+	parts := make([]string, 0, 2)
+	if reason := strings.TrimSpace(r.Degradation.FallbackReason); reason != "" {
+		parts = append(parts, reason)
+	}
+	if r.Degradation.HeuristicFallback {
+		parts = append(parts, "heuristic_fallback=true")
+	}
+	if len(parts) == 0 {
+		return "analyzer payload marked degraded"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func decodeStructuredMLError(stdout []byte, invokeErr error) error {
+	candidates := make([][]byte, 0, 2)
+	if trimmed := bytes.TrimSpace(stdout); len(trimmed) > 0 {
+		candidates = append(candidates, trimmed)
+	}
+	var exitErr *exec.ExitError
+	if errors.As(invokeErr, &exitErr) {
+		if trimmed := bytes.TrimSpace(exitErr.Stderr); len(trimmed) > 0 {
+			candidates = append(candidates, trimmed)
+		}
+	}
+	for _, candidate := range candidates {
+		var structured AnalyzerResult
+		if err := json.Unmarshal(candidate, &structured); err != nil {
+			continue
+		}
+		if structuredErr := structured.structuredError(); structuredErr != nil {
+			return structuredErr
+		}
+	}
+	return nil
 }
 
 // AnalyzerGroup contains findings from a single analyzer.

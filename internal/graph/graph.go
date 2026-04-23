@@ -283,16 +283,23 @@ func conflictFiles(left, right types.PR) []string {
 	}
 
 	shared := intersectFiles(left.FilesChanged, right.FilesChanged)
-	if len(shared) == 0 {
-		// Only flag mergeability conflict when BOTH PRs are in conflicting state
-		// This materially reduces conflict noise for same-branch PRs where only one is marked conflicting
-		if left.Mergeable == "conflicting" && right.Mergeable == "conflicting" {
-			return []string{"mergeability_signal"}
-		}
+
+	// Filter noise from the shared set at graph creation time.
+	// This prevents noise-only pairs from ever creating conflict edges,
+	// and avoids the round-trip of encoding files into Reason and parsing them back.
+	signalFiles := types.FilterNoiseFiles(shared)
+
+	// mergeability_signal is a special case: both PRs are marked conflicting by GitHub
+	// even with no shared files. Preserve it regardless of noise filtering.
+	if left.Mergeable == "conflicting" && right.Mergeable == "conflicting" && len(signalFiles) == 0 {
+		return []string{"mergeability_signal"}
+	}
+
+	if len(signalFiles) == 0 {
 		return nil
 	}
 
-	return shared
+	return signalFiles
 }
 
 func intersectFiles(left, right []string) []string {

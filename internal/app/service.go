@@ -280,6 +280,13 @@ func resolveDynamicTargetConfig(cfg DynamicTargetConfig) DynamicTargetConfig {
 	return cfg
 }
 
+func fallbackDegradation(reason string) types.DegradationMetadata {
+	return types.DegradationMetadata{
+		FallbackReason:    reason,
+		HeuristicFallback: true,
+	}
+}
+
 // ComputeDynamicTarget computes the target based on the viable pool size.
 // When Enabled is true, target = max(MinTarget, min(MaxTarget, Ratio*len(pool))).
 // When Enabled is false, returns the fallback value unchanged.
@@ -471,14 +478,27 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 
 	clusterStart := time.Now()
 	clusters := planner.New().BuildClusters(prs)
+	clusterModel := ""
+	clusterDegradation := types.DegradationMetadata{}
 	telemetry.StageLatenciesMS["clusters_ms"] = int(time.Since(clusterStart).Milliseconds())
 	s.emit("clusters", len(clusters), len(prs))
 
 	// Attempt ML-backed clustering via Voyage if configured.
 	// Skip ML bridge in force-cache mode to avoid subprocess overhead.
-	if !s.allowForceCache && s.mlBridge != nil && s.mlBridge.Available() {
-		if mlClusters, _, err := s.mlBridge.Cluster(ctx, repoName, prs, logger.RequestIDFromContext(ctx)); err == nil && len(mlClusters) > 0 {
-			clusters = mlClusters
+	if !s.allowForceCache && s.mlBridge != nil {
+		clusterModel = "heuristic-fallback"
+		if !s.mlBridge.Available() {
+			clusterDegradation = fallbackDegradation("backend_unavailable")
+		} else if mlClusters, mlModel, mlDegradation, err := s.mlBridge.Cluster(ctx, repoName, prs, logger.RequestIDFromContext(ctx)); err == nil {
+			if len(mlClusters) > 0 {
+				clusters = mlClusters
+			}
+			if mlModel != "" {
+				clusterModel = mlModel
+			}
+			clusterDegradation = mlDegradation
+		} else {
+			clusterDegradation = fallbackDegradation("subprocess_error")
 		}
 	}
 
@@ -490,6 +510,7 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 
 	var duplicates []types.DuplicateGroup
 	var overlaps []types.DuplicateGroup
+	duplicateDegradation := types.DegradationMetadata{}
 	dupCacheHit := false
 
 	// Duplicate detection: try cache first
@@ -532,14 +553,19 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 
 		// Attempt ML-backed duplicate detection via Voyage if configured.
 		// Skip ML bridge in force-cache mode to avoid subprocess overhead.
-		if !s.allowForceCache && s.mlBridge != nil && s.mlBridge.Available() {
-			if mlDups, mlOverlaps, err := s.mlBridge.Duplicates(ctx, repoName, prs, types.DuplicateThreshold, types.OverlapThreshold, logger.RequestIDFromContext(ctx)); err == nil {
+		if !s.allowForceCache && s.mlBridge != nil {
+			if !s.mlBridge.Available() {
+				duplicateDegradation = fallbackDegradation("backend_unavailable")
+			} else if mlDups, mlOverlaps, mlDegradation, err := s.mlBridge.Duplicates(ctx, repoName, prs, types.DuplicateThreshold, types.OverlapThreshold, logger.RequestIDFromContext(ctx)); err == nil {
 				if len(mlDups) > 0 {
 					duplicates = mlDups
 				}
 				if len(mlOverlaps) > 0 {
 					overlaps = mlOverlaps
 				}
+				duplicateDegradation = mlDegradation
+			} else {
+				duplicateDegradation = fallbackDegradation("subprocess_error")
 			}
 		}
 
@@ -622,8 +648,23 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 			StalePRs:        len(staleness),
 			GarbagePRs:      len(garbage),
 		},
-		PRs:              prs,
-		Clusters:         clusters,
+		PRs:          prs,
+		Clusters:     clusters,
+		ClusterModel: clusterModel,
+		ClusterDegradation: func() *types.DegradationMetadata {
+			if clusterDegradation == (types.DegradationMetadata{}) {
+				return nil
+			}
+			degradation := clusterDegradation
+			return &degradation
+		}(),
+		DuplicateDegradation: func() *types.DegradationMetadata {
+			if duplicateDegradation == (types.DegradationMetadata{}) {
+				return nil
+			}
+			degradation := duplicateDegradation
+			return &degradation
+		}(),
 		Duplicates:       duplicates,
 		Overlaps:         overlaps,
 		Conflicts:        conflicts,
@@ -977,18 +1018,20 @@ func (s Service) Cluster(ctx context.Context, repo string) (types.ClusterRespons
 
 	model := "heuristic-fallback"
 	clusters := planner.New().BuildClusters(prs)
+	clusterDegradation := types.DegradationMetadata{}
 
-	// Attempt ML-backed clustering via Voyage if configured.
-	if s.mlBridge != nil && s.mlBridge.Available() {
-		if mlClusters, mlModel, err := s.mlBridge.Cluster(ctx, repoName, prs, logger.RequestIDFromContext(ctx)); err == nil && len(mlClusters) > 0 {
-			clusters = mlClusters
-			model = mlModel
-		}
-	} else if os.Getenv("VOYAGE_API_KEY") != "" {
-		if configured := strings.TrimSpace(os.Getenv("VOYAGE_MODEL")); configured != "" {
-			model = configured
+	// Attempt ML-backed clustering when configured; keep heuristic results but surface degradation.
+	if s.mlBridge != nil {
+		if !s.mlBridge.Available() {
+			clusterDegradation = fallbackDegradation("backend_unavailable")
+		} else if mlClusters, mlModel, mlDegradation, err := s.mlBridge.Cluster(ctx, repoName, prs, logger.RequestIDFromContext(ctx)); err == nil {
+			if len(mlClusters) > 0 {
+				clusters = mlClusters
+				model = mlModel
+			}
+			clusterDegradation = mlDegradation
 		} else {
-			model = "voyage-code-3"
+			clusterDegradation = fallbackDegradation("subprocess_error")
 		}
 	}
 
@@ -1006,6 +1049,13 @@ func (s Service) Cluster(ctx context.Context, repo string) (types.ClusterRespons
 			Duplicate: types.DuplicateThreshold,
 			Overlap:   types.OverlapThreshold,
 		},
+		Degradation: func() *types.DegradationMetadata {
+			if clusterDegradation == (types.DegradationMetadata{}) {
+				return nil
+			}
+			degradation := clusterDegradation
+			return &degradation
+		}(),
 		Clusters: clusters,
 	}, nil
 }
@@ -1840,6 +1890,7 @@ func writeLivePhaseStatus(log *logger.Logger, phase string, count int) {
 
 func (s Service) applyIntakeControls(input []types.PR) ([]types.PR, truncationMeta) {
 	meta := truncationMeta{}
+	log := logger.New("app")
 	output := make([]types.PR, len(input))
 	copy(output, input)
 
@@ -1875,6 +1926,8 @@ func (s Service) applyIntakeControls(input []types.PR) ([]types.PR, truncationMe
 		effectiveMaxPRs = 0
 	}
 	if effectiveMaxPRs > 0 && len(output) > effectiveMaxPRs {
+		truncated := len(output) - effectiveMaxPRs
+		log.Warn("pr corpus truncated by max_prs cap", "max_prs", effectiveMaxPRs, "truncated", truncated, "remaining", effectiveMaxPRs)
 		output = output[:effectiveMaxPRs]
 		meta.AnalysisTruncated = true
 		meta.TruncationReason = "max_prs_cap"
@@ -2167,55 +2220,7 @@ func flattenGroups(input map[int]*types.DuplicateGroup) []types.DuplicateGroup {
 }
 
 func filterNoiseFiles(files []string) []string {
-	var signal []string
-	for _, f := range files {
-		base := f
-		if idx := strings.LastIndex(f, "/"); idx >= 0 {
-			base = f[idx+1:]
-		}
-		if types.ConflictNoiseFiles[base] || types.ConflictNoiseFiles[f] {
-			continue
-		}
-		if types.ConflictNoisePathExact[f] {
-			continue
-		}
-		prefixNoise := false
-		for _, prefix := range types.ConflictNoisePathPrefixes {
-			if strings.HasPrefix(f, prefix) {
-				prefixNoise = true
-				break
-			}
-		}
-		if prefixNoise {
-			continue
-		}
-		suffixNoise := false
-		for _, suffix := range types.ConflictNoisePathSuffixes {
-			if strings.HasSuffix(f, suffix) {
-				suffixNoise = true
-				break
-			}
-		}
-		if suffixNoise {
-			continue
-		}
-		isNoise := false
-		for _, ext := range types.ConflictNoiseExtensions {
-			if strings.HasSuffix(f, ext) {
-				isNoise = true
-				break
-			}
-		}
-		if isNoise {
-			continue
-		}
-		// Skip files in .github/ configs
-		if strings.HasPrefix(f, ".github/") && !strings.Contains(f, "/src/") && !strings.Contains(f, "/actions/") {
-			continue
-		}
-		signal = append(signal, f)
-	}
-	return signal
+	return types.FilterNoiseFiles(files)
 }
 
 // isSourceFile returns true if the file looks like source code (not config, docs, or CI).
@@ -2245,28 +2250,38 @@ func buildConflictsWithMinSignalFiles(repo string, prs []types.PR, progress func
 			continue
 		}
 		files := parseSharedFiles(edge.Reason)
-		// Filter noise files: lock files, CI configs, dependency files that every PR touches
-		signalFiles := filterNoiseFiles(files)
-		if len(signalFiles) < minSharedSignalFiles {
-			continue
+
+		// mergeability_signal: both PRs are marked conflicting by GitHub even with no
+		// shared files. Always surface it — GitHub's mergeability judgment is authoritative
+		// and does not depend on the shared-file threshold.
+		isMergeabilitySignal := len(files) == 1 && files[0] == "mergeability_signal"
+		if !isMergeabilitySignal {
+			signalFiles := types.FilterNoiseFiles(files)
+			if len(signalFiles) < minSharedSignalFiles {
+				continue
+			}
+			files = signalFiles
 		}
+
 		conflictType := "attention_needed"
 		severity := "low"
-		if len(signalFiles) >= 5 {
+		if isMergeabilitySignal {
+			severity = "medium"
+		} else if len(files) >= 5 {
 			severity = "high"
 			conflictType = "merge_blocking"
-		} else if len(signalFiles) >= minSharedSignalFiles {
+		} else if len(files) >= minSharedSignalFiles {
 			severity = "medium"
 		}
 		// Source code conflicts are more serious than config conflicts
 		hasSourceCode := false
-		for _, f := range signalFiles {
+		for _, f := range files {
 			if isSourceFile(f) {
 				hasSourceCode = true
 				break
 			}
 		}
-		if hasSourceCode && len(signalFiles) >= 3 {
+		if hasSourceCode && len(files) >= 3 {
 			severity = "high"
 			conflictType = "merge_blocking"
 		}
@@ -2275,9 +2290,9 @@ func buildConflictsWithMinSignalFiles(repo string, prs []types.PR, progress func
 			SourcePR:     edge.FromPR,
 			TargetPR:     edge.ToPR,
 			ConflictType: conflictType,
-			FilesTouched: signalFiles,
+			FilesTouched: files,
 			Severity:     severity,
-			Reason:       fmt.Sprintf("%d shared files: %s", len(signalFiles), strings.Join(signalFiles, ", ")),
+			Reason:       fmt.Sprintf("%d shared files: %s", len(files), strings.Join(files, ", ")),
 		})
 	}
 

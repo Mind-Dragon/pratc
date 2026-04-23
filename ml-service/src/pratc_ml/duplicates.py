@@ -7,20 +7,31 @@ from datasketch import MinHash, MinHashLSH
 from pratc_ml.providers import ProviderConfig
 from pratc_ml.providers.minimax import MinimaxError, embed_texts as minimax_embed_texts
 from pratc_ml.providers.voyage import VoyageError, embed_texts as voyage_embed_texts
-from pratc_ml.similarity import cosine_similarity, heuristic_similarity
+from pratc_ml.similarity import (
+    EMBEDDING_TEXT_MAX_FILES,
+    cosine_similarity,
+    embedding_text,
+    get_cached_embeddings,
+    heuristic_similarity,
+)
+
+
+LSH_NUM_PERM = 128
+LSH_MIN_CANDIDATE_THRESHOLD = 0.5
 
 
 def _embedding_text(pr: dict[str, Any]) -> str:
-    files = " ".join(pr.get("files_changed", [])[:5])
-    return f"{pr.get('title', '')}\n{pr.get('body', '')}\n{files}".strip()
+    return embedding_text(pr)
 
 
-def _minhash_signature(pr: dict[str, Any], num_perm: int = 128) -> MinHash:
+def _minhash_signature(pr: dict[str, Any], num_perm: int = LSH_NUM_PERM) -> MinHash:
     """Create a MinHash signature for a PR using its title, body, and files."""
     tokens: set[str] = set()
     title = pr.get("title", "")
     body = pr.get("body", "")
-    files = pr.get("files_changed", [])[:5]
+    files = sorted({str(path).strip() for path in pr.get("files_changed", []) if path and str(path).strip()})[
+        :EMBEDDING_TEXT_MAX_FILES
+    ]
 
     for part in title.lower().split():
         if part:
@@ -40,7 +51,7 @@ def _minhash_signature(pr: dict[str, Any], num_perm: int = 128) -> MinHash:
 
 
 def _get_candidate_pairs_lsh(
-    prs: list[dict[str, Any]], threshold: float = 0.5, num_perm: int = 128
+    prs: list[dict[str, Any]], threshold: float = LSH_MIN_CANDIDATE_THRESHOLD, num_perm: int = LSH_NUM_PERM
 ) -> set[tuple[int, int]]:
     """Use MinHash LSH to find candidate similar PR pairs."""
     if len(prs) < 2:
@@ -78,27 +89,62 @@ def detect_duplicates(payload: dict[str, Any]) -> dict[str, Any]:
     config = ProviderConfig.from_env()
     config.validate()  # Raises BackendConfigError if required config is missing
     embeddings: list[list[float]] | None = None
+    degradation = {
+        "embeddings_used": False,
+        "heuristic_fallback": config.backend == "local",
+        "fallback_reason": "local_backend" if config.backend == "local" else None,
+    }
     if config.backend == "minimax" and config.minimax_api_key and prs:
         texts = [_embedding_text(pr) for pr in prs]
         try:
-            embeddings = minimax_embed_texts(
-                api_key=config.minimax_api_key,
+            embeddings = get_cached_embeddings(
+                backend=config.backend,
                 model=config.minimax_embed_model,
                 texts=texts,
+                embedder=lambda: minimax_embed_texts(
+                    api_key=config.minimax_api_key,
+                    model=config.minimax_embed_model,
+                    texts=texts,
+                ),
             )
+            degradation = {
+                "embeddings_used": True,
+                "heuristic_fallback": False,
+                "fallback_reason": None,
+            }
         except MinimaxError:
             embeddings = None
+            degradation = {
+                "embeddings_used": False,
+                "heuristic_fallback": True,
+                "fallback_reason": "minimax_error",
+            }
     elif config.backend == "voyage" and config.voyage_api_key and prs:
         texts = [_embedding_text(pr) for pr in prs]
         try:
-            embeddings = voyage_embed_texts(
-                api_key=config.voyage_api_key,
+            embeddings = get_cached_embeddings(
+                backend=config.backend,
                 model=config.voyage_model,
-                base_url=config.voyage_base_url,
                 texts=texts,
+                embedder=lambda: voyage_embed_texts(
+                    api_key=config.voyage_api_key,
+                    model=config.voyage_model,
+                    base_url=config.voyage_base_url,
+                    texts=texts,
+                ),
             )
+            degradation = {
+                "embeddings_used": True,
+                "heuristic_fallback": False,
+                "fallback_reason": None,
+            }
         except VoyageError:
             embeddings = None
+            degradation = {
+                "embeddings_used": False,
+                "heuristic_fallback": True,
+                "fallback_reason": "voyage_error",
+            }
 
     duplicates: dict[int, dict[str, Any]] = {}
     overlaps: dict[int, dict[str, Any]] = {}
@@ -154,6 +200,7 @@ def detect_duplicates(payload: dict[str, Any]) -> dict[str, Any]:
         "action": "duplicates",
         "status": "ok",
         "repo": payload.get("repo"),
+        "degradation": degradation,
         "duplicates": duplicate_groups,
         "overlaps": overlap_groups,
     }
