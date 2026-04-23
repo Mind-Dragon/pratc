@@ -1,0 +1,4 @@
+# Keep the checked-in runtime proof, ignore live service state.
+*
+!runtime-proof.json
+!.gitignore
