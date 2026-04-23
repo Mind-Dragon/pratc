@@ -221,10 +221,23 @@ And the current run has:
 - [x] `AUDIT_RESULTS.json`
 - [x] `GAP_LIST.md` and `STATE.yaml` consistent with the audit
 
-## Deferred until the next product cycle
+## v1.8 — ML Automation Release Prep
 
-- [ ] v1.8 multi-repo implementation
+Primary release goal: add more automation through ML while keeping prATC advisory, auditable, and operator-controlled.
+
 - [ ] ML feedback loop implementation
-- [ ] GitHub App/OAuth/webhook implementation
-- [ ] Automatic PR actions or merge actions
-- [ ] Dashboard/UI work
+  - Capture operator bucket/category overrides, recommendation rejections, duplicate corrections, and plan-order changes as structured feedback.
+  - Store feedback append-only with audit metadata and replay/idempotency guards.
+  - Export privacy-safe training/evaluation batches for the Python ML bridge.
+  - Keep online behavior deterministic by default; ML feedback may tune recommendations only through explicit batch/evaluation gates.
+- [ ] ML automation evaluation harness
+  - Measure recommendation quality before/after feedback on saved OpenClaw runs.
+  - Track duplicate/canonicalization accuracy, bucket override rate, selected-plan acceptance, and false-positive disposal decisions.
+  - Emit an analyst-readable ML automation report section.
+- [ ] TUI operator feedback surface
+  - Use the terminal UI as the release-facing operator surface for accepting/rejecting recommendations and entering feedback.
+  - Show model/heuristic provenance, confidence, reason trail, and safe feedback actions.
+- [ ] GitHub App/OAuth/webhook design stays prepared but implementation is deferred unless needed for ML feedback capture.
+- [ ] Automatic PR actions or merge actions remain out of scope; prATC stays advisory/read-only unless explicitly enabled later.
+- [ ] Web-based dashboard/UI is out of scope for v1.8.
+- [ ] Multi-repo implementation is postponed to a later release.

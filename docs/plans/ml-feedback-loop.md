@@ -11,8 +11,8 @@ Needs deeper audit attention:
 - Training-loop safety: confirm that v1.8 should remain batch/retrain-oriented rather than online weight mutation, and define what immediate local effects are allowed without making model behavior unstable or opaque.
 - Contract alignment: verify how a new `feedback` action would fit the current Go↔Python bridge contracts, batching/export semantics, audit logging, and failure handling when the ML side is unavailable.
 
-Status: DO NOT IMPLEMENT — design only
-Target release: v1.8
+Status: PRIMARY v1.8 IMPLEMENTATION TARGET — design requires implementation audit before coding
+Target release: v1.8 ML Automation + TUI Feedback
 
 ## Purpose
 

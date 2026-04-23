@@ -135,27 +135,39 @@ Cache-backed verification run `projects/openclaw_openclaw/runs/final-wave` now p
 - Verify cache and sync paths under `-race`
 - Keep `go test ./...`, `go test ./... -race`, and Python tests green after every merge
 
-## Version 1.8 — Multi-Repo + ML Feedback (Q1 2027)
+## Version 1.8 — ML Automation + TUI Feedback
 
-**Goal:** Extend beyond single-repo operations.
+**Goal:** improve automation quality through ML feedback while preserving prATC's advisory/read-only contract. v1.8 is single-repo-first and OpenClaw-validated; multi-repo moves later.
 
-### Multi-Repo Support
+### ML Feedback Loop — primary release target
 
-- Aggregate analysis across multiple repositories
-- Cross-repo dependency detection
-- Unified merge planning for monorepo-style workflows
+- Capture operator bucket/category overrides as structured feedback
+- Capture recommendation rejections, duplicate/canonicalization corrections, and plan-order changes
+- Persist feedback append-only with audit metadata, idempotency keys, and replay protection
+- Export privacy-safe training/evaluation batches for the optional Python ML bridge
+- Improve duplicate detection, canonical selection, bucket scoring, and selected-plan ranking through explicit batch/evaluation gates
+- Keep online recommendations deterministic by default; do not silently mutate model behavior during a run
 
-### ML Feedback Loop
+### ML Automation Evaluation
 
-- Operator decisions as training signals
-- Improve duplicate detection accuracy over time
-- Personalized scoring based on team preferences
+- Run before/after evaluation against saved OpenClaw runs
+- Track duplicate accuracy, disposal false positives, bucket override rate, selected-plan acceptance, and confidence calibration
+- Emit an analyst-readable ML automation report section that explains what changed and why
+- Treat ML bridge unavailability as a degraded optional path, not a hard product failure
 
-### GitHub App Integration
+### TUI Operator Feedback Surface
 
-- OAuth-based authentication (no PAT management)
-- Webhook-triggered analysis (real-time PR updates)
-- Status check integration (block merge on high-risk findings)
+- Use the terminal UI as the release-facing feedback surface
+- Show recommendation provenance: deterministic rule vs ML-assisted signal, confidence, reason trail, and audit check linkage
+- Let operators accept, reject, override buckets, correct duplicate groups, and annotate plan-order changes
+- Write all feedback through the same append-only feedback path used by CLI/API
+
+### Deferred from v1.8
+
+- Multi-repo aggregation, cross-repo dependency detection, and unified multi-repo planning
+- Web-based dashboard/UI
+- Automatic PR actions, auto-merge, or auto-approve
+- GitHub App/OAuth/webhook implementation unless needed for feedback capture; keep design artifacts current only
 
 ---
 
