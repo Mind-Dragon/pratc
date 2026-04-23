@@ -165,7 +165,7 @@ Target: `0 fail`; manual checks either `0` or explicitly accepted in `wave-summa
 
 - [x] Deduplicate `GAP_MAP` between `scripts/gap_list_from_audit.py` and `scripts/autonomous_controller.py`
 - [x] Add one shared registry source for stable gap IDs
-- [ ] Preserve fixed/deferred/blocked gap history instead of rewriting only open gaps
+- [x] Preserve fixed/deferred/blocked gap history instead of rewriting only open gaps
 - [x] Add tests for unknown audit checks and stable generated IDs
 
 Verification:
