@@ -202,11 +202,11 @@ func TestMultiTokenSource_WithExhaustedCallback(t *testing.T) {
 	// Use second token
 	_, _ = src.Token(ctx)
 	// Now first token should be marked exhausted on next rotation
-	src.MarkExhausted("token-a")
+	src.MarkFailed("token-a")
 
 	// Next token should be token-a again (rotated), but exhausted list should have token-a
 	if len(exhausted) != 1 || exhausted[0] != "token-a" {
-		t.Fatalf("MarkExhausted callback not called correctly, got %v", exhausted)
+		t.Fatalf("MarkFailed callback not called correctly, got %v", exhausted)
 	}
 }
 
@@ -343,12 +343,12 @@ func TestIsRetryableError_AuthErrors(t *testing.T) {
 	}{
 		{"401 Unauthorized", fmt.Errorf("401 Unauthorized"), true},
 		{"401 unauthorized", fmt.Errorf("401 unauthorized"), true},
-		{"403 Forbidden", fmt.Errorf("403 Forbidden"), true},
+		{"403 Forbidden", fmt.Errorf("403 Forbidden"), false},
 		{"403 rate limited", fmt.Errorf("github API returned status 403: rate limited"), true},
 		{"Bad credentials", fmt.Errorf("Bad credentials"), true},
 		{"unauthorized", fmt.Errorf("unauthorized"), true},
 		{"401", fmt.Errorf("some error with 401 in it"), true},
-		{"403", fmt.Errorf("some error with 403 in it"), true},
+		{"403 without rate limit context", fmt.Errorf("some error with 403 in it"), false},
 	}
 
 	for _, tc := range tests {

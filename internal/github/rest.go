@@ -75,8 +75,8 @@ func (c *Client) FetchPullRequestsREST(ctx context.Context, repo string, opts Pu
 			return nil, fmt.Errorf("build rest request: %w", err)
 		}
 		req.Header.Set("Accept", "application/vnd.github.v3+json")
-		if c.token != "" {
-			req.Header.Set("Authorization", "Bearer "+c.token)
+		if tok, tokErr := c.tokenSource.Token(ctx); tokErr == nil && tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
 		}
 
 		resp, err := c.httpClient.Do(req)

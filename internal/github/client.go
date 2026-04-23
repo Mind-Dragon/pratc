@@ -29,6 +29,7 @@ type Config struct {
 	BaseURL             string
 	HTTPClient          HTTPClient
 	Token               string
+	TokenSource         TokenSource
 	ReserveRequests     int
 	MaxSecondaryRetries int
 	Now                 func() time.Time
@@ -40,7 +41,8 @@ type Config struct {
 type Client struct {
 	baseURL             string
 	httpClient          HTTPClient
-	token               string
+	token               string // kept for backward compat; prefer tokenSource
+	tokenSource         TokenSource
 	reserveRequests     int
 	maxSecondaryRetries int
 	now                 func() time.Time
@@ -137,10 +139,16 @@ func NewClient(cfg Config) *Client {
 		log = logger.New("github")
 	}
 
+	tokenSrc := cfg.TokenSource
+	if tokenSrc == nil {
+		tokenSrc = &singleTokenSource{token: cfg.Token}
+	}
+
 	return &Client{
 		baseURL:             baseURL,
 		httpClient:          httpClient,
 		token:               cfg.Token,
+		tokenSource:         tokenSrc,
 		reserveRequests:     reserve,
 		maxSecondaryRetries: maxRetries,
 		now:                 now,
@@ -488,8 +496,8 @@ func (c *Client) graphQL(ctx context.Context, query string, variables map[string
 			return fmt.Errorf("build graphql request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
-		if c.token != "" {
-			req.Header.Set("Authorization", "Bearer "+c.token)
+		if tok, tokErr := c.tokenSource.Token(ctx); tokErr == nil && tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
 		}
 
 		resp, err := c.httpClient.Do(req)

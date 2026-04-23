@@ -442,9 +442,9 @@ func (m *MultiTokenSource) Token(ctx context.Context) (string, error) {
 	return token, nil
 }
 
-// MarkExhausted notifies the source that a token has been exhausted and should
+// MarkFailed notifies the source that a token has been exhausted and should
 // be deprioritized. The onExhausted callback is invoked if set.
-func (m *MultiTokenSource) MarkExhausted(token string) {
+func (m *MultiTokenSource) MarkFailed(token string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -478,14 +478,43 @@ func IsRetryableError(err error) bool {
 		return false
 	}
 	errStr := err.Error()
-	// 401 Unauthorized, 403 Forbidden (rate limited or auth failure),
-	// 5xx errors, and explicit rate limit messages are retryable.
-	return strings.Contains(errStr, "401") ||
-		strings.Contains(errStr, "403") ||
-		strings.Contains(errStr, "rate limit") ||
-		strings.Contains(errStr, "unauthorized") ||
-		strings.Contains(errStr, "Forbidden") ||
-		strings.Contains(errStr, "Bad credentials")
+	// Auth failures: 401, bad credentials — next token might work.
+	if strings.Contains(errStr, "401") || strings.Contains(errStr, "Bad credentials") || strings.Contains(errStr, "unauthorized") {
+		return true
+	}
+	// Rate limit: 403 with rate-limit context — next token might have quota.
+	if strings.Contains(errStr, "rate limit") || strings.Contains(errStr, "rate_limit") {
+		return true
+	}
+	// Generic 403 (Forbidden) without rate-limit context is NOT retryable
+	// because it likely means the token lacks permission, not that it's exhausted.
+	return false
+}
+
+// TokenSource provides tokens for GitHub API requests.
+// Implementations may rotate through multiple tokens.
+type TokenSource interface {
+	// Token returns the current token.
+	Token(ctx context.Context) (string, error)
+	// MarkFailed notifies the source that a token failed with a retryable error.
+	// The source may rotate to the next token.
+	MarkFailed(token string)
+}
+
+// singleTokenSource is a TokenSource backed by a single token.
+type singleTokenSource struct {
+	token string
+}
+
+func (s *singleTokenSource) Token(ctx context.Context) (string, error) {
+	if s.token == "" {
+		return "", fmt.Errorf("no token available")
+	}
+	return s.token, nil
+}
+
+func (s *singleTokenSource) MarkFailed(token string) {
+	// Single token — nothing to rotate to.
 }
 
 // AttemptWithTokenFallback attempts an operation with tokens in sequence,
