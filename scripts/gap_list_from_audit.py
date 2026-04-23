@@ -31,6 +31,10 @@ def is_failure(check: dict) -> bool:
     return not check.get('pass', True)
 
 
+def is_manual(check: dict) -> bool:
+    return check.get('status') == 'manual'
+
+
 def update_state(path: Path, open_ids):
     if not path.exists():
         return
@@ -55,20 +59,16 @@ def update_state(path: Path, open_ids):
     path.write_text('\n'.join(out) + '\n')
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--audit', required=True)
-    parser.add_argument('--gap-list', required=True)
-    parser.add_argument('--state', required=False)
-    args = parser.parse_args()
-
-    audit = load_json(Path(args.audit))
-    failures = [c for c in audit.get('checks', []) if is_failure(c)]
+def generate_gap_list(audit_path: Path, gap_list_path: Path, state_path: Path | None = None):
+    audit = load_json(audit_path)
+    checks = audit.get('checks', [])
+    failures = [c for c in checks if is_failure(c)]
+    manuals = [c for c in checks if is_manual(c)]
     open_ids = []
     body = [
         '# Autonomous Gap List',
         '',
-        f'Updated from audit: `{args.audit}`',
+        f'Updated from audit: `{audit_path}`',
         '',
         '## Open gaps',
         '',
@@ -82,15 +82,40 @@ def main():
         body.append('No open gaps. Latest audit passed.')
         body.append('')
 
+    if manuals:
+        body.extend([
+            '## Manual/unverifiable checks',
+            '',
+            'These are not open required failures, but they remain autonomy gaps until converted to machine checks or explicitly accepted by an operator in `wave-summary.md`.',
+            '',
+        ])
+        for check in manuals:
+            actual = check.get('actual', '')
+            if isinstance(actual, dict):
+                actual = json.dumps(actual)
+            body.append(f"- `{check.get('id', '')}` — {actual}")
+        body.append('')
+
     body.extend([
         '## Update protocol',
         '',
         'This file is generated from audit output. Preserve stable gap IDs where possible.',
         ''
     ])
-    Path(args.gap_list).write_text('\n'.join(body))
-    if args.state:
-        update_state(Path(args.state), open_ids)
+    gap_list_path.write_text('\n'.join(body))
+    if state_path:
+        update_state(state_path, open_ids)
+    return open_ids
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--audit', required=True)
+    parser.add_argument('--gap-list', required=True)
+    parser.add_argument('--state', required=False)
+    args = parser.parse_args()
+
+    open_ids = generate_gap_list(Path(args.audit), Path(args.gap_list), Path(args.state) if args.state else None)
     print(f"Wrote {args.gap_list} with {len(open_ids)} open gaps")
 
 

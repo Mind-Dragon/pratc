@@ -1,21 +1,17 @@
 # Autonomous Gap List
 
-Updated from audit: `projects/openclaw_openclaw/runs/release-audit-20260421T023224Z/AUDIT_RESULTS.json`
+Updated from audit: `autonomous/runs/20260423T203433Z/AUDIT_RESULTS.json`
 
 ## Open gaps
 
-No open gaps in the latest historical audit.
+No open gaps. Latest audit passed.
 
-Important: this audit predates current HEAD `3b70307`. The next autonomous cycle must create a fresh current-HEAD run under `autonomous/runs/<run-id>/`, rerun `scripts/audit_guideline.py`, and regenerate this file from that fresh audit before `STATE.yaml` can return to `phase: complete`.
-
-## Manual checks from historical audit
-
-The historical audit had 2 manual/unverifiable checks:
-
-- `disposal_bucket_persistence` — requires longitudinal data to verify terminal disposal semantics
-- `deeper_judgment_layers` — requires observable gate-order / gate-exit artifact evidence
+## Manual/unverifiable checks
 
 These are not open required failures, but they remain autonomy gaps until converted to machine checks or explicitly accepted by an operator in `wave-summary.md`.
+
+- `disposal_bucket_persistence` — uncheckable in single-run audit
+- `deeper_judgment_layers` — pipeline ordering not directly observable in artifacts
 
 ## Update protocol
 

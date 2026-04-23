@@ -1,21 +1,21 @@
 mode: active
 repo: openclaw/openclaw
 branch: main
-baseline_commit: 3b70307
-current_run_id: release-audit-20260421T023224Z
-corpus_dir: projects/openclaw_openclaw/runs/release-audit-20260421T023224Z
-phase: bootstrap
-current_wave: 0
+baseline_commit: 50739fb
+current_run_id: 20260423T203433Z
+corpus_dir: autonomous/runs/20260423T203433Z
+phase: manual_check_resolution
+current_wave: 1
 open_gaps: []
 blocked_gaps: []
 completed_gaps: []
-last_audit_path: projects/openclaw_openclaw/runs/release-audit-20260421T023224Z/AUDIT_RESULTS.json
-last_green_commit: 61e49d6
+last_audit_path: autonomous/runs/20260423T203433Z/AUDIT_RESULTS.json
+last_green_commit: 50739fb
 paused: false
-stop_reason: fresh current-HEAD autonomous run required before completion
+stop_reason: manual checks remain before autonomous complete
 resume_command: python3 scripts/autonomous_controller.py resume
+updated_at: '2026-04-23T20:39:00+00:00'
 notes:
-- Historical audit is green but predates current HEAD 3b70307.
-- Do not set phase=complete or last_green_commit=3b70307 until a fresh current-HEAD autonomous run passes audit.
-- Next phase is runtime proof and fresh cache-backed current-HEAD run under autonomous/runs/.
-updated_at: '2026-04-23T20:24:00+00:00'
+  - Fresh current-HEAD audit has 17 passing checks, 0 failing checks, 2 manual/unverifiable checks.
+  - Service proof is recorded in autonomous/runtime/runtime-proof.json and live under tmux session pratc-autonomous.
+  - Remaining autonomy work is converting or operator-accepting disposal_bucket_persistence and deeper_judgment_layers.

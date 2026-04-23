@@ -116,15 +116,15 @@ If service is intentionally skipped for a CLI-only run, record the skip reason i
 
 ## Phase C — Fresh current-HEAD autonomous run
 
-- [ ] Create `autonomous/runs/<run-id>/`
-- [ ] Write `controller-log.md`
-- [ ] Write `wave-summary.md`
-- [ ] Write `run-metadata.yaml`
-- [ ] Run cache-backed full-corpus analyze without `--max-prs` cap
-- [ ] Run cluster, graph, plan, report
-- [ ] Run `scripts/audit_guideline.py <run-dir>`
-- [ ] Run `scripts/gap_list_from_audit.py --audit <run-dir>/AUDIT_RESULTS.json --gap-list autonomous/GAP_LIST.md --state autonomous/STATE.yaml`
-- [ ] Update `autonomous/STATE.yaml` so `last_green_commit` equals current HEAD only after this audit passes
+- [x] Create `autonomous/runs/<run-id>/`
+- [x] Write `controller-log.md`
+- [x] Write `wave-summary.md`
+- [x] Write `run-metadata.yaml`
+- [x] Run cache-backed full-corpus analyze without `--max-prs` cap
+- [x] Run cluster, graph, plan, report
+- [x] Run `scripts/audit_guideline.py <run-dir>`
+- [x] Run `scripts/gap_list_from_audit.py --audit <run-dir>/AUDIT_RESULTS.json --gap-list autonomous/GAP_LIST.md --state autonomous/STATE.yaml`
+- [x] Update `autonomous/STATE.yaml` so `last_green_commit` equals current HEAD only after this audit passes
 
 Verification:
 
