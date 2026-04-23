@@ -2,12 +2,19 @@ package github
 
 import (
 	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
+
+	"gopkg.in/yaml.v3"
+	_ "modernc.org/sqlite"
 )
 
 // AccessState represents the accessibility state of GitHub.
@@ -45,10 +52,40 @@ func (s AccessState) String() string {
 
 // AccessStateResult holds the result of an access state check.
 type AccessStateResult struct {
-	State    AccessState
-	Message  string
-	Login    string // The login name selected, if any
-	Token    string // The resolved token (in-memory only, not exported)
+	State   AccessState
+	Message string
+	Login   string // The login name selected, if any
+	Token   string // The resolved token (in-memory only, not exported)
+}
+
+// TokenInfo describes a discovered GitHub token without exposing the token in logs.
+type TokenInfo struct {
+	Token       string
+	Source      string
+	Fingerprint string
+}
+
+func tokenFingerprint(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+func addTokenInfo(tokens *[]TokenInfo, seen map[string]struct{}, token, source string) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return
+	}
+	if _, ok := seen[token]; ok {
+		return
+	}
+	seen[token] = struct{}{}
+	*tokens = append(*tokens, TokenInfo{Token: token, Source: source, Fingerprint: tokenFingerprint(token)})
+}
+
+func addTokenList(tokens *[]TokenInfo, seen map[string]struct{}, value, source string) {
+	for _, tok := range strings.Split(value, ",") {
+		addTokenInfo(tokens, seen, tok, source)
+	}
 }
 
 // DiscoverAccounts discovers all available GitHub accounts from the gh CLI.
@@ -346,70 +383,183 @@ func ResolveToken(ctx context.Context) (string, error) {
 }
 
 // DiscoverTokens discovers all available GitHub tokens from configured sources.
-// Tokens are returned in priority order.
-//
-// Discovery sources (in order):
-// 1. PRATC_GITHUB_TOKENS - comma-separated list of tokens
-// 2. GITHUB_TOKEN, GH_TOKEN, GITHUB_PAT - individual env vars
-// 3. `gh auth token` from a logged-in gh CLI session
-//
-// Returns an error if no tokens are found.
+// Tokens are returned in priority order and deduplicated.
 func DiscoverTokens(ctx context.Context) ([]string, error) {
-	var tokens []string
-
-	// Check PRATC_GITHUB_TOKENS for comma-separated multi-token support
-	if multi := strings.TrimSpace(os.Getenv("PRATC_GITHUB_TOKENS")); multi != "" {
-		for _, tok := range strings.Split(multi, ",") {
-			tok = strings.TrimSpace(tok)
-			if tok != "" {
-				tokens = append(tokens, tok)
-			}
-		}
-		if len(tokens) > 0 {
-			return tokens, nil
-		}
+	infos, err := DiscoverTokenInfos(ctx)
+	if err != nil {
+		return nil, err
 	}
-
-	// Check individual env vars
-	for _, key := range []string{"GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT"} {
-		if token := strings.TrimSpace(os.Getenv(key)); token != "" {
-			tokens = append(tokens, token)
-		}
+	tokens := make([]string, 0, len(infos))
+	for _, info := range infos {
+		tokens = append(tokens, info.Token)
 	}
-	if len(tokens) > 0 {
-		return tokens, nil
-	}
+	return tokens, nil
+}
 
-	// Fall back to gh CLI
+// DiscoverTokenInfos discovers GitHub tokens with redaction-safe source metadata.
+// Sources, in priority order:
+//  1. PRATC_GITHUB_TOKENS, GITHUB_TOKEN, GH_TOKEN, GITHUB_PAT
+//  2. local .env-style files
+//  3. prATC settings DB token keys
+//  4. every cached gh account in ~/.config/gh/hosts.yml
+//  5. gh auth token fallback for the active account
+func DiscoverTokenInfos(ctx context.Context) ([]TokenInfo, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	var infos []TokenInfo
+	seen := map[string]struct{}{}
 
-	path, err := exec.LookPath("gh")
-	if err != nil {
-		return nil, fmt.Errorf("GitHub auth unavailable: set GITHUB_TOKEN/GH_TOKEN/GITHUB_PAT or sign in with gh auth login")
+	addTokenList(&infos, seen, os.Getenv("PRATC_GITHUB_TOKENS"), "env:PRATC_GITHUB_TOKENS")
+	for _, key := range []string{"GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT"} {
+		addTokenInfo(&infos, seen, os.Getenv(key), "env:"+key)
 	}
 
+	for _, envPath := range dotenvPaths() {
+		loadTokensFromDotenv(envPath, &infos, seen)
+	}
+	loadTokensFromSettingsDB(ctx, &infos, seen)
+	loadTokensFromGHHosts(&infos, seen)
+	loadTokenFromGHCLI(ctx, &infos, seen)
+
+	if len(infos) == 0 {
+		return nil, fmt.Errorf("GitHub auth unavailable: no tokens found in env, .env, prATC config, gh hosts, or gh auth token")
+	}
+	return infos, nil
+}
+
+func dotenvPaths() []string {
+	paths := []string{".env", ".env.local"}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		paths = append(paths, filepath.Join(home, ".pratc", ".env"), filepath.Join(home, ".config", "pratc", ".env"))
+	}
+	return paths
+}
+
+func loadTokensFromDotenv(path string, infos *[]TokenInfo, seen map[string]struct{}) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		key := strings.TrimSpace(parts[0])
+		value := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+		switch key {
+		case "PRATC_GITHUB_TOKENS":
+			addTokenList(infos, seen, value, "dotenv:"+path+":"+key)
+		case "GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT":
+			addTokenInfo(infos, seen, value, "dotenv:"+path+":"+key)
+		}
+	}
+}
+
+func loadTokensFromSettingsDB(ctx context.Context, infos *[]TokenInfo, seen map[string]struct{}) {
+	paths := []string{strings.TrimSpace(os.Getenv("PRATC_SETTINGS_DB")), "pratc-settings.db"}
+	for _, dbPath := range paths {
+		if dbPath == "" {
+			continue
+		}
+		db, err := sql.Open("sqlite", dbPath)
+		if err != nil {
+			continue
+		}
+		rows, err := db.QueryContext(ctx, `SELECT key, value_json FROM settings WHERE key IN ('github_tokens','github_token','github_auth','github_runtime')`)
+		if err == nil {
+			for rows.Next() {
+				var key, valueJSON string
+				if rows.Scan(&key, &valueJSON) == nil {
+					addTokensFromJSONValue(infos, seen, valueJSON, "settings:"+dbPath+":"+key)
+				}
+			}
+			_ = rows.Close()
+		}
+		_ = db.Close()
+	}
+}
+
+func addTokensFromJSONValue(infos *[]TokenInfo, seen map[string]struct{}, raw, source string) {
+	var v any
+	if err := json.Unmarshal([]byte(raw), &v); err != nil {
+		return
+	}
+	var walk func(any)
+	walk = func(x any) {
+		switch t := x.(type) {
+		case string:
+			addTokenList(infos, seen, t, source)
+		case []any:
+			for _, item := range t {
+				walk(item)
+			}
+		case map[string]any:
+			for k, item := range t {
+				lk := strings.ToLower(k)
+				if strings.Contains(lk, "token") || strings.Contains(lk, "pat") {
+					walk(item)
+				}
+			}
+		}
+	}
+	walk(v)
+}
+
+func loadTokensFromGHHosts(infos *[]TokenInfo, seen map[string]struct{}) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".config", "gh", "hosts.yml"))
+	if err != nil {
+		return
+	}
+	var hosts map[string]struct {
+		OAuthToken string `yaml:"oauth_token"`
+		User       string `yaml:"user"`
+		Users      map[string]struct {
+			OAuthToken string `yaml:"oauth_token"`
+		} `yaml:"users"`
+	}
+	if err := yaml.Unmarshal(data, &hosts); err != nil {
+		return
+	}
+	for host, entry := range hosts {
+		if entry.OAuthToken != "" {
+			name := entry.User
+			if name == "" {
+				name = "active"
+			}
+			addTokenInfo(infos, seen, entry.OAuthToken, "gh-hosts:"+host+":"+name)
+		}
+		for login, user := range entry.Users {
+			addTokenInfo(infos, seen, user.OAuthToken, "gh-hosts:"+host+":"+login)
+		}
+	}
+}
+
+func loadTokenFromGHCLI(ctx context.Context, infos *[]TokenInfo, seen map[string]struct{}) {
+	path, err := exec.LookPath("gh")
+	if err != nil {
+		return
+	}
 	cmd := exec.CommandContext(ctx, path, "auth", "token")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("GitHub auth unavailable: gh auth token failed: %w", err)
+		return
 	}
-
-	token := strings.TrimSpace(string(output))
-	if token == "" {
-		return nil, fmt.Errorf("GitHub auth unavailable: gh auth token returned an empty token")
-	}
-
-	return []string{token}, nil
+	addTokenInfo(infos, seen, string(output), "gh-cli:active")
 }
 
 // MultiTokenSource manages a pool of tokens and rotates through them.
 // It is safe for concurrent use.
 type MultiTokenSource struct {
-	tokens     []string
-	current    int
-	mu         sync.Mutex
+	tokens      []string
+	current     int
+	mu          sync.Mutex
 	onExhausted func(string)
 }
 

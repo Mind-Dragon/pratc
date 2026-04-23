@@ -19,10 +19,12 @@ import (
 
 // GitHubAccess holds the resolved GitHub access state for runtime use.
 type GitHubAccess struct {
-	Token   string // Resolved token (in-memory only)
-	Login   string // Selected login name (if any)
-	Message string // Human-readable access state message
-	State   gh.AccessState
+	Token       string         // First resolved token (in-memory only, legacy callers)
+	TokenSource gh.TokenSource // Full resolved token pool for live clients
+	TokenCount  int            // Redaction-safe count of tokens in the pool
+	Login       string         // Selected login name (if any)
+	Message     string         // Human-readable access state message
+	State       gh.AccessState
 }
 
 // ResolveGitHubAccess resolves GitHub access using settings-driven config.
@@ -60,7 +62,22 @@ func ResolveGitHubAccess(ctx context.Context, repo string) (GitHubAccess, error)
 	// Use config values for rate policy
 	_ = ratePolicy // consumed by caller via BudgetManager
 
-	// Resolve named login using configured logins
+	// Resolve the full token pool from every configured source.
+	tokens, tokenErr := gh.DiscoverTokens(ctx)
+	if tokenErr == nil && len(tokens) > 0 {
+		access.Token = tokens[0]
+		access.TokenSource = gh.NewMultiTokenSource(tokens, nil)
+		access.TokenCount = len(tokens)
+		access.State = gh.AccessStateReachableAuthenticated
+		if len(tokens) > 1 {
+			access.Message = fmt.Sprintf("using %d discovered GitHub tokens", len(tokens))
+		} else {
+			access.Message = "using discovered GitHub token"
+		}
+		return access, nil
+	}
+
+	// Fall back to named-login semantics for explicit legacy config.
 	result, err := gh.ResolveNamedLogin(ctx, runtimeCfg.SelectedLogins, runtimeCfg.FailoverIfUnavailable)
 	if err != nil && result.State == gh.AccessStateUnreachable {
 		access.Message = "GitHub not accessible"
@@ -68,6 +85,10 @@ func ResolveGitHubAccess(ctx context.Context, repo string) (GitHubAccess, error)
 	}
 
 	access.Token = result.Token
+	if result.Token != "" {
+		access.TokenSource = gh.NewMultiTokenSource([]string{result.Token}, nil)
+		access.TokenCount = 1
+	}
 	access.Login = result.Login
 	access.Message = result.Message
 	access.State = result.State
@@ -85,15 +106,21 @@ func resolveGitHubAccessWithDefaults(ctx context.Context) (GitHubAccess, error) 
 		return access, fmt.Errorf("github: %s", access.Message)
 	}
 
-	token, err := gh.ResolveToken(ctx)
+	tokens, err := gh.DiscoverTokens(ctx)
 	if err != nil {
 		access.Message = "GitHub reachable but no login available"
 		access.State = gh.AccessStateReachableUnauthenticated
 		return access, err
 	}
 
-	access.Token = token
-	access.Message = "using default GitHub token"
+	access.Token = tokens[0]
+	access.TokenSource = gh.NewMultiTokenSource(tokens, nil)
+	access.TokenCount = len(tokens)
+	if len(tokens) > 1 {
+		access.Message = fmt.Sprintf("using %d discovered GitHub tokens", len(tokens))
+	} else {
+		access.Message = "using default GitHub token"
+	}
 	access.State = gh.AccessStateReachableAuthenticated
 	return access, nil
 }

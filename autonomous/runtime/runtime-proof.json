@@ -1,24 +1,24 @@
 {
-  "recorded_at_utc": "2026-04-23T22:19:25Z",
+  "recorded_at_utc": "2026-04-23T23:24:50Z",
   "binary": "/home/agent/pratc/bin/pratc",
   "version_output": [
-    "version=1.7.0",
-    "commit=b4f266eefca9",
-    "build_date=2026-04-23T22:17:34Z",
-    "dirty=false"
+    "version=1.7.1",
+    "commit=37f3257ba2cb",
+    "build_date=2026-04-23T23:23:21Z",
+    "dirty=true"
   ],
   "startup_banner": [
-    "version=1.7.0",
-    "commit=b4f266eefca9"
+    "version=1.7.1",
+    "commit=37f3257ba2cb"
   ],
-  "tmux_session": "pratc-autonomous: 1 windows (created Fri Apr 24 00:18:20 2026)",
-  "listen": "LISTEN 0      1024               *:7400            *:*    users:((\"pratc\",pid=488560,fd=12))",
+  "tmux_session": "pratc-autonomous: 1 windows (created Fri Apr 24 01:23:53 2026)",
+  "listen": "LISTEN 0      1024                *:7400             *:*    users:((\"pratc\",pid=592701,fd=12))",
   "health": {
     "local": {
       "url": "http://127.0.0.1:7400/healthz",
       "response": {
         "status": "ok",
-        "version": "1.7.0",
+        "version": "1.7.1",
         "api_version": "v1.6"
       }
     },
@@ -26,13 +26,19 @@
       "url": "http://100.112.201.95:7400/healthz",
       "response": {
         "status": "ok",
-        "version": "1.7.0",
+        "version": "1.7.1",
         "api_version": "v1.6"
       }
     }
   },
   "env": {
     "PRATC_SETTINGS_DB": "/home/agent/pratc/autonomous/runtime/pratc-settings.db",
-    "PRATC_DB_PATH": "/home/agent/pratc/autonomous/runtime/pratc.db"
+    "PRATC_DB_PATH": "/home/agent/.pratc/pratc.db"
+  },
+  "preflight_smoke": {
+    "repo": "openclaw/openclaw",
+    "token_count_observed": 2,
+    "rate_remaining_observed": 4791,
+    "recommendation": "Cache is up-to-date. No sync needed."
   }
 }

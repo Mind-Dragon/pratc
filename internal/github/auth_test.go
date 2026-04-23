@@ -10,9 +10,18 @@ import (
 	"testing"
 )
 
+func isolateTokenDiscoveryHome(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("PRATC_SETTINGS_DB", filepath.Join(dir, "missing-settings.db"))
+	t.Chdir(dir)
+}
+
 // TestDiscoverTokens_MultipleEnvTokens verifies that multiple tokens can be
 // discovered from comma-separated environment variables.
 func TestDiscoverTokens_MultipleEnvTokens(t *testing.T) {
+	isolateTokenDiscoveryHome(t)
 	// Clear all token env vars first
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
@@ -37,6 +46,7 @@ func TestDiscoverTokens_MultipleEnvTokens(t *testing.T) {
 
 // TestDiscoverTokens_SingleEnvToken verifies that a single token works.
 func TestDiscoverTokens_SingleEnvToken(t *testing.T) {
+	isolateTokenDiscoveryHome(t)
 	t.Setenv("GITHUB_TOKEN", "single-token")
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_PAT", "")
@@ -58,6 +68,7 @@ func TestDiscoverTokens_SingleEnvToken(t *testing.T) {
 // TestDiscoverTokens_GHCLIMultipleAccounts verifies that gh CLI can expose
 // multiple authenticated accounts as separate tokens.
 func TestDiscoverTokens_GHCLIMultipleAccounts(t *testing.T) {
+	isolateTokenDiscoveryHome(t)
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_PAT", "")
@@ -99,6 +110,7 @@ exit 1
 // TestDiscoverTokens_AllSourcesCombined verifies that tokens from all sources
 // are discovered and deduplicated.
 func TestDiscoverTokens_AllSourcesCombined(t *testing.T) {
+	isolateTokenDiscoveryHome(t)
 	// Clear all token env vars first
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
@@ -120,6 +132,7 @@ func TestDiscoverTokens_AllSourcesCombined(t *testing.T) {
 
 // TestDiscoverTokens_ErrorsWhenNoTokens verifies error when no tokens available.
 func TestDiscoverTokens_ErrorsWhenNoTokens(t *testing.T) {
+	isolateTokenDiscoveryHome(t)
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_PAT", "")
@@ -211,6 +224,7 @@ func TestMultiTokenSource_WithExhaustedCallback(t *testing.T) {
 }
 
 func TestResolveTokenUsesEnvToken(t *testing.T) {
+	isolateTokenDiscoveryHome(t)
 	t.Setenv("GITHUB_TOKEN", "env-token")
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_PAT", "")
@@ -225,6 +239,7 @@ func TestResolveTokenUsesEnvToken(t *testing.T) {
 }
 
 func TestResolveTokenUsesGHCLIWhenEnvMissing(t *testing.T) {
+	isolateTokenDiscoveryHome(t)
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_PAT", "")
@@ -251,6 +266,7 @@ func TestResolveTokenUsesGHCLIWhenEnvMissing(t *testing.T) {
 }
 
 func TestResolveTokenErrorsWithoutAuth(t *testing.T) {
+	isolateTokenDiscoveryHome(t)
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_PAT", "")
@@ -265,6 +281,7 @@ func TestResolveTokenErrorsWithoutAuth(t *testing.T) {
 // This is the runtime helper that sync/preflight should use to get multiple tokens
 // for sequential fallback on retryable auth/rate-limit failures.
 func TestNewMultiTokenSourceFromDiscovery(t *testing.T) {
+	isolateTokenDiscoveryHome(t)
 	// Set up multiple tokens via PRATC_GITHUB_TOKENS
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
@@ -314,6 +331,7 @@ func TestNewMultiTokenSourceFromDiscovery(t *testing.T) {
 
 // TestNewMultiTokenSourceFromDiscovery_SingleToken verifies fallback works with one token.
 func TestNewMultiTokenSourceFromDiscovery_SingleToken(t *testing.T) {
+	isolateTokenDiscoveryHome(t)
 	t.Setenv("GITHUB_TOKEN", "single-test-token")
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_PAT", "")
@@ -768,6 +786,7 @@ exit 1`
 
 // TestResolveNamedLogin_WithFailover verifies failover to default when configured login fails.
 func TestResolveNamedLogin_WithFailover(t *testing.T) {
+	isolateTokenDiscoveryHome(t)
 	dir := t.TempDir()
 	script := filepath.Join(dir, "gh")
 	// The script handles:
@@ -792,6 +811,7 @@ exit 1`
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_PAT", "")
+	t.Setenv("PRATC_GITHUB_TOKENS", "")
 
 	result, err := ResolveNamedLogin(context.Background(), []string{"UnavailableLogin"}, true)
 	if err != nil {

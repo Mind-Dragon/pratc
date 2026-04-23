@@ -7,7 +7,7 @@ UV ?= uv
 NODE ?= node
 BUN ?= bun
 DOCKER_COMPOSE ?= docker-compose
-VERSION ?= 1.7.0
+VERSION ?= 1.7.1
 COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 DIRTY ?= $(shell test -z "$$(git status --short 2>/dev/null)" && echo false || echo true)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)

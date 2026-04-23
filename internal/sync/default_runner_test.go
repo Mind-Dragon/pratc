@@ -34,7 +34,7 @@ func TestDefaultWorkerMirrorFactoryInitializesMirror(t *testing.T) {
 	expectedMirrorPath := filepath.Join(tempDir, "repos", "owner", "repo.git")
 
 	t.Run("creates and initializes mirror for valid repo", func(t *testing.T) {
-		worker := defaultWorker(nil, 0, "")
+		worker := defaultWorker(nil, 0, "", nil)
 		mirror, err := worker.MirrorFactory(ctx, repoID)
 		if err != nil {
 			t.Fatalf("MirrorFactory returned error: %v", err)
@@ -74,7 +74,7 @@ func TestDefaultWorkerMirrorFactoryInitializesMirror(t *testing.T) {
 	})
 
 	t.Run("returns error for invalid repo ID format", func(t *testing.T) {
-		worker := defaultWorker(nil, 0, "")
+		worker := defaultWorker(nil, 0, "", nil)
 		invalidRepoIDs := []string{
 			"invalid",        // missing slash
 			"/repo",          // missing owner
@@ -99,7 +99,7 @@ func TestDefaultWorkerMirrorFactoryInitializesMirror(t *testing.T) {
 func TestDefaultWorkerNowFunction(t *testing.T) {
 	t.Parallel()
 
-	worker := defaultWorker(nil, 0, "")
+	worker := defaultWorker(nil, 0, "", nil)
 	if worker.Now == nil {
 		t.Fatal("expected Now function to be set")
 	}

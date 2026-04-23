@@ -64,6 +64,7 @@ type Config struct {
 	UseCacheFirst           bool
 	IncludeReview           bool
 	Token                   string
+	TokenSource             gh.TokenSource
 	MaxPRs                  int
 	BeginningPRNumber       int
 	EndingPRNumber          int
@@ -102,6 +103,7 @@ type Service struct {
 	useCacheFirst           bool
 	includeReview           bool
 	token                   string
+	tokenSource             gh.TokenSource
 	maxPRs                  int
 	beginningPRNumber       int
 	endingPRNumber          int
@@ -198,6 +200,7 @@ func NewService(cfg Config) Service {
 		useCacheFirst:           useCacheFirst,
 		includeReview:           includeReview,
 		token:                   token,
+		tokenSource:             cfg.TokenSource,
 		maxPRs:                  maxPRs,
 		beginningPRNumber:       cfg.BeginningPRNumber,
 		endingPRNumber:          cfg.EndingPRNumber,
@@ -278,6 +281,10 @@ func resolveDynamicTargetConfig(cfg DynamicTargetConfig) DynamicTargetConfig {
 		cfg.MaxTarget = 50
 	}
 	return cfg
+}
+
+func (s Service) hasGitHubAuth() bool {
+	return strings.TrimSpace(s.token) != "" || s.tokenSource != nil
 }
 
 func fallbackDegradation(reason string) types.DegradationMetadata {
@@ -1663,12 +1670,13 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 		targetRepo = manifest.Repo
 	}
 
-	if targetRepo != manifest.Repo && strings.TrimSpace(s.token) == "" {
+	if targetRepo != manifest.Repo && strings.TrimSpace(s.token) == "" && s.tokenSource == nil {
 		resolved, err := gh.ResolveToken(ctx)
 		if err != nil {
 			return nil, "", truncationMeta{}, fmt.Errorf("missing auth for live repo %q: %w", targetRepo, err)
 		}
 		s.token = resolved
+		s.tokenSource = gh.NewMultiTokenSource([]string{resolved}, nil)
 	}
 
 	// Try cache first if enabled
@@ -1678,7 +1686,7 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 			meta.LiveSource = false
 			writeLivePhaseStatus(log, "cache loaded, starting analysis", len(filtered))
 			// Skip enrichment in force-cache mode; use whatever file data is already cached
-			if !s.allowForceCache && (s.mirrorAvailable || s.token != "") {
+			if !s.allowForceCache && (s.mirrorAvailable || s.hasGitHubAuth()) {
 				s.enrichPRsWithFilesFromMirrorOrGraphQL(ctx, targetRepo, filtered)
 			}
 			return filtered, targetRepo, meta, nil
@@ -1698,7 +1706,7 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 		return nil, "", truncationMeta{}, fmt.Errorf("sync first: run `pratc sync --repo=%s` before analyze, or rerun with explicit live override", targetRepo)
 	}
 
-	if s.allowLive && s.token != "" {
+	if s.allowLive && s.hasGitHubAuth() {
 		livePRs, liveErr := s.fetchLivePRs(ctx, targetRepo)
 		if liveErr == nil && len(livePRs) > 0 {
 			filtered, meta := s.applyIntakeControls(livePRs)

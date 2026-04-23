@@ -18,7 +18,7 @@ func TestDefaultWorker_UsesProvidedToken(t *testing.T) {
 	defer store.Close()
 
 	token := "ghp_test token string 12345"
-	worker := defaultWorker(store, 100, token)
+	worker := defaultWorker(store, 100, token, nil)
 
 	if worker.Metadata == nil {
 		t.Fatal("worker.Metadata is nil")
@@ -49,7 +49,7 @@ func TestDefaultWorker_EmptyTokenAllowed(t *testing.T) {
 	defer store.Close()
 
 	// Empty token should not error - just uses unauthenticated rate limit
-	worker := defaultWorker(store, 100, "")
+	worker := defaultWorker(store, 100, "", nil)
 
 	if worker.Metadata == nil {
 		t.Fatal("worker.Metadata is nil")

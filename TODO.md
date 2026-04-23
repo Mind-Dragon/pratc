@@ -221,6 +221,30 @@ And the current run has:
 - [x] `AUDIT_RESULTS.json`
 - [x] `GAP_LIST.md` and `STATE.yaml` consistent with the audit
 
+## v1.7.1 — GitHub Credential Pooling Patch Release
+
+Primary release goal: make prATC automatically discover, pool, and rotate every available GitHub credential so large OpenClaw runs do not silently depend on one active `gh` account.
+
+- [ ] Automatic multi-source GitHub token discovery
+  - Read tokens from `PRATC_GITHUB_TOKENS`, `GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_PAT`, supported `.env` files, prATC config/settings, and cached `gh` account credentials.
+  - Discover all usable cached `gh` logins on the machine, not only the active `gh` account.
+  - Deduplicate tokens by fingerprint; never log or persist raw token values.
+  - Preserve explicit source/provenance metadata for diagnostics: env/config/cli/gh-login name.
+- [ ] CLI/config surface for token sources
+  - Add/verify a safe CLI/config path for passing multiple token sources without shell-exporting secrets.
+  - Show redacted token-source inventory in diagnostics/preflight.
+  - Keep `PRATC_GITHUB_TOKENS` as a compatibility path, but do not require it for normal multi-account use.
+- [ ] Unified token fallback across live GitHub clients
+  - Wire the token pool into GraphQL, REST, sync, preflight, workflow, analyze live-refresh, and serve paths.
+  - Rotate/fallback on auth failures and rate-limit/secondary-limit failures where another token can help.
+  - Do not rotate on non-retryable permission errors that indicate the operation is invalid for all tokens.
+  - Log which redacted source index is active, exhausted, or skipped.
+- [ ] OpenClaw release verification
+  - Test on this machine with both cached `gh` accounts: `Mind-Dragon` and `avirweb`.
+  - Verify preflight reports multiple token sources without exposing secrets.
+  - Run an all-open `openclaw/openclaw` workflow with `--max-prs=0 --sync-max-prs=0` and confirm it can use fallback tokens.
+  - Add regression tests for token discovery, dedupe, active/inactive `gh` account handling, fallback rotation, and redaction.
+
 ## v1.8 — ML Automation Release Prep
 
 Primary release goal: add more automation through ML while keeping prATC advisory, auditable, and operator-controlled.

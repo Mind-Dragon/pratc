@@ -30,7 +30,11 @@ type dbJobRecorder struct {
 }
 
 func NewDefaultRunner(jobRecorder JobRecorder, jobID string, cacheStore *cache.Store, maxPRs int, token string) *DefaultRunner {
-	return NewRunner(defaultWorker(cacheStore, maxPRs, token), jobRecorder, jobID)
+	return NewRunner(defaultWorker(cacheStore, maxPRs, token, nil), jobRecorder, jobID)
+}
+
+func NewDefaultRunnerWithTokenSource(jobRecorder JobRecorder, jobID string, cacheStore *cache.Store, maxPRs int, token string, tokenSource gh.TokenSource) *DefaultRunner {
+	return NewRunner(defaultWorker(cacheStore, maxPRs, token, tokenSource), jobRecorder, jobID)
 }
 
 func NewDBJobRecorder(dbPath string) JobRecorder {
@@ -131,7 +135,7 @@ func (r *DefaultRunner) Run(ctx context.Context, repo string, emit func(eventTyp
 	return nil
 }
 
-func defaultWorker(cacheStore *cache.Store, maxPRs int, token string) Worker {
+func defaultWorker(cacheStore *cache.Store, maxPRs int, token string, tokenSource gh.TokenSource) Worker {
 	bootstrapPath := strings.TrimSpace(os.Getenv("PRATC_BOOTSTRAP_PATH"))
 	var bootstrap BootstrapSource
 	if bootstrapPath != "" {
@@ -147,7 +151,7 @@ func defaultWorker(cacheStore *cache.Store, maxPRs int, token string) Worker {
 			remoteURL := fmt.Sprintf(types.GitHubURLPrefix+"%s.git", repoID)
 			return repo.OpenOrCreate(ctx, baseDir, repoID, remoteURL)
 		},
-		Metadata:   githubMetadataSource{client: gh.NewClient(gh.Config{Token: token, ReserveRequests: 200, BudgetManager: budget}), cacheStore: cacheStore, budget: budget, maxPRs: maxPRs},
+		Metadata:   githubMetadataSource{client: gh.NewClient(gh.Config{Token: token, TokenSource: tokenSource, ReserveRequests: 200, BudgetManager: budget}), cacheStore: cacheStore, budget: budget, maxPRs: maxPRs},
 		Bootstrap:  bootstrap,
 		CacheStore: cacheStore,
 		Budget:     budget,
