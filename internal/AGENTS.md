@@ -6,29 +6,29 @@ Go backend packages. Parent AGENTS.md covers top-level contracts; this covers pa
 
 | Package | LOC | Purpose | Status |
 |---------|-----|---------|--------|
-| `app/` | 836 | Service facade: Analyze, Cluster, Graph, Plan | Production |
-| `planner/` | 892 | Core planner with functional options | Production |
-| `planning/` | 4984 | Pool selector, hierarchy, pairwise, time decay | **UNWIRED** |
-| `formula/` | 1004 | Combinatorial engine: P/C/n^k via math/big | Production |
-| `filter/` | 980 | Pre-filter pipeline + scoring | Production |
-| `cmd/` | 1608 | HTTP server, API routes, CORS | Production |
-| `cache/` | 1404 | SQLite + forward-only migrations | Production |
-| `graph/` | 1269 | Dependency/conflict graph + DOT + incremental | Production |
-| `github/` | 1163 | GraphQL client, rate limiting | Production |
-| `types/` | 516 | All domain types in single file | Production |
-| `ml/` | ~200 | Go→Python bridge (exec.CommandContext) | Production |
-| `settings/` | 440 | Global/repo scope, YAML import/export | Production |
-| `sync/` | 374 | Background sync worker + git mirror | Production |
-| `analysis/` | 196 | Bot detection (author + title patterns) | Production |
-| `audit/` | ~150 | Memory + SQLite audit stores | Production |
-| `repo/` | ~300 | Git mirror management (bare repos) | Production |
-| `report/` | ~200 | PDF via fpdf | Production |
-| `testutil/` | ~100 | Fixture loader for fixtures/*.json | Test only |
-| `util/` | ~50 | Shared utilities (strings, tokenization, Jaccard) | Production |
-| `telemetry/ratelimit/` | 1821 | Rate limiting infrastructure (used by sync/, github/, cmd/) | Production |
-| `monitor/` | ~300 | WebSocket server, SSE sync events | Production |
-| `review/` | ~800 | PR review analyzers (quality, reliability, security) | Production |
-| `version/` | ~50 | Build info, version constants | Production |
+| `app/` | 3284 | Service facade: Analyze, Cluster, Graph, Plan | Production |
+| `planner/` | 489 | Core planner with functional options | Production |
+| `planning/` | 3191 | Pool selector, hierarchy, pairwise, time decay | **UNWIRED** |
+| `formula/` | 714 | Combinatorial engine: P/C/n^k via math/big | Production |
+| `filter/` | 230 | Pre-filter pipeline + scoring | Production |
+| `cmd/` | 5191 | HTTP server, API routes, CORS | Production |
+| `cache/` | 1787 | SQLite + forward-only migrations | Production |
+| `graph/` | 823 | Dependency/conflict graph + DOT + incremental | Production |
+| `github/` | 1823 | GraphQL client, rate limiting | Production |
+| `types/` | 856 | All domain types in single file | Production |
+| `ml/` | 343 | Go→Python bridge (exec.CommandContext) | Production |
+| `settings/` | 751 | Global/repo scope, YAML import/export | Production |
+| `sync/` | 2050 | Background sync worker + git mirror | Production |
+| `analysis/` | 52 | Bot detection (author + title patterns) | Production |
+| `audit/` | 76 | Memory + SQLite audit stores | Production |
+| `repo/` | 800 | Git mirror management (bare repos) | Production |
+| `report/` | 3809 | PDF via fpdf | Production |
+| `testutil/` | 85 | Fixture loader for fixtures/*.json | Test only |
+| `util/` | 210 | Shared utilities (strings, tokenization, Jaccard) | Production |
+| `telemetry/ratelimit/` | 538 | Rate limiting infrastructure (used by sync/, github/, cmd/) | Production |
+| `monitor/` | 2305 | WebSocket server, SSE sync events | Production |
+| `review/` | 4637 | PR review analyzers (quality, reliability, security) | Production |
+| `version/` | 64 | Build info, version constants | Production |
 | `models/` | — | **Does not exist** | N/A |
 | `mq/` | — | **Does not exist** | N/A |
 | `search/` | — | **Does not exist** | N/A |
@@ -53,7 +53,7 @@ internal/sync/ → internal/repo/
 ## Known Code Smells
 
 ### planning/ is intentional future architecture
-`internal/planning/` (6651 LOC) contains sophisticated planning algorithms with full test coverage:
+`internal/planning/` (3191 LOC) contains sophisticated planning algorithms with full test coverage:
 - `PoolSelector`: Weighted multi-component priority scoring
 - `HierarchicalPlanner`: 3-level planning reducing O(C(n,k)) to O(C(clusters,c) × C(avg,s))
 - `PairwiseExecutor`: Sharded parallel conflict detection
@@ -101,8 +101,8 @@ sort.SliceStable(prs, func(i, j int) bool {
 ### graph/ — fingerprint-based incremental updates
 `BuildIncremental()` requires prior fingerprint map. First call must use `Build()`. Changing detection logic invalidates all stored fingerprints.
 
-### github/ — rate limit retry missing jitter
-Exponential backoff exists (2s→60s) but jitter is TODO. Secondary rate limits (403) retry 8x; 5xx retry 6x. No REST fallback yet.
+### github/ — rate limit retry with jitter
+Exponential backoff exists (2s→60s) with jitter via `addJitter()`. Secondary rate limits (403) retry 8x; 5xx retry 6x. No REST fallback yet.
 
 ### cache/ — forward-only migrations
 `schema_migrations` table tracks applied versions. `user_version` pragma must equal latest migration or binary refuses to start. No down-migrations; fix forward with new migration.

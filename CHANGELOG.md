@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-04-23
+
+### Added
+
+- **WS1 — Diff Analysis Evidence**: Subsystem detection fields (` subsystem`, `riskyPatterns`, `deepScore`) wired into `AnalyzeResponse`; evidence classifier produces structured diff-grounded signals for security, reliability, and quality gates.
+- **WS2 — Dependency Impact**: API surface change detection, shared module boundary analysis, and schema change tracking integrated into the analyze path.
+- **WS3 — Test Evidence**: Test movement tracking and coverage estimation added to the analyze pipeline; tests that moved or changed alongside code are surfaced in the evidence record.
+- **WS4 — PlanOptions Contract Widening**: `PlanOptions` struct with 8 fields (`Target`, `Mode`, `IncludeBots`, `ScoreMin`, `StaleDays`, `StaleScoreThreshold`, `CandidatePoolCap`, `ConflictFilterMode`) wired through CLI (`--target`, `--mode`, `--include-bots`, `--score-min`, etc.) and HTTP (`?target=`, `?mode=`, `?include_bots=`, etc.); existing `Plan()` call in service contract updated to `PlanWithOptions()`.
+- **WS4 — Explicit Review Failure Semantics**: `ReviewResponse` gains `Partial`, `Errors`, and `FailedPRs` fields so partial failures during multi-PR review are distinguishable from complete successes; per-PR error capture in `reviewErrorsByPR`.
+- **WS4 — Unified Token Source**: `TokenSource` interface replaces separate GraphQL/REST token acquisition paths; `singleTokenSource` used for both; `IsRetryableError` tightened so generic 403 responses are no longer retryable.
+- **WS5 — Release Hardening**: All v1.7 TODO items closed; remediation note finalized; full green suite confirmed across Go tests (race), vet, build, and Python tests (19/19).
+
+### Fixed
+
+- **Rate-limit token fallback**: `github` client stopped retrying token acquisition after first successful resolution, preventing unnecessary `gh auth token` invocations on every request.
+- **Budget remaining clamp**: `CanAfford` now correctly uses `>=` at the reserve boundary; `RecordResponse` clamps negative remaining values to 0.
+- **Engine empty tier skip**: Planner correctly skips empty tier results instead of producing malformed output.
+- **Cache legacy paused sync**: Resumed legacy paused sync jobs now proceed normally instead of stalling.
+
+### Changed
+
+- **Plan dry-run default**: `PlanWithOptions` dry-run defaults to `true` (safe); callers must explicitly pass `false` to execute.
+- **Conflict noise filtering**: Expanded noise file list includes `schema.base.generated.ts`, `schema.help.ts`, `schema.labels.ts`, `docs/docs.json`, and `docs/.generated/*` paths.
+
 ## [1.6.0] — In Progress
 
 ### Fixed

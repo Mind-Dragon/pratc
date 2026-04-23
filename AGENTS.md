@@ -1,6 +1,6 @@
 # AGENTS.md — prATC Knowledge Base
 
-**Generated:** 2026-03-23 | **Commit:** a9864d3 | **Branch:** main
+**Generated:** 2026-04-23 | **Commit:** 58af834 | **Branch:** main
 
 ## Overview
 prATC (PR Air Traffic Control) — self-hostable, repo-agnostic system for large-scale PR triage and merge planning. Go CLI + Python ML service + HTTP API.
@@ -51,7 +51,7 @@ pratc/
 | SQLite + migrations | `internal/cache/sqlite.go` | Forward-only, `schema_migrations` table |
 | ML bridge | `internal/ml/bridge.go` | JSON stdin/stdout to Python subprocess |
 | Settings CRUD | `internal/settings/store.go` | Global/repo scope, YAML import/export |
-| GitHub GraphQL client | `internal/github/client.go` | Rate limiting + retry (missing jitter) |
+| GitHub GraphQL client | `internal/github/client.go` | Rate limiting + retry with jitter |
 | Fixture loader | `internal/testutil/fixture_loader.go` | JSON fixture files in `fixtures/` |
 
 ## Cross-Cutting Patterns
@@ -134,8 +134,8 @@ Must not have in v0.1: GitHub App/OAuth/webhooks, ML feedback loops, multi-repo 
 ## GitHub Rate-Limit Policy
 - Reserve ≥200 requests/hour; pause when crossed
 - Primary GraphQL with REST fallback (REST not yet implemented)
-- 403 secondary-rate-limit: exponential backoff + jitter, 2s→60s, max 8 retries (jitter missing)
-- 5xx/network: exponential backoff + jitter, 1s→30s, max 6 retries (not differentiated yet)
+- 403 secondary-rate-limit: exponential backoff + jitter, 2s→60s, max 8 retries
+- 5xx/network: exponential backoff + jitter, 1s→30s, max 6 retries
 - Rate limit exhaustion: persist cursor, sleep until reset +15s, resume
 
 ## Performance SLOs (5.5k PR Scale)

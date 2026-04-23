@@ -78,10 +78,12 @@ Files: `internal/types/models.go`, possibly `internal/app/service.go`
 
 ARCHITECTURE.md line 163: "maxPRs cap of 5,000 applied to the overnight openclaw/openclaw run — full corpus is ~6,632 PRs"
 
-- [ ] Find where the 5,000 cap is applied (likely in sync or service config)
-- [ ] Determine if it should be configurable via CLI/API
-- [ ] Document the current behavior and recommended override
+- [x] Find where the 5,000 cap is applied (likely in sync or service config)
+- [x] Determine if it should be configurable via CLI/API
+- [x] Document the current behavior and recommended override
 - [ ] Add a warning when the cap truncates the corpus
+
+Audit notes: see `docs/maxprs-cap-audit.md`. Current finding: the cap is caller-supplied (`--max-prs` / `--sync-max-prs`), with truncation metadata emitted by `internal/app/service.go`; settings validation accepts `max_prs`, but the runtime does not yet wire that value into analyze/plan/graph/workflow/serve paths.
 
 Files: `internal/sync/`, `internal/app/service.go`, `internal/cmd/`
 
@@ -105,11 +107,12 @@ Files: `internal/app/service.go`, `internal/graph/`, `internal/types/noise_files
 
 ROADMAP.md v1.8 calls for multi-repo analysis. The current schema is single-repo:
 
-- [ ] Design a `repositories` table schema (id, owner, name, last_sync, status)
-- [ ] Design cross-repo dependency detection approach (shared files, import paths, API surface overlap)
-- [ ] Design unified merge plan output (per-repo sections + cross-repo conflict detection)
-- [ ] Write the design doc in `docs/plans/`
-- [ ] Do NOT implement yet — design only
+- [x] Design a `repositories` table schema (id, owner, name, last_sync, status)
+- [x] Design cross-repo dependency detection approach (shared files, import paths, API surface overlap)
+- [x] Design unified merge plan output (per-repo sections + cross-repo conflict detection)
+- [x] Write the design doc in `docs/plans/`
+- [x] Do NOT implement yet — design only
+  - Complete: `docs/plans/multi-repo-data-model.md` written and audited; merged recommendations added from the GPT 5.4 audit.
 
 Files: `docs/plans/` (new), `internal/cache/schema.go` (read-only audit)
 
@@ -117,12 +120,13 @@ Files: `docs/plans/` (new), `internal/cache/schema.go` (read-only audit)
 
 ROADMAP.md v1.8 calls for OAuth, webhooks, status checks:
 
-- [ ] Audit current auth flow: `ResolveToken`, `ResolveTokenForLogin`, `DiscoverTokens`
-- [ ] Design OAuth device-flow integration for GitHub App
-- [ ] Design webhook receiver endpoint (what events, what triggers)
-- [ ] Design status check API (what gets posted back to PRs)
-- [ ] Write the design doc in `docs/plans/`
-- [ ] Do NOT implement yet — design only
+- [x] Audit current auth flow: `ResolveToken`, `ResolveTokenForLogin`, `DiscoverTokens`
+- [x] Design OAuth device-flow integration for GitHub App
+- [x] Design webhook receiver endpoint (what events, what triggers)
+- [x] Design status check API (what gets posted back to PRs)
+- [x] Write the design doc in `docs/plans/`
+- [x] Do NOT implement yet — design only
+  - Complete: `docs/plans/github-app-integration.md` written and audited; merged recommendations added from the z.ai 5.1 audit.
 
 Files: `docs/plans/` (new), `internal/github/auth.go` (read-only audit)
 
@@ -130,12 +134,13 @@ Files: `docs/plans/` (new), `internal/github/auth.go` (read-only audit)
 
 ROADMAP.md v1.8 calls for operator decisions as training signals:
 
-- [ ] Design how operator overrides (bucket changes, rejections) get captured
-- [ ] Design the feedback format (JSONL? SQLite table?)
-- [ ] Design how feedback feeds back into scoring/duplicate detection
-- [ ] Design privacy boundaries (what gets sent to ML service, what stays local)
-- [ ] Write the design doc in `docs/plans/`
-- [ ] Do NOT implement yet — design only
+- [x] Design how operator overrides (bucket changes, rejections) get captured
+- [x] Design the feedback format (JSONL? SQLite table?)
+- [x] Design how feedback feeds back into scoring/duplicate detection
+- [x] Design privacy boundaries (what gets sent to ML service, what stays local)
+- [x] Write the design doc in `docs/plans/`
+- [x] Do NOT implement yet — design only
+  - Complete: `docs/plans/ml-feedback-loop.md` written; quick review added and the doc is ready for a deeper external audit.
 
 Files: `docs/plans/` (new), `internal/review/` (read-only audit)
 

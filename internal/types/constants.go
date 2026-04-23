@@ -54,9 +54,9 @@ const (
 	// when no target is explicitly specified.
 	DefaultTarget = 20
 
-	// DefaultCandidatePoolCap is a legacy candidate-pool cap constant retained
-	// for compatibility. The active BuildCandidatePool pipeline does not enforce
-	// it by default.
+	// Deprecated: DefaultCandidatePoolCap is a legacy documentation-only cap.
+	// The active filter.Pipeline.BuildCandidatePool runtime path does not enforce
+	// it; only explicit callers of filter.CapPool can apply a hard limit.
 	DefaultCandidatePoolCap = 100
 
 	// MaxTarget is the upper bound for plan targets, derived from P1.3

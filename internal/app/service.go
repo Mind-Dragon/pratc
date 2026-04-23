@@ -78,8 +78,8 @@ type Config struct {
 	PlanningStrategy string
 	// OnAnalyzeProgress is an optional callback for per-phase progress reporting.
 	OnAnalyzeProgress AnalyzeProgress
-// CollapseDuplicates enables duplicate group collapse before planning.
-// When true, superseded PRs are replaced with their canonical representative.
+	// CollapseDuplicates enables duplicate group collapse before planning.
+	// When true, superseded PRs are replaced with their canonical representative.
 	CollapseDuplicates bool
 	// DynamicTarget configures dynamic merge plan target calculation (v1.6.1).
 	// When Enabled, target is computed as Ratio*len(pool) clamped to [MinTarget, MaxTarget].
@@ -2166,65 +2166,6 @@ func flattenGroups(input map[int]*types.DuplicateGroup) []types.DuplicateGroup {
 	return groups
 }
 
-// noiseFiles are files that every PR in a monorepo touches, producing useless conflict noise.
-var noiseFiles = map[string]bool{
-	// JavaScript/TypeScript package managers
-	"package.json":        true,
-	"pnpm-lock.yaml":      true,
-	"yarn.lock":           true,
-	"package-lock.json":   true,
-	"bun.lockb":           true,
-	// Go modules
-	"go.mod":              true,
-	"go.sum":              true,
-	// Rust
-	"Cargo.toml":          true,
-	"Cargo.lock":          true,
-	// Python
-	"pyproject.toml":      true,
-	"setup.py":            true,
-	"requirements.txt":    true,
-	// Build
-	"Makefile":            true,
-	"Dockerfile":          true,
-	// VCS/config
-	".gitignore":          true,
-	".editorconfig":       true,
-	// Linters/formatters
-	".eslintrc":           true,
-	".eslintrc.json":      true,
-	".prettierrc":         true,
-	".prettierrc.json":    true,
-	// TypeScript
-	"tsconfig.json":       true,
-	"tsconfig.base.json":  true,
-	"vitest.config.ts":    true,
-	"jest.config.ts":      true,
-	// Documentation
-	"CHANGELOG.md":        true,
-	"README.md":           true,
-	"LICENSE":             true,
-}
-
-// noiseExtensions are file extensions that are always noise in conflict detection.
-var noiseExtensions = []string{
-	".lock", ".lockb", ".lock.json",
-}
-
-var noisePathPrefixes = []string{
-	"docs/.generated/",
-}
-
-var noisePathExact = map[string]bool{
-	"docs/docs.json": true,
-}
-
-var noisePathSuffixes = []string{
-	"/schema.base.generated.ts",
-	"/schema.help.ts",
-	"/schema.labels.ts",
-}
-
 func filterNoiseFiles(files []string) []string {
 	var signal []string
 	for _, f := range files {
@@ -2232,14 +2173,14 @@ func filterNoiseFiles(files []string) []string {
 		if idx := strings.LastIndex(f, "/"); idx >= 0 {
 			base = f[idx+1:]
 		}
-		if noiseFiles[base] || noiseFiles[f] {
+		if types.ConflictNoiseFiles[base] || types.ConflictNoiseFiles[f] {
 			continue
 		}
-		if noisePathExact[f] {
+		if types.ConflictNoisePathExact[f] {
 			continue
 		}
 		prefixNoise := false
-		for _, prefix := range noisePathPrefixes {
+		for _, prefix := range types.ConflictNoisePathPrefixes {
 			if strings.HasPrefix(f, prefix) {
 				prefixNoise = true
 				break
@@ -2249,7 +2190,7 @@ func filterNoiseFiles(files []string) []string {
 			continue
 		}
 		suffixNoise := false
-		for _, suffix := range noisePathSuffixes {
+		for _, suffix := range types.ConflictNoisePathSuffixes {
 			if strings.HasSuffix(f, suffix) {
 				suffixNoise = true
 				break
@@ -2259,7 +2200,7 @@ func filterNoiseFiles(files []string) []string {
 			continue
 		}
 		isNoise := false
-		for _, ext := range noiseExtensions {
+		for _, ext := range types.ConflictNoiseExtensions {
 			if strings.HasSuffix(f, ext) {
 				isNoise = true
 				break
@@ -2289,6 +2230,14 @@ func isSourceFile(path string) bool {
 }
 
 func buildConflicts(repo string, prs []types.PR, progress func(processed int, total int)) []types.ConflictPair {
+	return buildConflictsWithMinSignalFiles(repo, prs, progress, types.MinSharedSignalFilesForConflict)
+}
+
+func buildConflictsWithMinSignalFiles(repo string, prs []types.PR, progress func(processed int, total int), minSharedSignalFiles int) []types.ConflictPair {
+	if minSharedSignalFiles <= 0 {
+		minSharedSignalFiles = types.MinSharedSignalFilesForConflict
+	}
+
 	g := graph.BuildWithProgress(repo, prs, progress)
 	conflicts := make([]types.ConflictPair, 0)
 	for _, edge := range g.Edges {
@@ -2298,15 +2247,15 @@ func buildConflicts(repo string, prs []types.PR, progress func(processed int, to
 		files := parseSharedFiles(edge.Reason)
 		// Filter noise files: lock files, CI configs, dependency files that every PR touches
 		signalFiles := filterNoiseFiles(files)
-		if len(signalFiles) < 2 {
-			continue // need at least 2 shared signal files to be a real conflict
+		if len(signalFiles) < minSharedSignalFiles {
+			continue
 		}
 		conflictType := "attention_needed"
 		severity := "low"
 		if len(signalFiles) >= 5 {
 			severity = "high"
 			conflictType = "merge_blocking"
-		} else if len(signalFiles) >= 2 {
+		} else if len(signalFiles) >= minSharedSignalFiles {
 			severity = "medium"
 		}
 		// Source code conflicts are more serious than config conflicts
@@ -2504,7 +2453,7 @@ func buildDuplicateSynthesis(
 
 // synthesisScoredCandidate is a helper type for ranking synthesis candidates.
 type synthesisScoredCandidate struct {
-	prNumber   int
+	prNumber  int
 	score     float64
 	candidate types.DuplicateSynthesisCandidate
 }
@@ -2578,14 +2527,14 @@ func buildSynthesisPlanForGroup(
 	notes := buildSynthesisNotes(scored, candidates)
 
 	return types.DuplicateSynthesisPlan{
-		GroupID:               fmt.Sprintf("grp_%d_%s", canonicalPR, groupType),
-		GroupType:             groupType,
-		OriginalCanonicalPR:    canonicalPR,
-		NominatedCanonicalPR:   nominatedCanonical,
-		Similarity:            similarity,
-		Reason:                reason,
-		Candidates:            candidates,
-		SynthesisNotes:        notes,
+		GroupID:              fmt.Sprintf("grp_%d_%s", canonicalPR, groupType),
+		GroupType:            groupType,
+		OriginalCanonicalPR:  canonicalPR,
+		NominatedCanonicalPR: nominatedCanonical,
+		Similarity:           similarity,
+		Reason:               reason,
+		Candidates:           candidates,
+		SynthesisNotes:       notes,
 	}
 }
 
@@ -2695,22 +2644,22 @@ func scoreSynthesisCandidate(
 	)
 
 	return types.DuplicateSynthesisCandidate{
-		PRNumber:           pr.Number,
-		Title:              pr.Title,
-		Author:             pr.Author,
-		Role:               "canonical", // default, will be overwritten
-		SynthesisScore:     score,
-		Confidence:         review.Confidence,
-		SubstanceScore:     review.SubstanceScore,
-		Mergeable:          pr.Mergeable,
-		HasTestEvidence:    hasTestEvidence,
-		SubsystemTags:      subsystemTags,
-		RiskyPatterns:      riskyPatterns,
-		ConflictFootprint:  conflictCount,
-		IsDraft:            pr.IsDraft,
-		SignalQuality:      signalQuality,
-		ScoringFactors:     factors,
-		Rationale:          rationale,
+		PRNumber:          pr.Number,
+		Title:             pr.Title,
+		Author:            pr.Author,
+		Role:              "canonical", // default, will be overwritten
+		SynthesisScore:    score,
+		Confidence:        review.Confidence,
+		SubstanceScore:    review.SubstanceScore,
+		Mergeable:         pr.Mergeable,
+		HasTestEvidence:   hasTestEvidence,
+		SubsystemTags:     subsystemTags,
+		RiskyPatterns:     riskyPatterns,
+		ConflictFootprint: conflictCount,
+		IsDraft:           pr.IsDraft,
+		SignalQuality:     signalQuality,
+		ScoringFactors:    factors,
+		Rationale:         rationale,
 	}, score
 }
 

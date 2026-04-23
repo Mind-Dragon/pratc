@@ -6,8 +6,12 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
-// CapPool limits the candidate pool to the specified size and returns
-// the capped pool and rejections for PRs that exceeded the cap.
+// CapPool limits the candidate pool to the specified size and returns the
+// capped pool and rejections for PRs that exceeded the cap.
+//
+// This helper is available for explicit opt-in callers only. The default
+// BuildCandidatePool runtime path does not call it and therefore does not apply
+// any implicit cap.
 func CapPool(prs []types.PR, maxSize int) (pool []types.PR, rejections []types.PlanRejection) {
 	if len(prs) <= maxSize {
 		return prs, nil

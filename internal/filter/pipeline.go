@@ -20,6 +20,11 @@ func (p *Pipeline) WithIncludeBots(includeBots bool) *Pipeline {
 	return p
 }
 
+// BuildCandidatePool applies the default runtime filtering and priority sort.
+//
+// It intentionally does not call CapPool or enforce the legacy
+// types.DefaultCandidatePoolCap/types.DefaultPoolCap constants. Any caller that
+// wants a hard pool limit must invoke CapPool explicitly after sorting.
 func (p *Pipeline) BuildCandidatePool(prs []types.PR, clusterByPR map[int]string) (pool []types.PR, rejections []types.PlanRejection) {
 	pool, rejections = ApplyFilters(prs, p.includeBots)
 

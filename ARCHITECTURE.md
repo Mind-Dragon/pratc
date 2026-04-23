@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document describes the system shape for the v1.6.0 full-corpus triage engine.
+This document describes the system shape for the v1.7.0 full-corpus triage engine.
 
 The point is not to make the system clever in one shot. The point is to make it honest, layered, and complete: every PR enters, every decision is explainable, and the system keeps separating the obvious from the subtle until what remains is worth human attention.
 
@@ -211,8 +211,20 @@ The service facade exposes the primary app operations:
 Analyze(ctx context.Context, repo string) (*AnalysisResponse, error)
 Cluster(ctx context.Context, repo string) (*ClusterResponse, error)
 Graph(ctx context.Context, repo string) (*GraphResponse, error)
-Plan(ctx context.Context, repo string, target int, mode formula.Mode) (*PlanResponse, error)
+PlanWithOptions(ctx context.Context, repo string, opts PlanOptions) (*PlanResponse, error)
 Health() *HealthResponse
+
+// PlanOptions controls the planning behavior.
+type PlanOptions struct {
+    Target               int
+    Mode                 formula.Mode
+    IncludeBots          bool
+    ScoreMin             float64
+    StaleDays            int
+    StaleScoreThreshold  float64
+    CandidatePoolCap     int
+    ConflictFilterMode   string
+}
 ```
 
 ### Shared thresholds and defaults
@@ -220,7 +232,7 @@ Health() *HealthResponse
 - Duplicate threshold: 0.85 (lowered from 0.90 in v1.5 — scoring formula maxes at 0.85)
 - Overlap threshold: 0.70
 - Default target: 20
-- Default candidate pool cap: 100
+- Default candidate pool cap: legacy constant only; not enforced by `BuildCandidatePool()`
 - Max target: 1000
 - Plan dry-run default: true
 - Default deep candidate subset size: 64
