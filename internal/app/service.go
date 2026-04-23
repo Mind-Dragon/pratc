@@ -122,6 +122,18 @@ type Service struct {
 	dynamicTarget           DynamicTargetConfig
 }
 
+// PlanOptions controls plan behavior. Zero values mean "use default".
+type PlanOptions struct {
+	Target              int
+	Mode                formula.Mode
+	ExcludeConflicts    bool
+	CandidatePoolCap    int
+	ScoreMin            float64
+	StaleScoreThreshold float64
+	CollapseDuplicates  bool
+	DryRun              bool
+}
+
 const (
 	precisionModeFast = "fast"
 	precisionModeDeep = "deep"
@@ -1027,6 +1039,14 @@ func (s Service) Graph(ctx context.Context, repo string) (types.GraphResponse, e
 }
 
 func (s Service) Plan(ctx context.Context, repo string, target int, mode formula.Mode) (types.PlanResponse, error) {
+	return s.PlanWithOptions(ctx, repo, PlanOptions{
+		Target: target,
+		Mode:   mode,
+	})
+}
+
+// PlanWithOptions is the widened plan entrypoint. Zero-value options use defaults.
+func (s Service) PlanWithOptions(ctx context.Context, repo string, opts PlanOptions) (types.PlanResponse, error) {
 	log := logger.New("app")
 	if ctx != nil {
 		log = logger.FromContext(ctx)
@@ -1049,16 +1069,25 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 	if err != nil {
 		return types.PlanResponse{}, err
 	}
+
+	target := opts.Target
 	if target <= 0 {
 		target = 20
 	}
+	mode := opts.Mode
 	if mode == "" {
 		mode = formula.ModeCombination
 	}
 
+	// Apply CollapseDuplicates from opts (overrides service-level default if explicitly set).
+	collapseDup := s.collapseDuplicates
+	if opts.CollapseDuplicates {
+		collapseDup = true
+	}
+
 	// Duplicate collapse: detect duplicates and replace superseded PRs with canonicals.
 	var collapsedCorpus *types.CollapsedCorpus
-	if s.collapseDuplicates {
+	if collapseDup {
 		var fingerprint string
 		if s.cacheStore != nil && len(prs) > 0 {
 			fingerprint = cache.CorpusFingerprint(prs)
@@ -1192,6 +1221,88 @@ func (s Service) Plan(ctx context.Context, repo string, target int, mode formula
 	poolPRs := make([]types.PR, 0, len(poolResult.Selected))
 	for _, pc := range poolResult.Selected {
 		poolPRs = append(poolPRs, pc.PR)
+	}
+
+	// Apply PlanOptions-based filters before the planner.
+	preFilterCount := len(poolPRs)
+
+	// ScoreMin: filter candidates below the minimum score threshold.
+	if opts.ScoreMin > 0 {
+		filtered := make([]types.PR, 0, len(poolPRs))
+		for _, pc := range poolResult.Selected {
+			if pc.PriorityScore >= opts.ScoreMin {
+				filtered = append(filtered, pc.PR)
+			} else {
+				rejections = append(rejections, types.PlanRejection{PRNumber: pc.PR.Number, Reason: "below score_min threshold"})
+				planTelemetry.StageDropCounts["score_min"]++
+			}
+		}
+		poolPRs = filtered
+	}
+
+	// StaleScoreThreshold: filter candidates whose staleness score exceeds the threshold.
+	if opts.StaleScoreThreshold > 0 {
+		filtered := make([]types.PR, 0, len(poolPRs))
+		staleByNum := make(map[int]float64, len(poolResult.Selected))
+		for _, pc := range poolResult.Selected {
+			staleByNum[pc.PR.Number] = pc.ComponentScores.StalenessScore
+		}
+		for _, pr := range poolPRs {
+			if staleByNum[pr.Number] > opts.StaleScoreThreshold {
+				rejections = append(rejections, types.PlanRejection{PRNumber: pr.Number, Reason: "above stale_score_threshold"})
+				planTelemetry.StageDropCounts["stale_threshold"]++
+			} else {
+				filtered = append(filtered, pr)
+			}
+		}
+		poolPRs = filtered
+	}
+
+	// ExcludeConflicts: build conflict graph early and remove conflicting PRs.
+	if opts.ExcludeConflicts && len(poolPRs) > 1 {
+		conflictWarnings := buildConflictWarnings(repoName, poolPRs)
+		filtered := make([]types.PR, 0, len(poolPRs))
+		for _, pr := range poolPRs {
+			if warnings, ok := conflictWarnings[pr.Number]; ok && len(warnings) > 0 {
+				rejections = append(rejections, types.PlanRejection{PRNumber: pr.Number, Reason: "conflict warning (exclude_conflicts)"})
+				planTelemetry.StageDropCounts["exclude_conflicts"]++
+			} else {
+				filtered = append(filtered, pr)
+			}
+		}
+		poolPRs = filtered
+	}
+
+	// CandidatePoolCap: cap the scored candidate pool.
+	if opts.CandidatePoolCap > 0 && len(poolPRs) > opts.CandidatePoolCap {
+		for _, pr := range poolPRs[opts.CandidatePoolCap:] {
+			rejections = append(rejections, types.PlanRejection{PRNumber: pr.Number, Reason: "excluded by candidate_pool_cap"})
+			planTelemetry.StageDropCounts["candidate_pool_cap"]++
+		}
+		poolPRs = poolPRs[:opts.CandidatePoolCap]
+	}
+
+	if len(poolPRs) != preFilterCount {
+		planTelemetry.PoolSizeAfter = len(poolPRs)
+	}
+
+	// Adjust target if PlanOptions filters reduced the pool below the target.
+	if target > len(poolPRs) && mode != formula.ModeWithReplacement {
+		target = len(poolPRs)
+	}
+
+	// Return early if PlanOptions filters eliminated all candidates.
+	if len(poolPRs) == 0 {
+		return types.PlanResponse{
+			Repo:              repoName,
+			GeneratedAt:       nowFn().Format(time.RFC3339),
+			Target:            target,
+			CandidatePoolSize: 0,
+			Strategy:          "formula+graph",
+			Rejections:        rejections,
+			Telemetry:         &planTelemetry,
+			CollapsedCorpus:   collapsedCorpus,
+		}, nil
 	}
 
 	// Route to hierarchical or formula planner based on planningStrategy.
