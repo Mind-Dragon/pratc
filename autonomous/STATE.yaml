@@ -1,20 +1,21 @@
-mode: complete
+mode: active
 repo: openclaw/openclaw
 branch: main
-baseline_commit: 61e49d6
-current_run_id: final-wave
-corpus_dir: projects/openclaw_openclaw/runs/final-wave
-phase: complete
-current_wave: 3
+baseline_commit: 3b70307
+current_run_id: release-audit-20260421T023224Z
+corpus_dir: projects/openclaw_openclaw/runs/release-audit-20260421T023224Z
+phase: bootstrap
+current_wave: 0
 open_gaps: []
 blocked_gaps: []
 completed_gaps: []
-last_audit_path: projects/openclaw_openclaw/runs/final-wave/AUDIT_RESULTS.json
+last_audit_path: projects/openclaw_openclaw/runs/release-audit-20260421T023224Z/AUDIT_RESULTS.json
 last_green_commit: 61e49d6
 paused: false
-stop_reason: final trustworthiness audit passed
+stop_reason: fresh current-HEAD autonomous run required before completion
 resume_command: python3 scripts/autonomous_controller.py resume
 notes:
-- Initial autonomous control-plane scaffold created.
-- Update baseline_commit and timestamps on first controller reconcile.
-updated_at: '2026-04-20T20:23:01.108094+00:00'
+- Historical audit is green but predates current HEAD 3b70307.
+- Do not set phase=complete or last_green_commit=3b70307 until a fresh current-HEAD autonomous run passes audit.
+- Next phase is runtime proof and fresh cache-backed current-HEAD run under autonomous/runs/.
+updated_at: '2026-04-23T20:24:00+00:00'

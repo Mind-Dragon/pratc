@@ -23,6 +23,8 @@ Required success conditions:
 - controller/audit tests pass
 - a fresh workflow rerun completes and produces the required artifacts
 - `scripts/audit_guideline.py <run-dir>` has zero required failures
+- any remaining manual audit checks are either converted to machine checks or explicitly accepted in `wave-summary.md`
+- `last_green_commit` equals the current `baseline_commit` before `phase: complete`
 - report usefulness is represented by passing audit checks, not prose optimism
 - durable docs and repo-local state describe the same system truthfully
 
@@ -124,8 +126,9 @@ Required checks:
 - active branch and commit recorded
 - `go test ./...` baseline recorded
 - corpus path chosen and recorded in `autonomous/STATE.yaml`
-- `pratc serve` available or already running
-- TUI monitor available for observation
+- `./bin/pratc` builds and exposes current binary provenance through banner, `version`, or equivalent metadata
+- `pratc serve` available, already running, or explicitly skipped with a recorded CLI-only reason
+- TUI monitor available for observation when needed
 
 Outputs:
 - `autonomous/STATE.yaml` initialized or refreshed
@@ -267,6 +270,8 @@ Resume semantics:
 - the controller reconstructs the live session todo from the current phase and open gaps
 - no phase restarts from scratch unless artifacts are missing or invalid
 - if artifacts are stale relative to HEAD, the controller records that explicitly and reruns the necessary steps
+- if `last_audit_path` does not exist, the controller must not proceed to gap generation, fix waves, or complete; it must downgrade to bootstrap or run-pipeline
+- if `last_green_commit` is older than `baseline_commit`, completion requires a fresh current-HEAD audit or an explicit artifact-compatibility note
 
 ## Stop conditions
 

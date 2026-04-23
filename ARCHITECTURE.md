@@ -160,12 +160,65 @@ The architecture accepts that the corpus may be large.
 What it may not do is silently narrow the corpus.
 
 ### Known scaling constraints to address
-- `maxPRs` cap of 5,000 applied to the overnight openclaw/openclaw run — full corpus is ~6,632 PRs; need to remove or raise the cap
-- Conflict pairs at 38,884 after noise filtering — still above the 5,000 target; needs further noise file expansion or higher shared-file minimum
-- Duplicate groups at 9 — may be genuine corpus behavior or a signal that file-overlap weighting needs tuning
-- Legacy pool-cap constants still exist in `internal/types/`, but `BuildCandidatePool()` does not enforce them in the active runtime path
 - `ListPRs()` in `internal/cache/sqlite.go` now exposes caller-visible paging/streaming via `PRPage` and `ListPRsIter()`; callers no longer need to materialize the full slice
 - Bootstrap sync in `internal/sync/worker.go` now streams into the cache store
+- `maxPRs` is an operator-facing cap, not a hidden default; full-corpus autonomous runs must not pass a cap unless truncation is intentionally recorded in run metadata
+
+## Autonomous runtime architecture
+
+Autonomous mode is the control loop around the product runtime. It does not replace the CLI/API/PDF surfaces; it drives them, audits their artifacts, converts failures into stable gaps, and dispatches implementation waves.
+
+### Control plane
+
+- `AUTONOMOUS.md` defines loop policy and stop conditions.
+- `autonomous/STATE.yaml` is the resume checkpoint. It records repo, branch, baseline commit, current run, current phase, open gaps, blocked gaps, last audit, and last green commit.
+- `autonomous/GAP_LIST.md` is the current failure surface generated from audit output.
+- `autonomous/RUNBOOK.md` contains exact bootstrap, run, audit, gap, resume, pause, and closeout commands.
+- `scripts/autonomous_controller.py` manages state, wave synthesis, resume, closeout, and consistency checks.
+- `scripts/audit_guideline.py` evaluates run artifacts against `GUIDELINE.md`.
+- `scripts/gap_list_from_audit.py` promotes required audit failures into stable gap entries.
+
+### Run artifact layout
+
+Controller-owned runs live under `autonomous/runs/<run-id>/` and should contain:
+
+```text
+controller-log.md
+wave-summary.md
+run-metadata.yaml
+subagent-results/
+analyze.json
+step-3-cluster.json
+step-4-graph.json
+step-5-plan.json
+report.pdf
+AUDIT_RESULTS.json
+```
+
+`run-metadata.yaml` records the commit, binary path, binary banner/version, service health probe or explicit service-skip reason, corpus source, cache path, settings path, and whether any PR cap was applied.
+
+### State invariants
+
+- `corpus_dir` must exist before audit or gap generation.
+- `last_audit_path` must exist before gap generation, fix waves, or complete.
+- `last_green_commit` may equal `baseline_commit` only after tests and a current-HEAD audit pass, unless an explicit artifact compatibility note is recorded.
+- Full-corpus autonomous runs must not pass `--max-prs` unless truncation is intentional and recorded in run metadata.
+- Manual audit checks cannot silently satisfy `SUCCESS`; they must either be converted to machine checks or accepted explicitly in `wave-summary.md`.
+
+### Wave model
+
+Open gaps are synthesized into ordered implementation waves:
+
+1. data model / type surface
+2. core decision logic
+3. wiring / artifact flow / report population
+4. verification and doc sync
+
+The controller remains responsible for state and verification. Subagents implement or review isolated gaps, but the controller reruns tests, product commands, and audits before changing durable state.
+
+### Runtime proof
+
+Autonomous runtime readiness requires a fresh binary and, when API readiness is claimed, a live health probe. CLI-only autonomous runs may skip `serve`, but the skip reason must be recorded in run metadata.
 
 ## Technical reference
 

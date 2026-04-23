@@ -51,9 +51,9 @@ Cache-backed verification run `projects/openclaw_openclaw/runs/final-wave` now p
 - [x] Expand noise file list further based on live run results; added OpenClaw-derived generated docs/schema filters (`docs/.generated/*`, `docs/docs.json`, `schema.base.generated.ts`, `schema.help.ts`, `schema.labels.ts`)
 - [x] Tune substance scoring weights based on operator feedback / observed output spread; widened the score using source-file impact and diff-footprint weighting with regression tests in `internal/review/deep_judgment_test.go`
 
-## Version 1.6 — Pipeline-First Reset (CURRENT TARGET)
+## Version 1.6 — Pipeline-First Reset (COMPLETED)
 
-**Goal:** Remove dashboard as product surface, strengthen the 16-gate funnel, and make CLI/API/PDF the only promoted interfaces.
+**Shipped 2026-04-21.** Remove dashboard as product surface, strengthen the 16-gate funnel, and make CLI/API/PDF the only promoted interfaces.
 
 ### Product Surface Reset
 
@@ -80,9 +80,23 @@ Cache-backed verification run `projects/openclaw_openclaw/runs/final-wave` now p
 - [x] PDF report reads like a decision packet, not a dashboard export
 - [x] Remove browser/dashboard assumptions from endpoint naming and docs
 
-## Version 1.7 — Evidence Enrichment (Q4 2026)
+## Autonomous Runtime Readiness — Current Local Target
 
-**Goal:** Enhance analyzer evidence beyond metadata to include diff analysis, subsystem detection, test coverage impact, and the P1 reliability fixes needed to keep the product contract trustworthy.
+**Goal:** Make the autonomous controller loop trustworthy before starting v1.8 implementation. This is a release-readiness layer around the shipped v1.7 product surface.
+
+### Required before v1.8 implementation
+
+- [ ] Reconcile `autonomous/STATE.yaml` and `autonomous/GAP_LIST.md` against real existing artifacts
+- [ ] Replace stale runbook paths and remove full-corpus `--max-prs 5000` defaults
+- [ ] Rebuild binary with truthful version/commit surface
+- [ ] Produce a fresh current-HEAD run under `autonomous/runs/<run-id>/`
+- [ ] Audit that run with zero required failures
+- [ ] Convert or explicitly accept remaining manual audit checks
+- [ ] Keep `TODO.md`, `AUTONOMOUS.md`, `ARCHITECTURE.md`, and `RUNBOOK.md` aligned
+
+## Version 1.7 — Evidence Enrichment (COMPLETED)
+
+**Shipped locally 2026-04-23.** Enhanced analyzer evidence beyond metadata to include diff analysis, subsystem detection, test coverage impact, P1 reliability fixes, and ML reliability/honesty improvements.
 
 ### Diff Analysis
 

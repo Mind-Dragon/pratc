@@ -28,7 +28,7 @@ All notable changes to this project will be documented in this file.
 - **Plan dry-run default**: `PlanWithOptions` dry-run defaults to `true` (safe); callers must explicitly pass `false` to execute.
 - **Conflict noise filtering**: Expanded noise file list includes `schema.base.generated.ts`, `schema.help.ts`, `schema.labels.ts`, `docs/docs.json`, and `docs/.generated/*` paths.
 
-## [1.6.0] — In Progress
+## [1.6.0] — 2026-04-21
 
 ### Fixed
 

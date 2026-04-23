@@ -11,39 +11,67 @@ cd /home/agent/pratc
 git status --short
 git rev-parse --short HEAD
 go test ./...
+python -m pytest -q tests/test_audit_guideline.py scripts/test_autonomous_controller.py
 ```
 
-### 2. Start or verify API service
+### 2. Build and verify binary provenance
 
 ```bash
 cd /home/agent/pratc
-./pratc-bin serve --port 7400
-# or: go run ./cmd/pratc serve --port 7400
+make build
+./bin/pratc --help | head -5
+./bin/pratc version
+```
+
+If `./bin/pratc version` is unavailable or the banner does not identify the current release/commit, autonomous runtime proof is incomplete. Fix the version surface before closing the loop.
+
+### 3. Start or verify API service
+
+The CLI-only autonomous workflow can run without the API service, but service proof is required before claiming API runtime readiness.
+
+```bash
+cd /home/agent/pratc
+./bin/pratc serve --port 7400
+```
+
+Health probes:
+
+```bash
+curl -sf http://100.112.201.95:7400/healthz
 curl -sf http://127.0.0.1:7400/healthz
 ```
 
-### 3. Start the monitor in a separate pane
+Prefer the real VPN IPv4 probe for runtime proof. If service proof is intentionally skipped, record the reason in `autonomous/runs/<run-id>/run-metadata.yaml`.
+
+### 4. Start the monitor in a separate pane
 
 ```bash
 cd /home/agent/pratc
-./pratc-bin monitor
+./bin/pratc monitor
 # or: go run ./cmd/pratc monitor
 ```
 
-### 4. Initialize controller checkpoint
+The monitor is observational only. It is not a control surface or completion proof.
+
+### 5. Initialize controller checkpoint
+
+Historical green audit available for bootstrap:
 
 ```bash
 cd /home/agent/pratc
 python3 scripts/autonomous_controller.py init \
   --repo openclaw/openclaw \
-  --corpus-dir projects/openclaw_openclaw/runs/final-wave
+  --corpus-dir projects/openclaw_openclaw/runs/release-audit-20260421T023224Z
 ```
+
+Fresh current-HEAD run is still required before setting `phase: complete` or `last_green_commit` to the current commit.
 
 ## Full autonomous loop
 
 ### Promotion rule during execution
 
 When a new issue is discovered, promote it immediately into exactly one of:
+
 - an audit failure
 - a gap in `autonomous/GAP_LIST.md`
 - a live todo item with a verification command
@@ -51,13 +79,13 @@ When a new issue is discovered, promote it immediately into exactly one of:
 
 Do not leave findings stranded only in chat.
 
-### Audit latest known run
+### Audit latest known historical run
 
 ```bash
 cd /home/agent/pratc
-python3 scripts/audit_guideline.py projects/openclaw_openclaw/runs/final-wave
+python3 scripts/audit_guideline.py projects/openclaw_openclaw/runs/release-audit-20260421T023224Z
 python3 scripts/gap_list_from_audit.py \
-  --audit projects/openclaw_openclaw/runs/final-wave/AUDIT_RESULTS.json \
+  --audit projects/openclaw_openclaw/runs/release-audit-20260421T023224Z/AUDIT_RESULTS.json \
   --gap-list autonomous/GAP_LIST.md \
   --state autonomous/STATE.yaml
 ```
@@ -66,25 +94,59 @@ python3 scripts/gap_list_from_audit.py \
 
 ```bash
 cd /home/agent/pratc
-go test ./...
 python -m pytest -q tests/test_audit_guideline.py scripts/test_autonomous_controller.py
+go test ./...
 ```
 
-### Rerun after a fix wave
+### Create a fresh current-HEAD run directory
 
 ```bash
 cd /home/agent/pratc
-./bin/pratc analyze --repo openclaw/openclaw --force-cache --max-prs 5000 --format=json > <fresh-run-dir>/analyze.json
-./bin/pratc cluster --repo openclaw/openclaw --force-cache --format=json > <fresh-run-dir>/step-3-cluster.json
-./bin/pratc graph --repo openclaw/openclaw --force-cache --max-prs 5000 --format=json > <fresh-run-dir>/step-4-graph.json
-./bin/pratc plan --repo openclaw/openclaw --force-cache --max-prs 5000 --target 20 --format=json > <fresh-run-dir>/step-5-plan.json
-./bin/pratc report --repo openclaw/openclaw --input-dir <fresh-run-dir> --output <fresh-run-dir>/report.pdf
-python3 scripts/audit_guideline.py <fresh-run-dir>
+RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
+RUN_DIR=autonomous/runs/$RUN_ID
+mkdir -p "$RUN_DIR/subagent-results"
+```
+
+### Write run metadata
+
+```bash
+cat > "$RUN_DIR/run-metadata.yaml" <<EOF
+repo: openclaw/openclaw
+branch: $(git branch --show-current)
+commit: $(git rev-parse --short HEAD)
+binary: ./bin/pratc
+binary_help_head: |
+$(./bin/pratc --help | head -5 | sed 's/^/  /')
+service_health_url: http://100.112.201.95:7400/healthz
+service_health_status: pending
+corpus_source: cache-first
+sync_refreshed: false
+max_prs_applied: 0
+created_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+EOF
+```
+
+Update `service_health_status` after probing, or record an explicit skip reason.
+
+### Rerun after a fix wave or for fresh closeout
+
+Full-corpus cache-backed run, intentionally no analysis cap:
+
+```bash
+cd /home/agent/pratc
+./bin/pratc analyze --repo openclaw/openclaw --force-cache --format=json > "$RUN_DIR/analyze.json"
+./bin/pratc cluster --repo openclaw/openclaw --force-cache --format=json > "$RUN_DIR/step-3-cluster.json"
+./bin/pratc graph --repo openclaw/openclaw --force-cache --format=json > "$RUN_DIR/step-4-graph.json"
+./bin/pratc plan --repo openclaw/openclaw --force-cache --target 20 --format=json > "$RUN_DIR/step-5-plan.json"
+./bin/pratc report --repo openclaw/openclaw --input-dir "$RUN_DIR" --output "$RUN_DIR/report.pdf"
+python3 scripts/audit_guideline.py "$RUN_DIR"
 python3 scripts/gap_list_from_audit.py \
-  --audit <fresh-run-dir>/AUDIT_RESULTS.json \
+  --audit "$RUN_DIR/AUDIT_RESULTS.json" \
   --gap-list autonomous/GAP_LIST.md \
   --state autonomous/STATE.yaml
 ```
+
+If a cap is intentionally used for smoke testing, record it in `run-metadata.yaml`; do not call the result full-corpus.
 
 ### Run controller reconciliation only
 
@@ -116,10 +178,14 @@ python3 scripts/autonomous_controller.py pause --reason "operator hold"
 
 ### Mark success after verified green closeout
 
+Only after a fresh current-HEAD run has all required audit checks passing:
+
 ```bash
 cd /home/agent/pratc
-python3 scripts/autonomous_controller.py complete --reason "all required audit checks passed"
+python3 scripts/autonomous_controller.py complete --reason "fresh current-HEAD audit passed"
 ```
+
+If manual audit checks remain, record explicit operator acceptance in `autonomous/runs/<run-id>/wave-summary.md` before marking success.
 
 ## Expected controller flow
 
@@ -135,25 +201,39 @@ python3 scripts/autonomous_controller.py complete --reason "all required audit c
 ## Recovery notes
 
 ### If the service is down
-- restart `pratc serve`
-- confirm `/healthz`
+
+- restart `pratc serve` if API proof is required
+- confirm `/healthz` on the real interface when possible
 - do not trust stale TUI output from a dead process
+- if CLI-only run is acceptable, record service skip reason in run metadata
 
 ### If audit output is missing
+
 - rerun `scripts/audit_guideline.py`
-- do not patch `GAP_LIST.md` by hand as a substitute
+- do not patch `GAP_LIST.md` by hand as a substitute for a fresh audit
 
 ### If `STATE.yaml` is stale relative to HEAD
+
 - run `python3 scripts/autonomous_controller.py reconcile`
-- this should refresh branch, commit, timestamps, and resume pointers
+- if `last_audit_path` is missing, downgrade to bootstrap/fresh-run-required
+- do not mark complete until a fresh current-HEAD audit exists
 
 ### If a wave fails without progress
+
 - leave failed gaps open
 - record blocker notes in `GAP_LIST.md`
 - set `stop_reason` in `STATE.yaml` if halting
 
 ## Current canonical corpus
 
-Until replaced by a fresher verified run, use:
+Historical bootstrap corpus until replaced by a fresher verified run:
+
 - repo: `openclaw/openclaw`
-- corpus dir: `projects/openclaw_openclaw/runs/final-wave`
+- corpus dir: `projects/openclaw_openclaw/runs/release-audit-20260421T023224Z`
+- audit: `projects/openclaw_openclaw/runs/release-audit-20260421T023224Z/AUDIT_RESULTS.json`
+
+Required next corpus:
+
+- repo: `openclaw/openclaw`
+- corpus dir: `autonomous/runs/<fresh-current-head-run-id>`
+- status: pending
