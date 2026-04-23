@@ -1,18 +1,18 @@
 {
-  "recorded_at_utc": "2026-04-23T21:05:34Z",
+  "recorded_at_utc": "2026-04-23T22:19:25Z",
   "binary": "/home/agent/pratc/bin/pratc",
   "version_output": [
     "version=1.7.0",
-    "commit=07b7c2ba5043",
-    "build_date=2026-04-23T21:05:30Z",
+    "commit=b4f266eefca9",
+    "build_date=2026-04-23T22:17:34Z",
     "dirty=false"
   ],
   "startup_banner": [
-    "prATC v1.7.0 commit=07b7c2ba5043 built on 2026-04-23T21:05:30Z dirty=false",
-    "Using Config from: settings=/home/agent/pratc/autonomous/runtime/pratc-settings.db | cache=/home/agent/pratc/autonomous/runtime/pratc.db"
+    "version=1.7.0",
+    "commit=b4f266eefca9"
   ],
-  "tmux_session": "pratc-autonomous: 1 windows (created Thu Apr 23 23:05:32 2026)",
-  "listen": "LISTEN 0      1024                *:7400             *:*    users:((\"pratc\",pid=410530,fd=12))",
+  "tmux_session": "pratc-autonomous: 1 windows (created Fri Apr 24 00:18:20 2026)",
+  "listen": "LISTEN 0      1024               *:7400            *:*    users:((\"pratc\",pid=488560,fd=12))",
   "health": {
     "local": {
       "url": "http://127.0.0.1:7400/healthz",
