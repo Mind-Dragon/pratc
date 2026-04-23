@@ -26,13 +26,13 @@ v1.7 is code-complete with all 5 workstreams done. The next batch addresses:
 
 Record what actually shipped in v1.7:
 
-- [ ] Add v1.7 entry to CHANGELOG.md covering:
+- [x] Add v1.7 entry to CHANGELOG.md covering:
   - WS1: Diff analysis evidence (subsystem detection, risky patterns)
   - WS2: Dependency impact (API surface, shared module, schema changes)
   - WS3: Test evidence (test movement, coverage estimation)
   - WS4: PlanOptions contract widening, review failure semantics, token source unification
   - WS5: Release hardening
-- [ ] Include test counts and new contract surface
+- [x] Include test counts and new contract surface
 
 Files: `CHANGELOG.md`
 
@@ -40,12 +40,12 @@ Files: `CHANGELOG.md`
 
 Update stale version references across docs:
 
-- [ ] GUIDELINE.md line 5: "v1.6.0 full-corpus triage engine" → v1.7
-- [ ] ARCHITECTURE.md line 4: "v1.6.0 full-corpus triage engine" → v1.7
-- [ ] ARCHITECTURE.md line 214: `Plan(ctx, repo, target, mode)` → `PlanWithOptions(ctx, repo, PlanOptions)`
-- [ ] ARCHITECTURE.md line 214: add `PlanOptions` struct to service contract
-- [ ] internal/cmd/AGENTS.md: verify plan query params match what's now wired
-- [ ] internal/AGENTS.md: update "github/ — rate limit retry missing jitter" if jitter now exists
+- [x] GUIDELINE.md line 5: "v1.6.0 full-corpus triage engine" → v1.7
+- [x] ARCHITECTURE.md line 4: "v1.6.0 full-corpus triage engine" → v1.7
+- [x] ARCHITECTURE.md line 214: `Plan(ctx, repo, target, mode)` → `PlanWithOptions(ctx, repo, PlanOptions)`
+- [x] ARCHITECTURE.md line 214: add `PlanOptions` struct to service contract
+- [x] internal/cmd/AGENTS.md: verify plan query params match what's now wired
+- [x] internal/AGENTS.md: update "github/ — rate limit retry missing jitter" if jitter now exists
 
 Files: `GUIDELINE.md`, `ARCHITECTURE.md`, `internal/cmd/AGENTS.md`, `internal/AGENTS.md`
 
@@ -53,9 +53,9 @@ Files: `GUIDELINE.md`, `ARCHITECTURE.md`, `internal/cmd/AGENTS.md`, `internal/AG
 
 The root AGENTS.md says "Generated: 2026-03-23" — over a month stale:
 
-- [ ] Regenerate root AGENTS.md with current codebase facts
-- [ ] Verify package LOC counts, command surface, and cross-cutting patterns match reality
-- [ ] Update the "Anti-Patterns" section if any v1.7 changes affect them
+- [x] Regenerate root AGENTS.md with current codebase facts
+- [x] Verify package LOC counts, command surface, and cross-cutting patterns match reality
+- [x] Update the "Anti-Patterns" section if any v1.7 changes affect them
 
 Files: `AGENTS.md`
 
@@ -67,10 +67,10 @@ Files: `AGENTS.md`
 
 ARCHITECTURE.md line 166: "Legacy pool-cap constants still exist in `internal/types/`, but `BuildCandidatePool()` does not enforce them"
 
-- [ ] Audit `DefaultCandidatePoolCap` (100) and `DefaultPoolCap` (64) in `internal/types/`
-- [ ] Determine if anything still references these constants
-- [ ] Remove or deprecate with clear documentation if unused
-- [ ] Add a test proving the constants don't silently affect behavior
+- [x] Audit `DefaultCandidatePoolCap` (100) and `DefaultPoolCap` (64) in `internal/types/`
+- [x] Determine if anything still references these constants
+- [x] Remove or deprecate with clear documentation if unused
+- [x] Add a test proving the constants don't silently affect behavior
 
 Files: `internal/types/models.go`, possibly `internal/app/service.go`
 
@@ -91,10 +91,10 @@ Files: `internal/sync/`, `internal/app/service.go`, `internal/cmd/`
 
 ARCHITECTURE.md line 164: "Conflict pairs at 38,884 after noise filtering — still above the 5,000 target"
 
-- [ ] Profile the conflict detection path on the full 6.6k PR corpus
-- [ ] Evaluate raising the shared-file minimum from 2 to 3
-- [ ] Evaluate expanding the noise file list further
-- [ ] Add a benchmark for `buildConflicts()` at corpus scale
+- [x] Profile the conflict detection path on the full 6.6k PR corpus
+- [x] Evaluate raising the shared-file minimum from 2 to 3
+- [x] Evaluate expanding the noise file list further
+- [x] Add a benchmark for `buildConflicts()` at corpus scale
 - [ ] Target: conflict pairs below 5,000 on openclaw/openclaw
 
 Files: `internal/app/service.go`, `internal/graph/`, `internal/types/noise_files.go`
