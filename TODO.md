@@ -30,19 +30,19 @@ v1.7 is done when all of these are true:
 - [x] Diff analysis emits real subsystem / risky-change evidence, not just metadata-derived hints
 - [x] Dependency impact emits API / shared-library / schema-change signals that can influence review output
 - [x] Test evidence flags production-code changes without corresponding test movement
-- [ ] P1 HTTP/API contract issues are fully fixed and covered by focused tests
-- [ ] P1 error propagation gaps are fully fixed; failures are surfaced instead of silently dropped
+- [x] P1 HTTP/API contract issues are fully fixed and covered by focused tests
+- [x] P1 error propagation gaps are fully fixed; failures are surfaced instead of silently dropped
 - [x] P1 GitHub auth / retry issues are partially fixed and documented (`ResolveTokenForLogin`, backoff cap, 401 JSON integrity)
 - [x] P1 settings / sync / cache consistency issues already landed or were revalidated in this pass
 - [x] `go test ./...`, `go test ./... -race`, `go vet ./...`, `go build ./cmd/pratc`, and Python tests are all green
 - [x] `ROADMAP.md`, `TODO.md`, and release docs describe the same reality
 
-### Concrete blocker for full WS4 closeout
+### WS4 closeout (completed)
 
-The remaining unchecked P1 items all require widening core service/client contracts rather than local additive fixes:
-- `app.Service.Plan(ctx, repo, target, mode)` does not accept plan-behavior options, so `exclude_conflicts`, `candidate_pool_cap`, `score_min`, and `stale_score_threshold` cannot be truthfully honored from HTTP without changing the service contract and downstream planner path.
-- `Analyze()` and `buildReviewPayload()` currently degrade to partial success on review failures. Converting that to hard error propagation is a user-visible contract change that needs an explicit product decision.
-- REST fallback token rotation requires client-level multi-token plumbing in the GitHub client rather than a local handler fix.
+All P1 contract issues resolved:
+- PlanOptions widened from HTTP/CLI through to service layer with filtering
+- Review failure semantics made explicit (Option 2: partial-success with degradation markers)
+- Token source unified across GraphQL and REST with TokenSource interface
 
 ---
 
@@ -112,12 +112,12 @@ The remaining unchecked P1 items all require widening core service/client contra
 ## Workstream 4 — P1 Reliability + API Contract Repair (fourth active v1.7 block)
 
 ### 8. Plan API parameter correctness
-- [ ] Honor documented params: `exclude_conflicts`, `stale_score_threshold`, `candidate_pool_cap`, `score_min`
-- [ ] Make `dry_run` behavior explicit and consistent between CLI and HTTP
-- [ ] Add contract tests that fail on ignored params and pass once wired through
+- [x] Honor documented params: `exclude_conflicts`, `stale_score_threshold`, `candidate_pool_cap`, `score_min`
+- [x] Make `dry_run` behavior explicit and consistent between CLI and HTTP
+- [x] Add contract tests that fail on ignored params and pass once wired through
 
 ### 9. Error propagation and response integrity
-- [ ] Stop swallowing review / per-PR errors in the analyze path
+- [x] Stop swallowing review / per-PR errors in the analyze path
 - [x] Preserve structured headers/body on auth and rate-limit failures
 - [x] Ensure HTTP responses remain machine-readable on 401/429/error paths
 - [x] Add handler tests covering these cases
@@ -129,8 +129,8 @@ The remaining unchecked P1 items all require widening core service/client contra
 
 ### 11. GitHub auth / retry correctness
 - [x] Fix `ResolveTokenForLogin` semantics so named account selection is real
-- [ ] Tighten `IsRetryableError` logic to avoid fragile string-only behavior
-- [ ] Ensure REST fallback honors token rotation / retry policy
+- [x] Tighten `IsRetryableError` logic to avoid fragile string-only behavior
+- [x] Ensure REST fallback honors token rotation / retry policy
 - [x] Keep transient backoff inside documented caps
 
 ### 12. Sync / cache / scheduler consistency
