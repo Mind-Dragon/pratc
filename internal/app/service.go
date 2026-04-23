@@ -644,6 +644,8 @@ func (s Service) Analyze(ctx context.Context, repo string) (types.AnalysisRespon
 			RiskBuckets:   []types.BucketCount{},
 			PriorityTiers: []types.PriorityTierCount{},
 			Results:       []types.ReviewResult{},
+			Partial:       true,
+			Errors:        []string{err.Error()},
 		}
 	}
 	s.emit("done", len(response.PRs), len(response.PRs))
@@ -774,6 +776,7 @@ func (s Service) buildReviewPayload(ctx context.Context, repoName string, respon
 	}
 
 	var allResults []types.ReviewResult
+	var failedPRs []int
 	totalPRs := len(response.PRs)
 	for i, pr := range response.PRs {
 		// Emit per-PR progress every 50 PRs to avoid flooding.
@@ -819,6 +822,7 @@ func (s Service) buildReviewPayload(ctx context.Context, repoName string, respon
 
 		result, err := orchestrator.Review(ctx, prData)
 		if err != nil {
+			failedPRs = append(failedPRs, pr.Number)
 			continue
 		}
 		allResults = append(allResults, result.Result)
@@ -851,6 +855,8 @@ func (s Service) buildReviewPayload(ctx context.Context, repoName string, respon
 		RiskBuckets:   riskBuckets,
 		PriorityTiers: tiers,
 		Results:       allResults,
+		Partial:       len(failedPRs) > 0,
+		FailedPRs:     failedPRs,
 	}, nil
 }
 

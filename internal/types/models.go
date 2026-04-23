@@ -493,6 +493,14 @@ type ReviewResponse struct {
 	PriorityTiers []PriorityTierCount `json:"priority_tiers"`
 	// Results contains individual review results for each PR.
 	Results []ReviewResult `json:"results"`
+
+	// Degradation markers (Option 2: partial-success with explicit errors).
+	// Partial indicates that the review did not complete fully.
+	Partial bool `json:"partial,omitempty"`
+	// Errors contains top-level error messages from the review pipeline.
+	Errors []string `json:"errors,omitempty"`
+	// FailedPRs lists PR numbers that failed individual review.
+	FailedPRs []int `json:"failed_prs,omitempty"`
 }
 
 // CodeLocation references a specific location in a source file.
