@@ -39,10 +39,10 @@ This replaces the completed ML Reliability + Honesty Slice, which landed locally
   - `Kimi K2P6` artifacts/runtime
   - `Z.AI 5.1` doc consistency
   - `Z.AI 5.1` gap/wave architecture
-- [ ] Fresh current-HEAD autonomous run exists under `autonomous/runs/<run-id>/`
-- [ ] Fresh audit from current HEAD has zero required failures
-- [ ] `./bin/pratc` runtime branding/version surface matches current release/commit
-- [ ] `pratc serve` health proof is recorded or explicitly skipped for CLI-only autonomous run
+- [x] Fresh current-HEAD autonomous run exists under `autonomous/runs/20260423T203433Z/`
+- [x] Fresh audit from current HEAD has zero required failures: `19 passed`, `0 failed`, `0 manual`
+- [x] `./bin/pratc` runtime branding/version surface matches current release/commit
+- [x] `pratc serve` health proof is recorded in `autonomous/runtime/runtime-proof.json`
 
 ## Phase A — Reconcile docs and repo-local state
 
@@ -50,8 +50,8 @@ This replaces the completed ML Reliability + Honesty Slice, which landed locally
 
 - [x] Point `autonomous/STATE.yaml` at a real existing historical audit path while marking the phase as bootstrap/fresh-run-required
 - [x] Regenerate or patch `autonomous/GAP_LIST.md` so it references the real audit path, not the missing `final-wave`
-- [ ] Add stricter controller checks so missing `last_audit_path` cannot coexist with `phase: complete`
-- [ ] Add stricter controller checks so `last_green_commit` older than `baseline_commit` requires explicit compatibility notes
+- [x] Add stricter controller checks so missing `last_audit_path` cannot coexist with `phase: complete`
+- [x] Add stricter controller checks so `last_green_commit` older than `baseline_commit` requires explicit compatibility notes
 
 Verification:
 
@@ -67,7 +67,7 @@ python3 scripts/autonomous_controller.py synthesize-wave
 - [x] Replace missing `final-wave` path with `release-audit-20260421T023224Z` as historical bootstrap artifact
 - [x] Remove default `--max-prs 5000` from full-corpus rerun examples
 - [x] Add binary/version proof and real-interface health proof steps
-- [ ] Add a generated `run-metadata.yaml` command/template to the runbook
+- [x] Add a generated `run-metadata.yaml` command/template to the runbook
 
 Verification:
 
@@ -209,19 +209,19 @@ python3 scripts/audit_guideline.py <current-run-dir>
 
 And the current run has:
 
-- [ ] `controller-log.md`
-- [ ] `wave-summary.md`
-- [ ] `run-metadata.yaml`
-- [ ] `subagent-results/`
-- [ ] `analyze.json`
-- [ ] `step-3-cluster.json`
-- [ ] `step-4-graph.json`
-- [ ] `step-5-plan.json`
-- [ ] `report.pdf`
-- [ ] `AUDIT_RESULTS.json`
-- [ ] `GAP_LIST.md` and `STATE.yaml` consistent with the audit
+- [x] `controller-log.md`
+- [x] `wave-summary.md`
+- [x] `run-metadata.yaml`
+- [x] `subagent-results/`
+- [x] `analyze.json`
+- [x] `step-3-cluster.json`
+- [x] `step-4-graph.json`
+- [x] `step-5-plan.json`
+- [x] `report.pdf`
+- [x] `AUDIT_RESULTS.json`
+- [x] `GAP_LIST.md` and `STATE.yaml` consistent with the audit
 
-## Out of scope until autonomous runtime is green
+## Deferred until the next product cycle
 
 - [ ] v1.8 multi-repo implementation
 - [ ] ML feedback loop implementation

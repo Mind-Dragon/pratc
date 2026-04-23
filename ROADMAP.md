@@ -80,19 +80,19 @@ Cache-backed verification run `projects/openclaw_openclaw/runs/final-wave` now p
 - [x] PDF report reads like a decision packet, not a dashboard export
 - [x] Remove browser/dashboard assumptions from endpoint naming and docs
 
-## Autonomous Runtime Readiness — Current Local Target
+## Autonomous Runtime Readiness — COMPLETED LOCALLY
 
-**Goal:** Make the autonomous controller loop trustworthy before starting v1.8 implementation. This is a release-readiness layer around the shipped v1.7 product surface.
+**Completed locally 2026-04-23.** The autonomous controller loop is green under the current contract: current-HEAD run, 19/0/0 audit, live runtime proof, reconciled state, and 4-provider PASS audit.
 
-### Required before v1.8 implementation
+### Completed before v1.8 implementation
 
-- [ ] Reconcile `autonomous/STATE.yaml` and `autonomous/GAP_LIST.md` against real existing artifacts
-- [ ] Replace stale runbook paths and remove full-corpus `--max-prs 5000` defaults
-- [ ] Rebuild binary with truthful version/commit surface
-- [ ] Produce a fresh current-HEAD run under `autonomous/runs/<run-id>/`
-- [ ] Audit that run with zero required failures
-- [ ] Convert or explicitly accept remaining manual audit checks
-- [ ] Keep `TODO.md`, `AUTONOMOUS.md`, `ARCHITECTURE.md`, and `RUNBOOK.md` aligned
+- [x] Reconcile `autonomous/STATE.yaml` and `autonomous/GAP_LIST.md` against real existing artifacts
+- [x] Replace stale runbook paths and remove full-corpus `--max-prs 5000` defaults
+- [x] Rebuild binary with truthful version/commit surface
+- [x] Produce a fresh current-HEAD run under `autonomous/runs/20260423T203433Z/`
+- [x] Audit that run with zero required failures
+- [x] Convert or explicitly accept remaining manual audit checks
+- [x] Keep `TODO.md`, `AUTONOMOUS.md`, `ARCHITECTURE.md`, and `RUNBOOK.md` aligned
 
 ## Version 1.7 — Evidence Enrichment (COMPLETED)
 
