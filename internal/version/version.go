@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 )
 
-var Version = "1.6.1"
+var Version = "1.7.0"
 
-var BuildDate = time.Now().Format(time.RFC3339)
+var BuildDate = "unknown"
+
+var Commit = "unknown"
+
+var Dirty = "unknown"
 
 // VersionInfo represents a semantic version.
 type VersionInfo struct {

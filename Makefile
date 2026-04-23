@@ -7,6 +7,11 @@ UV ?= uv
 NODE ?= node
 BUN ?= bun
 DOCKER_COMPOSE ?= docker-compose
+VERSION ?= 1.7.0
+COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+DIRTY ?= $(shell test -z "$$(git status --short 2>/dev/null)" && echo false || echo true)
+BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS := -X github.com/jeffersonnunn/pratc/internal/version.Version=$(VERSION) -X github.com/jeffersonnunn/pratc/internal/version.Commit=$(COMMIT) -X github.com/jeffersonnunn/pratc/internal/version.Dirty=$(DIRTY) -X github.com/jeffersonnunn/pratc/internal/version.BuildDate=$(BUILD_DATE)
 GO_BUILD_CACHE := $(CURDIR)/.cache/go-build
 GO_MOD_CACHE := $(CURDIR)/.cache/go-mod
 GO_ENV := GOCACHE=$(GO_BUILD_CACHE) GOMODCACHE=$(GO_MOD_CACHE)
@@ -32,7 +37,7 @@ dev:
 build:
 	@mkdir -p bin
 	@mkdir -p $(GO_BUILD_CACHE) $(GO_MOD_CACHE)
-	@$(GO_ENV) $(GO) build -o bin/pratc ./cmd/pratc/
+	@$(GO_ENV) $(GO) build -ldflags "$(LDFLAGS)" -o bin/pratc ./cmd/pratc/
 
 test: test-go test-python test-web
 

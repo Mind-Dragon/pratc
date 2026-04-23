@@ -21,7 +21,7 @@ var rootCmd = &cobra.Command{
 
 // ExecuteContext runs the root command with the given context
 func ExecuteContext(ctx context.Context) {
-	fmt.Fprintf(os.Stderr, "Harness Optimizer v%s built on %s\n", version.Version, version.BuildDate)
+	fmt.Fprintf(os.Stderr, "prATC v%s commit=%s built on %s dirty=%s\n", version.Version, version.Commit, version.BuildDate, version.Dirty)
 
 	// Show config locations
 	settingsDB := os.Getenv("PRATC_SETTINGS_DB")
@@ -89,4 +89,5 @@ func RegisterCommands() {
 	RegisterWorkflowCommand()
 	RegisterMonitorCommand()
 	RegisterPreflightCommand()
+	RegisterVersionCommand()
 }

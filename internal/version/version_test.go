@@ -18,8 +18,7 @@ func TestBuildDateConstant(t *testing.T) {
 	if BuildDate == "" {
 		t.Error("BuildDate should not be empty")
 	}
-	// BuildDate is set to time.Now().Format(time.RFC3339)
-	// Just verify it's not empty since it varies per build
+	// BuildDate defaults to unknown and is replaced through -ldflags in release builds.
 }
 
 func TestParse(t *testing.T) {
@@ -231,20 +230,9 @@ func TestFormatVersion(t *testing.T) {
 }
 
 func TestParseBuildDate(t *testing.T) {
-	// BuildDate is set to time.Now().Format(time.RFC3339)
-	// Test that our constant is properly RFC3339 formatted
-	t.Run("build date is valid RFC3339", func(t *testing.T) {
-		// This is a basic sanity check that BuildDate is parseable as RFC3339
-		// The actual format is: "2006-01-02T15:04:05Z07:00"
-		// We just check it's not empty and has expected parts
-		if BuildDate == "" {
-			t.Error("BuildDate is empty")
-		}
-		// RFC3339 should contain 'T' and 'Z' or offset
-		if !strings.Contains(BuildDate, "T") {
-			t.Errorf("BuildDate %s does not contain 'T' (RFC3339 format)", BuildDate)
-		}
-	})
+	if BuildDate == "" {
+		t.Error("BuildDate is empty")
+	}
 }
 
 func TestCurrentVersion(t *testing.T) {
