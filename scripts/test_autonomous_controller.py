@@ -531,6 +531,44 @@ paused: false
     assert loaded['completed_gaps'] == []
 
 
+def test_complete_state_flags_stale_last_green_commit(tmp_paths, sample_state, monkeypatch):
+    """A complete state cannot claim green if last_green_commit is behind HEAD without an allowed proof-only commit."""
+    state_path, gap_path = tmp_paths
+    sample_state['phase'] = 'complete'
+    sample_state['last_green_commit'] = 'old123'
+    sample_state['open_gaps'] = []
+    ctrl.save_state(sample_state)
+    gap_path.write_text('# Autonomous Gap List\n\n## Open gaps\n\nNo open gaps. Latest audit passed.\n')
+
+    monkeypatch.setattr(ctrl, 'current_git_head', lambda: 'new456')
+    monkeypatch.setattr(ctrl, 'commits_since', lambda _base, _head: [
+        {'sha': 'new456', 'files': ['scripts/audit_guideline.py']},
+    ])
+
+    issues = ctrl.verify_state_consistency()
+
+    assert any(issue['type'] == 'stale_last_green_commit' for issue in issues)
+
+
+def test_complete_state_allows_runtime_proof_only_commit_after_green(tmp_paths, sample_state, monkeypatch):
+    """Checked-in closeout/proof metadata may follow the green code commit."""
+    state_path, gap_path = tmp_paths
+    sample_state['phase'] = 'complete'
+    sample_state['last_green_commit'] = 'green123'
+    sample_state['open_gaps'] = []
+    ctrl.save_state(sample_state)
+    gap_path.write_text('# Autonomous Gap List\n\n## Open gaps\n\nNo open gaps. Latest audit passed.\n')
+
+    monkeypatch.setattr(ctrl, 'current_git_head', lambda: 'proof456')
+    monkeypatch.setattr(ctrl, 'commits_since', lambda _base, _head: [
+        {'sha': 'proof456', 'files': ['autonomous/runtime/runtime-proof.json']},
+    ])
+
+    issues = ctrl.verify_state_consistency()
+
+    assert not any(issue['type'] == 'stale_last_green_commit' for issue in issues)
+
+
 # ---------------------------------------------------------------------------
 # Tests: repeated reconcile/pause/resume/next-wave/complete cycles
 # ---------------------------------------------------------------------------

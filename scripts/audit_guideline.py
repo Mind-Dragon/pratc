@@ -139,6 +139,23 @@ def pr_is_disposal(pr: dict[str, Any]) -> bool:
     return category == 'duplicate_superseded'
 
 
+def pr_disposal_buckets(pr: dict[str, Any]) -> list[str]:
+    """Return disposal buckets observed on the PR surface or terminal decision layers."""
+    buckets = []
+    bucket = pr_bucket(pr)
+    if bucket in DISPOSAL_BUCKETS:
+        buckets.append(bucket)
+    layers = pr.get('decision_layers')
+    if isinstance(layers, list):
+        for layer in layers:
+            if not isinstance(layer, dict):
+                continue
+            layer_bucket = layer.get('bucket')
+            if layer_bucket in DISPOSAL_BUCKETS and layer.get('terminal') is True:
+                buckets.append(layer_bucket)
+    return sorted(set(buckets))
+
+
 def check_artifact_presence(run_dir: Path) -> dict[str, Any]:
     """Check all required artifacts are present."""
     missing = [name for name, rel in REQUIRED_FILES.items() if not (run_dir / rel).exists()]
@@ -458,23 +475,24 @@ def check_dependency_edge_quality(graph: dict[str, Any]) -> dict[str, Any]:
 
 def check_disposal_bucket_persistence(prs: list[dict[str, Any]]) -> dict[str, Any]:
     """Disposal bucket assignments must be backed by a terminal decision layer."""
-    disposal_prs = [pr for pr in prs if pr_is_disposal(pr)]
+    disposal_prs = [(pr, pr_disposal_buckets(pr)) for pr in prs if pr_disposal_buckets(pr)]
     violations = []
-    for pr in disposal_prs:
-        bucket = pr_bucket(pr)
+    for pr, buckets in disposal_prs:
         layers = pr.get('decision_layers')
         if not isinstance(layers, list) or not layers:
             violations.append(pr.get('number') or pr.get('id', 'unknown'))
             continue
-        terminal_match = False
-        for layer in layers:
-            if not isinstance(layer, dict):
-                continue
-            if layer.get('bucket') == bucket and layer.get('terminal') is True and layer.get('continued') is False:
-                terminal_match = True
+        for bucket in buckets:
+            terminal_match = False
+            for layer in layers:
+                if not isinstance(layer, dict):
+                    continue
+                if layer.get('bucket') == bucket and layer.get('terminal') is True and layer.get('continued') is False:
+                    terminal_match = True
+                    break
+            if not terminal_match:
+                violations.append(pr.get('number') or pr.get('id', 'unknown'))
                 break
-        if not terminal_match:
-            violations.append(pr.get('number') or pr.get('id', 'unknown'))
 
     if violations:
         return {
@@ -482,7 +500,7 @@ def check_disposal_bucket_persistence(prs: list[dict[str, Any]]) -> dict[str, An
             'label': 'disposal buckets are terminal (junk stays junk)',
             'status': 'fail',
             'expected': 'every disposal PR has a matching terminal decision layer',
-            'actual': f'{len(violations)} disposal PRs missing terminal layer: {violations[:10]}',
+            'actual': f'{len(disposal_prs)} disposal PRs missing terminal layer: {violations[:10]}',
         }
     return {
         'id': 'disposal_bucket_persistence',

@@ -7,10 +7,12 @@ autonomous/GAP_LIST.md for the current failure surface. All non-trivial
 implementation work is delegated to subagents; this script only manages state.
 """
 import argparse
+import json
+import re
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
-import re
-import sys
 
 import yaml
 from gap_catalog import GAP_MAP, gap_metadata
@@ -85,6 +87,34 @@ def save_state(state):
             output[key] = state.get(key, '')
 
     STATE_PATH.write_text(yaml.dump(output, default_flow_style=False, sort_keys=False))
+
+
+def current_git_head() -> str:
+    return subprocess.check_output(['git', 'rev-parse', '--short=12', 'HEAD'], cwd=REPO_ROOT, text=True).strip()
+
+
+def commits_since(base: str, head: str) -> list[dict[str, object]]:
+    if not base or not head or base == head:
+        return []
+    try:
+        shas = subprocess.check_output(['git', 'rev-list', '--reverse', f'{base}..{head}'], cwd=REPO_ROOT, text=True).splitlines()
+    except subprocess.CalledProcessError:
+        return [{'sha': head, 'files': ['<unknown>']}]
+    commits = []
+    for sha in shas:
+        files = subprocess.check_output(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', sha], cwd=REPO_ROOT, text=True).splitlines()
+        commits.append({'sha': sha[:12], 'files': files})
+    return commits
+
+
+def proof_only_commits(commits: list[dict[str, object]]) -> bool:
+    allowed = {
+        'autonomous/runtime/runtime-proof.json',
+        'autonomous/STATE.yaml',
+        'autonomous/GAP_LIST.md',
+        'TODO.md',
+    }
+    return bool(commits) and all(set(c.get('files', [])) <= allowed for c in commits)
 
 
 # ---------------------------------------------------------------------------
@@ -401,6 +431,20 @@ def verify_state_consistency():
             'gap_id': gid,
             'message': f"gap {gid} appears in both open_gaps and completed_gaps; call 'closeout' to reconcile",
         })
+
+    # Complete state must be tied to current code, except for the unavoidable
+    # checked-in runtime-proof commit that follows the green binary build.
+    if state.get('phase') == 'complete':
+        head = current_git_head()
+        last_green = str(state.get('last_green_commit') or '')[:12]
+        if last_green and last_green != head:
+            drift_commits = commits_since(last_green, head)
+            if not proof_only_commits(drift_commits):
+                issues.append({
+                    'type': 'stale_last_green_commit',
+                    'gap_id': '',
+                    'message': f"phase=complete but last_green_commit={last_green} differs from HEAD={head}; commits since green touch non-proof files",
+                })
 
     return issues
 

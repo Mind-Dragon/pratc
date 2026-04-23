@@ -370,6 +370,20 @@ class TestDisposalBucketPersistence:
         ]
         result = check_disposal_bucket_persistence(prs)
         assert result['status'] == 'fail'
+    def test_terminal_decision_layer_disposal_is_detected(self):
+        prs = [
+            {
+                'number': 3,
+                'category': 'merge_after_focused_review',
+                'decision_layers': [
+                    {'layer': 1, 'name': 'Garbage', 'bucket': 'junk', 'continued': False, 'terminal': True},
+                    {'layer': 2, 'name': 'Duplicates', 'bucket': 'junk', 'continued': False, 'terminal': True},
+                ],
+            }
+        ]
+        result = check_disposal_bucket_persistence(prs)
+        assert result['status'] == 'pass'
+        assert '1 disposal PRs verified' in result['actual']
 
 
 class TestDeeperJudgmentLayers:
