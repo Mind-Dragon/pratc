@@ -48,6 +48,9 @@ def load_state():
     for key in ('paused',):
         if key in raw:
             raw[key] = _bool_like(raw[key])
+    for key in ('open_gaps', 'blocked_gaps', 'completed_gaps'):
+        if raw.get(key) is None:
+            raw[key] = []
     return raw
 
 

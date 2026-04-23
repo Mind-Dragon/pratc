@@ -147,9 +147,9 @@ python3 scripts/autonomous_controller.py audit-state
 
 ### D1. Manual audit checks
 
-- [ ] Convert `deeper_judgment_layers` from manual to machine-checkable, likely by auditing ordered gate journey / exit trail artifacts
-- [ ] Convert `disposal_bucket_persistence` from manual to machine-checkable, likely by comparing prior snapshot state or a dedicated fixture
-- [ ] Until converted, require explicit operator acceptance for remaining manual checks before `SUCCESS`
+- [x] Convert `deeper_judgment_layers` from manual to machine-checkable by auditing ordered decision-layer artifacts
+- [x] Convert `disposal_bucket_persistence` from manual to machine-checkable by requiring disposal buckets to have matching terminal decision layers
+- [x] Until converted, require explicit operator acceptance for remaining manual checks before `SUCCESS`
 
 Verification:
 

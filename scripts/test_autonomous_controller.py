@@ -514,6 +514,23 @@ def test_empty_open_gaps_serializes_as_list_not_null(tmp_paths, sample_state):
     assert raw['open_gaps'] == [], f"expected [], got {raw['open_gaps']!r}"
 
 
+def test_load_state_normalizes_null_gap_lists(tmp_paths):
+    """YAML `open_gaps:` parses as None but controller code expects lists."""
+    state_path, _ = tmp_paths
+    state_path.write_text('''mode: active
+open_gaps:
+blocked_gaps:
+completed_gaps:
+paused: false
+''')
+
+    loaded = ctrl.load_state()
+
+    assert loaded['open_gaps'] == []
+    assert loaded['blocked_gaps'] == []
+    assert loaded['completed_gaps'] == []
+
+
 # ---------------------------------------------------------------------------
 # Tests: repeated reconcile/pause/resume/next-wave/complete cycles
 # ---------------------------------------------------------------------------

@@ -342,17 +342,70 @@ class TestDependencyEdgeQuality:
 
 
 class TestDisposalBucketPersistence:
-    def test_is_manual_unverifiable(self):
-        result = check_disposal_bucket_persistence([])
-        assert result['status'] == 'manual'
-        assert 'uncheckable' in result['actual']
+    def test_disposal_terminal_layer_passes(self):
+        prs = [
+            {
+                'number': 1,
+                'bucket': 'duplicate',
+                'decision_layers': [
+                    {'layer': 1, 'name': 'Garbage', 'bucket': 'low_value', 'continued': True, 'terminal': False},
+                    {'layer': 2, 'name': 'Duplicates', 'bucket': 'duplicate', 'continued': False, 'terminal': True},
+                    {'layer': 3, 'name': 'Obvious badness', 'bucket': 'duplicate', 'continued': False, 'terminal': True},
+                ],
+            }
+        ]
+        result = check_disposal_bucket_persistence(prs)
+        assert result['status'] == 'pass'
+
+    def test_disposal_without_terminal_layer_fails(self):
+        prs = [
+            {
+                'number': 2,
+                'bucket': 'duplicate',
+                'decision_layers': [
+                    {'layer': 1, 'name': 'Garbage', 'bucket': 'low_value', 'continued': True, 'terminal': False},
+                    {'layer': 2, 'name': 'Duplicates', 'bucket': 'duplicate', 'continued': True, 'terminal': False},
+                ],
+            }
+        ]
+        result = check_disposal_bucket_persistence(prs)
+        assert result['status'] == 'fail'
 
 
 class TestDeeperJudgmentLayers:
-    def test_is_manual_unverifiable(self):
-        result = check_deeper_judgment_layers([])
-        assert result['status'] == 'manual'
-        assert 'not directly observable' in result['actual']
+    def test_ordered_decision_layers_pass(self):
+        prs = [
+            {
+                'number': 1,
+                'decision_layers': [
+                    {'layer': 1, 'name': 'Garbage', 'cost_tier': 'cheap', 'status': 'clear'},
+                    {'layer': 2, 'name': 'Duplicates', 'cost_tier': 'cheap', 'status': 'clear'},
+                    {'layer': 3, 'name': 'Obvious badness', 'cost_tier': 'cheap', 'status': 'clear'},
+                    {'layer': 4, 'name': 'Substance score', 'cost_tier': 'medium', 'status': 'observed'},
+                    {'layer': 5, 'name': 'Now vs future', 'cost_tier': 'medium', 'status': 'observed'},
+                    {'layer': 6, 'name': 'Confidence', 'cost_tier': 'expensive', 'status': 'observed'},
+                ],
+            }
+        ]
+        result = check_deeper_judgment_layers(prs)
+        assert result['status'] == 'pass'
+
+    def test_missing_decision_layers_fails(self):
+        result = check_deeper_judgment_layers([{'number': 1}])
+        assert result['status'] == 'fail'
+
+    def test_expensive_layer_before_obvious_layers_fails(self):
+        prs = [
+            {
+                'number': 1,
+                'decision_layers': [
+                    {'layer': 1, 'name': 'Confidence', 'cost_tier': 'expensive', 'status': 'observed'},
+                    {'layer': 2, 'name': 'Garbage', 'cost_tier': 'cheap', 'status': 'clear'},
+                ],
+            }
+        ]
+        result = check_deeper_judgment_layers(prs)
+        assert result['status'] == 'fail'
 
 
 class TestBucketReasonRequired:

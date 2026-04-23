@@ -457,32 +457,93 @@ def check_dependency_edge_quality(graph: dict[str, Any]) -> dict[str, Any]:
 
 
 def check_disposal_bucket_persistence(prs: list[dict[str, Any]]) -> dict[str, Any]:
-    """
-    Disposal buckets are terminal: junk stays junk.
-    This requires longitudinal data (same PR reviewed at multiple timepoints),
-    so it's manual/unverifiable in a single snapshot.
-    """
+    """Disposal bucket assignments must be backed by a terminal decision layer."""
+    disposal_prs = [pr for pr in prs if pr_is_disposal(pr)]
+    violations = []
+    for pr in disposal_prs:
+        bucket = pr_bucket(pr)
+        layers = pr.get('decision_layers')
+        if not isinstance(layers, list) or not layers:
+            violations.append(pr.get('number') or pr.get('id', 'unknown'))
+            continue
+        terminal_match = False
+        for layer in layers:
+            if not isinstance(layer, dict):
+                continue
+            if layer.get('bucket') == bucket and layer.get('terminal') is True and layer.get('continued') is False:
+                terminal_match = True
+                break
+        if not terminal_match:
+            violations.append(pr.get('number') or pr.get('id', 'unknown'))
+
+    if violations:
+        return {
+            'id': 'disposal_bucket_persistence',
+            'label': 'disposal buckets are terminal (junk stays junk)',
+            'status': 'fail',
+            'expected': 'every disposal PR has a matching terminal decision layer',
+            'actual': f'{len(violations)} disposal PRs missing terminal layer: {violations[:10]}',
+        }
     return {
         'id': 'disposal_bucket_persistence',
         'label': 'disposal buckets are terminal (junk stays junk)',
-        'status': 'manual',
-        'expected': 'requires longitudinal data to verify PRs dont exit disposal state',
-        'actual': 'uncheckable in single-run audit',
+        'status': 'pass',
+        'expected': 'every disposal PR has a matching terminal decision layer',
+        'actual': f'{len(disposal_prs)} disposal PRs verified',
     }
 
 
 def check_deeper_judgment_layers(prs: list[dict[str, Any]]) -> dict[str, Any]:
-    """
-    Deeper judgment after obvious layers (16-layer decision ladder).
-    Verifying proper ordering of layers requires examining the review pipeline,
-    which is not directly observable in the output artifacts.
-    """
+    """Decision-layer artifacts must prove cheap obvious layers precede deeper judgment."""
+    tier_rank = {'cheap': 0, 'medium': 1, 'expensive': 2}
+    required_prefix = ['Garbage', 'Duplicates', 'Obvious badness']
+    violations = []
+    for pr in prs:
+        layers = pr.get('decision_layers')
+        pr_id = pr.get('number') or pr.get('id', 'unknown')
+        if not isinstance(layers, list) or len(layers) < len(required_prefix):
+            violations.append((pr_id, 'missing decision_layers'))
+            continue
+        layer_nums = [layer.get('layer') for layer in layers if isinstance(layer, dict)]
+        if layer_nums != sorted(layer_nums) or len(layer_nums) != len(set(layer_nums)):
+            violations.append((pr_id, 'decision layers not strictly ordered'))
+            continue
+        names = [str(layer.get('name', '')) for layer in layers[:len(required_prefix)]]
+        if names != required_prefix:
+            violations.append((pr_id, f'prefix {names} != {required_prefix}'))
+            continue
+        ranks = []
+        unknown_tier = False
+        for layer in layers:
+            tier = layer.get('cost_tier')
+            if tier not in tier_rank:
+                unknown_tier = True
+                break
+            ranks.append(tier_rank[tier])
+        if unknown_tier:
+            violations.append((pr_id, 'unknown cost_tier'))
+            continue
+        if ranks != sorted(ranks):
+            violations.append((pr_id, 'deeper cost tier appears before cheaper layer'))
+            continue
+        if not any(rank == tier_rank['expensive'] for rank in ranks):
+            violations.append((pr_id, 'no deeper expensive layer observed'))
+            continue
+
+    if violations:
+        return {
+            'id': 'deeper_judgment_layers',
+            'label': 'deeper judgment applied after obvious layers',
+            'status': 'fail',
+            'expected': 'ordered decision_layers: cheap obvious layers before medium/expensive deeper layers',
+            'actual': f'{len(violations)} PRs violate layer ordering: {violations[:10]}',
+        }
     return {
         'id': 'deeper_judgment_layers',
         'label': 'deeper judgment applied after obvious layers',
-        'status': 'manual',
-        'expected': 'garbage->duplicate->obvious badness->substance->temporal->deeper layers',
-        'actual': 'pipeline ordering not directly observable in artifacts',
+        'status': 'pass',
+        'expected': 'ordered decision_layers: cheap obvious layers before medium/expensive deeper layers',
+        'actual': f'{len(prs)} PRs have ordered decision-layer artifacts',
     }
 
 
