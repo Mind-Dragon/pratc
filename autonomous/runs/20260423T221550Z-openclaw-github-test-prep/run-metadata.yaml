@@ -1,18 +1,29 @@
 repo: openclaw/openclaw
 purpose: openclaw_github_test_prep
 created_at: 2026-04-23T22:15:50Z
-prepared_from_head: b399f18810ef
-live_github_open_pr_count: 6627
-preflight_cache_count: 6646
-sqlite_cached_rows: 6746
-preflight_delta_to_fetch: 0
-preflight_lock_status: clear
-recommended_mode: cache_first_full_workflow
-recommended_run_dir: autonomous/runs/20260423T221550Z-openclaw-github-test
-runtime_health_url: http://100.112.201.95:7400/healthz
-runtime_health_response: '{"status":"ok","version":"1.7.0","api_version":"v1.6"}'
-github_auth_active_account: Mind-Dragon
-notes:
-  - v1.8 priority shifted to ML automation and TUI feedback before release.
-  - Web UI and multi-repo are deferred.
-  - Fully-live recapture should use --resync --refresh-sync only if operator explicitly wants a fresh GitHub snapshot.
+updated_at: 2026-04-23T22:31:00Z
+prepared_from_head: b4f266eefca9
+runtime:
+  tmux_session: pratc-autonomous
+  binary_commit: b4f266eefca9
+  healthz: {status: ok, version: 1.7.0, api_version: v1.6}
+github:
+  active_account: Mind-Dragon
+  core_rate_remaining_at_prep: 4991
+  core_rate_limit: 5000
+  live_access: ok
+secondary_rate_limit:
+  encountered: true
+  reset_epoch: 1776986427
+  reset_utc: 2026-04-23T23:20:27Z
+smoke_attempt:
+  command: workflow --repo openclaw/openclaw --sync-max-prs 25 --max-prs 25 --refresh-sync --resync
+  result: blocked_before_useful_artifacts_by_secondary_rate_limit
+  cleanup: orphaned_workflow_process_killed
+next_command: run full live workflow in tmux after secondary reset; audit output before success claim
+v1_8_focus:
+  - ml_feedback_loop
+  - ml_automation_evaluation
+  - tui_operator_feedback
+  - no_web_ui
+  - no_multirepo_in_v1_8
