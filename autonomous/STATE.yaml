@@ -1,21 +1,22 @@
 mode: active
 repo: openclaw/openclaw
 branch: main
-baseline_commit: a3a9cebcf0d4
+baseline_commit: a281dc8e555b
 current_run_id: 20260423T203433Z
 corpus_dir: autonomous/runs/20260423T203433Z
 phase: complete
 current_wave: 1
-open_gaps:
+open_gaps: []
 blocked_gaps: []
 completed_gaps: []
 last_audit_path: autonomous/runs/20260423T203433Z/AUDIT_RESULTS.json
-last_green_commit: a3a9cebcf0d4
+last_green_commit: a281dc8e555b
 paused: false
-stop_reason: fresh current-HEAD audit passed
+stop_reason: fresh current-HEAD audit and gap-history preservation tests passed
 resume_command: python3 scripts/autonomous_controller.py resume
-updated_at: 2026-04-23T21:04:58.435442+00:00
+updated_at: 2026-04-23T22:00:34.903135+00:00
 notes:
   - Fresh current-HEAD audit has 19 passing checks, 0 failing checks, 0 manual/unverifiable checks.
   - Service proof is recorded in autonomous/runtime/runtime-proof.json and live under tmux session pratc-autonomous.
   - disposal_bucket_persistence and deeper_judgment_layers are now machine-checkable audit checks.
+  - Gap history preservation verified: fixed/deferred/blocked gaps survive generated GAP_LIST updates.
