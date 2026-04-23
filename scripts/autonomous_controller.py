@@ -13,6 +13,7 @@ import re
 import sys
 
 import yaml
+from gap_catalog import GAP_MAP, gap_metadata
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -498,19 +499,6 @@ def _regenerate_gap_list_from_audit(audit_path: Path):
     checks = audit_data.get('checks', [])
     failures = [c for c in checks if c.get('status') == 'fail']
 
-    GAP_MAP = {
-        'bucket_coverage': ('G-001', 'bucket coverage missing', 'P0'),
-        'reason_coverage': ('G-002', 'reason trail missing', 'P0'),
-        'confidence_coverage': ('G-003', 'confidence coverage missing', 'P0'),
-        'dependency_edge_quality': ('G-004', 'trivial dependency edge explosion', 'P1'),
-        'conflict_pairs_threshold': ('G-005', 'conflict noise still too high', 'P1'),
-        'temporal_routing': ('G-006', 'temporal routing not visible', 'P1'),
-        'report_self_describing_prs': ('G-007', 'report surface not self-describing enough', 'P1'),
-        'future_work_visible': ('G-008', 'future work visibility missing', 'P1'),
-        'duplicate_presence': ('G-009', 'duplicate presence missing on cache-backed rerun', 'P1'),
-        'selected_reason_coverage': ('G-010', 'selected plan items lack reasons', 'P1'),
-    }
-
     body = [
         '# Autonomous Gap List',
         '',
@@ -523,7 +511,7 @@ def _regenerate_gap_list_from_audit(audit_path: Path):
     if failures:
         for check in failures:
             check_id = check.get('id', '')
-            gap_id, title, sev = GAP_MAP.get(check_id, (f'X-{check_id}', check.get('label', ''), 'P2'))
+            gap_id, title, sev = gap_metadata(check_id, check.get('label', ''))
             actual = check.get('actual', '')
             if isinstance(actual, dict):
                 actual = json.dumps(actual)

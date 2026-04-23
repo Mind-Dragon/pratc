@@ -4,18 +4,7 @@ import json
 from pathlib import Path
 from datetime import datetime, timezone
 
-GAP_MAP = {
-    'bucket_coverage': ('G-001', 'bucket coverage missing', 'P0'),
-    'reason_coverage': ('G-002', 'reason trail missing', 'P0'),
-    'confidence_coverage': ('G-003', 'confidence coverage missing', 'P0'),
-    'dependency_edge_quality': ('G-004', 'trivial dependency edge explosion', 'P1'),
-    'conflict_pairs_threshold': ('G-005', 'conflict noise still too high', 'P1'),
-    'temporal_routing': ('G-006', 'temporal routing not visible', 'P1'),
-    'report_self_describing_prs': ('G-007', 'report surface not self-describing enough', 'P1'),
-    'future_work_visible': ('G-008', 'future work visibility missing', 'P1'),
-    'duplicate_presence': ('G-009', 'duplicate presence missing on cache-backed rerun', 'P1'),
-    'selected_reason_coverage': ('G-010', 'selected plan items lack reasons', 'P1'),
-}
+from gap_catalog import GAP_MAP, gap_metadata
 
 
 def load_json(path: Path):
@@ -24,7 +13,7 @@ def load_json(path: Path):
 
 
 def render_gap(check):
-    gap_id, title, sev = GAP_MAP.get(check['id'], (f"X-{check['id']}", check['label'], 'P2'))
+    gap_id, title, sev = gap_metadata(check['id'], check['label'])
     actual = check['actual']
     if isinstance(actual, dict):
         actual = json.dumps(actual)
@@ -86,7 +75,7 @@ def main():
     ]
     if failures:
         for check in failures:
-            gap_id = GAP_MAP.get(check['id'], (f"X-{check['id']}", '', ''))[0]
+            gap_id = gap_metadata(check['id'])[0]
             open_ids.append(gap_id)
             body.append(render_gap(check))
     else:
