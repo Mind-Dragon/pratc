@@ -514,34 +514,40 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 		return
 	}
 	log := logger.FromContext(r.Context())
-	target := types.DefaultTarget
+
+	opts := app.PlanOptions{
+		Target: types.DefaultTarget,
+		Mode:   formula.ModeCombination,
+	}
+
 	if t := r.URL.Query().Get("target"); t != "" {
 		if parsed, err := strconv.Atoi(t); err == nil && parsed > 0 {
-			target = parsed
+			opts.Target = parsed
 		} else {
 			writeHTTPError(w, r, http.StatusBadRequest, "target must be a positive integer")
 			return
 		}
 	}
-	mode := formula.ModeCombination
 	if m := r.URL.Query().Get("mode"); m != "" {
 		switch m {
 		case "combination":
-			mode = formula.ModeCombination
+			opts.Mode = formula.ModeCombination
 		case "permutation":
-			mode = formula.ModePermutation
+			opts.Mode = formula.ModePermutation
 		case "with_replacement":
-			mode = formula.ModeWithReplacement
+			opts.Mode = formula.ModeWithReplacement
 		default:
 			writeHTTPError(w, r, http.StatusBadRequest, "invalid mode")
 			return
 		}
 	}
 	if v := r.URL.Query().Get("exclude_conflicts"); v != "" {
-		if _, err := strconv.ParseBool(v); err != nil {
+		parsed, err := strconv.ParseBool(v)
+		if err != nil {
 			writeHTTPError(w, r, http.StatusBadRequest, "invalid exclude_conflicts")
 			return
 		}
+		opts.ExcludeConflicts = parsed
 	}
 	if v := r.URL.Query().Get("stale_score_threshold"); v != "" {
 		parsed, err := strconv.ParseFloat(v, 64)
@@ -549,6 +555,7 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 			writeHTTPError(w, r, http.StatusBadRequest, "invalid stale_score_threshold")
 			return
 		}
+		opts.StaleScoreThreshold = parsed
 	}
 	if v := r.URL.Query().Get("candidate_pool_cap"); v != "" {
 		parsed, err := strconv.Atoi(v)
@@ -556,6 +563,7 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 			writeHTTPError(w, r, http.StatusBadRequest, "invalid candidate_pool_cap")
 			return
 		}
+		opts.CandidatePoolCap = parsed
 	}
 	if v := r.URL.Query().Get("score_min"); v != "" {
 		parsed, err := strconv.ParseFloat(v, 64)
@@ -563,6 +571,7 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 			writeHTTPError(w, r, http.StatusBadRequest, "invalid score_min")
 			return
 		}
+		opts.ScoreMin = parsed
 	}
 
 	// Allow per-request override of duplicate collapse. The server default is true.
@@ -575,20 +584,23 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 			return
 		}
 	}
-	planService := service
-	if !collapseDuplicates {
-		cfg := app.Config{
-			AllowLive:           service.Health().Status == "ok",
-			UseCacheFirst:       true,
-			CollapseDuplicates:  false,
-			DynamicTarget:       service.DynamicTarget(),
-		}
-		planService = app.NewService(cfg)
-	}
+	opts.CollapseDuplicates = collapseDuplicates
 
-	result, err := planService.Plan(r.Context(), repo, target, mode)
+	// Allow per-request dry_run override. Default is true (safe).
+	dryRun := true
+	if v := r.URL.Query().Get("dry_run"); v != "" {
+		if parsed, err := strconv.ParseBool(v); err == nil {
+			dryRun = parsed
+		} else {
+			writeHTTPError(w, r, http.StatusBadRequest, "invalid dry_run")
+			return
+		}
+	}
+	opts.DryRun = dryRun
+
+	result, err := service.PlanWithOptions(r.Context(), repo, opts)
 	if err != nil {
-		log.Error("handlePlan: service.Plan failed", "error", err.Error(), "repo", repo, "target", target, "mode", mode)
+		log.Error("handlePlan: service.PlanWithOptions failed", "error", err.Error(), "repo", repo, "opts", fmt.Sprintf("%+v", opts))
 		writeHTTPError(w, r, http.StatusInternalServerError, sanitizedError(err))
 		return
 	}

@@ -32,6 +32,10 @@ func RegisterPlanCommand() {
 	var targetRatio float64
 	var minTarget int
 	var maxTarget int
+	var excludeConflicts bool
+	var candidatePoolCap int
+	var scoreMin float64
+	var staleScoreThreshold float64
 
 	command := &cobra.Command{
 		Use:   "plan",
@@ -91,7 +95,18 @@ Examples:
 			}
 			service := app.NewService(cfg)
 			log.Info("starting plan", "repo", repo, "target", target, "mode", selectedMode, "budget", budget.String())
-			response, err := service.Plan(ctx, repo, target, selectedMode)
+
+			opts := app.PlanOptions{
+				Target:              target,
+				Mode:                selectedMode,
+				ExcludeConflicts:    excludeConflicts,
+				CandidatePoolCap:    candidatePoolCap,
+				ScoreMin:            scoreMin,
+				StaleScoreThreshold: staleScoreThreshold,
+				CollapseDuplicates:  collapseDuplicates,
+				DryRun:              dryRun,
+			}
+			response, err := service.PlanWithOptions(ctx, repo, opts)
 			if err != nil {
 				return err
 			}
@@ -125,6 +140,10 @@ Examples:
 	command.Flags().Float64Var(&targetRatio, "target-ratio", 0.05, "Dynamic target ratio: proportion of viable pool to plan (0.05=5%)")
 	command.Flags().IntVar(&minTarget, "min-target", 20, "Minimum target when using dynamic target calculation")
 	command.Flags().IntVar(&maxTarget, "max-target", 100, "Maximum target when using dynamic target calculation")
+	command.Flags().BoolVar(&excludeConflicts, "exclude-conflicts", false, "Exclude PRs with conflict warnings from the plan")
+	command.Flags().IntVar(&candidatePoolCap, "candidate-pool-cap", 0, "Cap the candidate pool size (0=no cap)")
+	command.Flags().Float64Var(&scoreMin, "score-min", 0, "Minimum priority score threshold (0=no threshold)")
+	command.Flags().Float64Var(&staleScoreThreshold, "stale-score-threshold", 0, "Maximum staleness score threshold (0=no threshold)")
 	_ = command.Flags().MarkHidden("force-cache")
 	_ = command.MarkFlagRequired("repo")
 	rootCmd.AddCommand(command)
