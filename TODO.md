@@ -98,9 +98,9 @@ git diff --check
 - [x] Fix version/build branding so the binary identifies the current prATC release and commit
 - [x] Add `pratc version` or `--version` support for deterministic run metadata
 - [x] Rebuild current binary with `make build`
-- [ ] Start or verify `pratc serve` on port `7400`
-- [ ] Health probe real interface when available: `curl -sf http://100.112.201.95:7400/healthz`
-- [ ] Record PID, binary path, banner/version output, health URL, and health response in run metadata
+- [x] Start or verify `pratc serve` on port `7400`
+- [x] Health probe real interface when available: `curl -sf http://100.112.201.95:7400/healthz`
+- [x] Record PID, binary path, banner/version output, health URL, and health response in run metadata
 
 Verification:
 
