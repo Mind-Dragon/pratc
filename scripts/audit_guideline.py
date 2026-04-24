@@ -31,6 +31,18 @@ DISPOSAL_BUCKETS = {'junk', 'duplicate', 'stale'}
 # Small smoke runs are too shallow to require duplicate/junk presence.
 MIN_PRS_FOR_CONTENT_PRESENCE_CHECKS = 150
 
+ACTION_LANES = {
+    'fast_merge',
+    'fix_and_merge',
+    'duplicate_close',
+    'reject_or_close',
+    'focused_review',
+    'future_or_reengage',
+    'human_escalate',
+}
+
+MUTATING_ACTIONS = {'merge', 'close', 'comment', 'label', 'request_changes', 'apply_fix'}
+
 
 def load_json(path: Path) -> dict[str, Any]:
     with path.open() as f:
@@ -583,11 +595,127 @@ def check_bucket_reason_required(prs: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def check_action_plan_presence(action_plan: dict[str, Any]) -> dict[str, Any]:
+    """v2 action audit requires a generated action-plan.json artifact."""
+    present = bool(action_plan)
+    return {
+        'id': 'action_plan_presence',
+        'label': 'v2 action plan artifact present',
+        'status': 'pass' if present else 'fail',
+        'expected': 'action-plan.json with ActionPlan payload',
+        'actual': 'present' if present else 'missing action-plan.json',
+    }
+
+
+def check_action_lane_coverage(action_plan: dict[str, Any]) -> dict[str, Any]:
+    """Every ActionPlan work item must have exactly one valid primary lane and summaries must match."""
+    if not action_plan:
+        return {
+            'id': 'action_lane_coverage',
+            'label': 'every action work item has one valid primary lane',
+            'status': 'fail',
+            'expected': 'work_items each carry one valid lane',
+            'actual': 'missing action-plan.json',
+        }
+
+    work_items = action_plan.get('work_items') if isinstance(action_plan.get('work_items'), list) else []
+    lanes = action_plan.get('lanes') if isinstance(action_plan.get('lanes'), list) else []
+    snapshot = action_plan.get('corpus_snapshot') if isinstance(action_plan.get('corpus_snapshot'), dict) else {}
+    expected_total = snapshot.get('total_prs')
+    issues: list[str] = []
+
+    lane_counts: dict[str, int] = {}
+    seen_prs: set[Any] = set()
+    duplicate_prs: list[Any] = []
+    for item in work_items:
+        if not isinstance(item, dict):
+            issues.append('non_object_work_item')
+            continue
+        lane = item.get('lane')
+        if not isinstance(lane, str) or not lane:
+            issues.append(f"missing_lane:{item.get('id', 'unknown')}")
+            continue
+        if lane not in ACTION_LANES:
+            issues.append(f"invalid_lane:{item.get('id', 'unknown')}:{lane}")
+            continue
+        lane_counts[lane] = lane_counts.get(lane, 0) + 1
+        pr_number = item.get('pr_number')
+        if pr_number in seen_prs:
+            duplicate_prs.append(pr_number)
+        seen_prs.add(pr_number)
+
+    if duplicate_prs:
+        issues.append(f'duplicate_pr_work_items:{duplicate_prs[:10]}')
+    if isinstance(expected_total, int) and expected_total > 0 and len(work_items) != expected_total:
+        issues.append(f'work_item_total:{len(work_items)} != corpus_total:{expected_total}')
+
+    summary_counts: dict[str, int] = {}
+    for summary in lanes:
+        if not isinstance(summary, dict):
+            issues.append('non_object_lane_summary')
+            continue
+        lane = summary.get('lane')
+        count = summary.get('count')
+        if lane not in ACTION_LANES:
+            issues.append(f'invalid_summary_lane:{lane}')
+            continue
+        if not isinstance(count, int):
+            issues.append(f'invalid_summary_count:{lane}')
+            continue
+        summary_counts[lane] = count
+
+    if summary_counts != lane_counts:
+        issues.append(f'summary_mismatch:{summary_counts} != {lane_counts}')
+
+    return {
+        'id': 'action_lane_coverage',
+        'label': 'every action work item has one valid primary lane',
+        'status': 'pass' if work_items and not issues else 'fail',
+        'expected': 'one valid lane per work item; lane summaries match work items',
+        'actual': 'ok' if work_items and not issues else '; '.join(issues) or 'no work_items',
+    }
+
+
+def check_advisory_zero_write(action_plan: dict[str, Any]) -> dict[str, Any]:
+    """Advisory policy must not contain live mutation intents."""
+    if not action_plan:
+        return {
+            'id': 'advisory_zero_write',
+            'label': 'advisory action plan contains zero live writes',
+            'status': 'fail',
+            'expected': 'advisory action plan with only dry-run intents',
+            'actual': 'missing action-plan.json',
+        }
+    if action_plan.get('policy_profile') != 'advisory':
+        return {
+            'id': 'advisory_zero_write',
+            'label': 'advisory action plan contains zero live writes',
+            'status': 'manual',
+            'expected': 'checked when policy_profile=advisory',
+            'actual': f"policy_profile={action_plan.get('policy_profile')}",
+        }
+    intents = action_plan.get('action_intents') if isinstance(action_plan.get('action_intents'), list) else []
+    live = []
+    for intent in intents:
+        if not isinstance(intent, dict):
+            continue
+        if intent.get('action') in MUTATING_ACTIONS and intent.get('dry_run') is not True:
+            live.append(intent.get('id') or intent.get('pr_number') or 'unknown')
+    return {
+        'id': 'advisory_zero_write',
+        'label': 'advisory action plan contains zero live writes',
+        'status': 'pass' if not live else 'fail',
+        'expected': '0 non-dry-run mutating intents',
+        'actual': 'all mutating intents are dry-run' if not live else f'live mutation intents: {live[:10]}',
+    }
+
+
 def audit(run_dir: Path) -> dict[str, Any]:
     """Run all deterministic checks against a run directory."""
     analyze = load_json(run_dir / 'analyze.json') if (run_dir / 'analyze.json').exists() else {}
     graph = load_json(run_dir / 'step-4-graph.json') if (run_dir / 'step-4-graph.json').exists() else {}
     plan = load_json(run_dir / 'step-5-plan.json') if (run_dir / 'step-5-plan.json').exists() else {}
+    action_plan = load_json(run_dir / 'action-plan.json') if (run_dir / 'action-plan.json').exists() else {}
 
     prs = pr_list(analyze)
 
@@ -611,6 +739,9 @@ def audit(run_dir: Path) -> dict[str, Any]:
         check_disposal_bucket_persistence(prs),
         check_deeper_judgment_layers(prs),
         check_bucket_reason_required(prs),
+        check_action_plan_presence(action_plan),
+        check_action_lane_coverage(action_plan),
+        check_advisory_zero_write(action_plan),
     ]
 
     passed = sum(1 for c in checks if c['status'] == 'pass')

@@ -34,6 +34,9 @@ from audit_guideline import (
     check_disposal_bucket_persistence,
     check_deeper_judgment_layers,
     check_bucket_reason_required,
+    check_action_plan_presence,
+    check_action_lane_coverage,
+    check_advisory_zero_write,
     audit,
 )
 
@@ -435,6 +438,61 @@ class TestBucketReasonRequired:
         ]
         result = check_bucket_reason_required(prs)
         assert result['status'] == 'fail'
+
+
+class TestActionPlanV2Checks:
+    def action_plan(self):
+        return {
+            'schema_version': '2.0',
+            'repo': 'openclaw/openclaw',
+            'policy_profile': 'advisory',
+            'corpus_snapshot': {'total_prs': 2},
+            'lanes': [
+                {'lane': 'fast_merge', 'count': 1, 'work_item_ids': ['wi-1']},
+                {'lane': 'human_escalate', 'count': 1, 'work_item_ids': ['wi-2']},
+            ],
+            'work_items': [
+                {'id': 'wi-1', 'pr_number': 1, 'lane': 'fast_merge'},
+                {'id': 'wi-2', 'pr_number': 2, 'lane': 'human_escalate'},
+            ],
+            'action_intents': [
+                {'id': 'ai-1', 'pr_number': 1, 'action': 'merge', 'dry_run': True},
+                {'id': 'ai-2', 'pr_number': 2, 'action': 'comment', 'dry_run': True},
+            ],
+        }
+
+    def test_action_plan_presence_passes_when_loaded(self):
+        result = check_action_plan_presence(self.action_plan())
+        assert result['status'] == 'pass'
+
+    def test_action_lane_coverage_passes_for_one_lane_per_work_item(self):
+        result = check_action_lane_coverage(self.action_plan())
+        assert result['status'] == 'pass'
+
+    def test_action_lane_coverage_fails_missing_lane(self):
+        plan = self.action_plan()
+        del plan['work_items'][0]['lane']
+        result = check_action_lane_coverage(plan)
+        assert result['status'] == 'fail'
+        assert 'missing_lane' in result['actual']
+
+    def test_action_lane_coverage_fails_summary_mismatch(self):
+        plan = self.action_plan()
+        plan['lanes'][0]['count'] = 9
+        result = check_action_lane_coverage(plan)
+        assert result['status'] == 'fail'
+        assert 'summary_mismatch' in result['actual']
+
+    def test_advisory_zero_write_passes_when_all_intents_dry_run(self):
+        result = check_advisory_zero_write(self.action_plan())
+        assert result['status'] == 'pass'
+
+    def test_advisory_zero_write_fails_live_mutation(self):
+        plan = self.action_plan()
+        plan['action_intents'][0]['dry_run'] = False
+        result = check_advisory_zero_write(plan)
+        assert result['status'] == 'fail'
+        assert 'ai-1' in result['actual']
 
 
 class TestAuditIntegration:
