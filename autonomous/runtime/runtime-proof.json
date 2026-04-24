@@ -1,19 +1,20 @@
 {
-  "generated_at_utc": "2026-04-24T03:09:07Z",
-  "generated_at_central": "2026-04-23T22:09:07-0500",
+  "generated_at_utc": "2026-04-24T03:12:58Z",
+  "generated_at_central": "2026-04-23T22:12:58-0500",
   "tmux_session": "pratc-autonomous",
   "port": 7400,
   "binary": "/home/agent/pratc/bin/pratc",
   "version": "1.7.1",
   "binary_version_output": [
     "version=1.7.1",
-    "commit=2d77e6c39842",
-    "build_date=2026-04-24T03:07:31Z",
+    "commit=4e4e92e242de",
+    "build_date=2026-04-24T03:11:12Z",
     "dirty=false"
   ],
-  "runtime_target_commit": "2d77e6c39842",
-  "runtime_target_dirty_before_proof_write": false,
-  "listen": "LISTEN 0      1024                *:7400             *:*    users:((\"pratc\",pid=1131539,fd=12))",
+  "runtime_binary_commit": "4e4e92e242de",
+  "runtime_binary_dirty": "false",
+  "working_tree_dirty_before_proof_write": false,
+  "listen": "LISTEN 0      1024                *:7400             *:*    users:((\"pratc\",pid=1149803,fd=12))",
   "runtime_env": {
     "PRATC_SETTINGS_DB": "/home/agent/pratc/autonomous/runtime/pratc-settings.db",
     "PRATC_DB_PATH": "/home/agent/.pratc/pratc.db",
