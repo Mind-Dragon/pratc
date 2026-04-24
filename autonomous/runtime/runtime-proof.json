@@ -1,23 +1,24 @@
 {
-  "generated_at_utc": "2026-04-24T03:12:58Z",
-  "generated_at_central": "2026-04-23T22:12:58-0500",
+  "generated_at_utc": "2026-04-24T17:51:08Z",
+  "generated_at_central": "2026-04-24T12:51:08-0500",
   "tmux_session": "pratc-autonomous",
   "port": 7400,
   "binary": "/home/agent/pratc/bin/pratc",
   "version": "1.7.1",
   "binary_version_output": [
     "version=1.7.1",
-    "commit=4e4e92e242de",
-    "build_date=2026-04-24T03:11:12Z",
+    "commit=50a3b09c72fd",
+    "build_date=2026-04-24T17:50:06Z",
     "dirty=false"
   ],
-  "runtime_binary_commit": "4e4e92e242de",
+  "runtime_binary_commit": "50a3b09c72fd",
   "runtime_binary_dirty": "false",
   "working_tree_dirty_before_proof_write": false,
-  "listen": "LISTEN 0      1024                *:7400             *:*    users:((\"pratc\",pid=1149803,fd=12))",
+  "listen": "LISTEN 0      1024                *:7400             *:*    users:((\"pratc\",pid=2040681,fd=15))",
   "runtime_env": {
     "PRATC_SETTINGS_DB": "/home/agent/pratc/autonomous/runtime/pratc-settings.db",
     "PRATC_DB_PATH": "/home/agent/.pratc/pratc.db",
+    "PRATC_QUEUE_DB_PATH": "/home/agent/pratc/autonomous/runtime/queue.db",
     "log": "/home/agent/pratc/autonomous/runtime/logs/serve.log"
   },
   "health": {
@@ -32,8 +33,15 @@
       "api_version": "v1.6"
     }
   },
+  "openclaw_preflight": {
+    "repo": "openclaw/openclaw",
+    "token_count": 2,
+    "rate_limit_remaining": 4897,
+    "lock_clear": true
+  },
   "openclaw_actions_e2e": {
     "repo": "openclaw/openclaw",
+    "schema_version": "2.0",
     "policy_profile": "advisory",
     "work_items": 6632,
     "corpus_total_prs": 6632,
@@ -49,16 +57,27 @@
     ],
     "action_intents": 182,
     "all_intents_dry_run": true,
-    "artifact": "/home/agent/pratc/projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z/action-plan.json"
+    "artifact": "/home/agent/pratc/projects/openclaw_openclaw/runs/v171-head-20260424T153126Z/action-plan.json"
+  },
+  "queue_api": {
+    "status_ok": true,
+    "repo": "openclaw/openclaw",
+    "generated_at": "2026-04-24T17:51:49Z",
+    "lane_count": 0,
+    "counts": {}
   },
   "audit": {
-    "artifact": "/home/agent/pratc/projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z/AUDIT_RESULTS.json",
+    "artifact": "/home/agent/pratc/projects/openclaw_openclaw/runs/v171-head-20260424T153126Z/AUDIT_RESULTS.json",
     "summary": {
-      "total_prs": 6632,
-      "checks_passed": 22,
+      "checks_passed": 23,
       "checks_failed": 0,
       "checks_manual": 0
     },
     "passed": true
+  },
+  "report": {
+    "artifact": "/home/agent/pratc/projects/openclaw_openclaw/runs/v171-head-20260424T153126Z/report.pdf",
+    "exists": true,
+    "bytes": 45721
   }
 }
