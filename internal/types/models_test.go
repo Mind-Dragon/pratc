@@ -56,6 +56,8 @@ func TestJSONSchemaFilesCoverTaskContracts(t *testing.T) {
 		"cluster-request.json":             {"repo", "prs", "model", "minClusterSize"},
 		"duplicate-detection-request.json": {"repo", "prs", "duplicateThreshold", "overlapThreshold"},
 		"semantic-analysis-request.json":   {"repo", "prs", "analysisMode"},
+		// Wave 1B
+		"action-plan.json": {"schema_version", "run_id", "repo", "policy_profile", "generated_at", "corpus_snapshot", "lanes", "work_items", "action_intents", "audit"},
 	}
 
 	for file, fields := range requiredSchemas {
@@ -135,6 +137,30 @@ func TestTypeScriptInterfacesMirrorCanonicalFields(t *testing.T) {
 		"collapsed_corpus?: CollapsedCorpus;",
 		"is_collapsed_canonical?: boolean;",
 		"superseded_prs?: number[];",
+		// Wave 1B ActionPlan types
+		"export interface ActionPlan",
+		"schema_version: string;",
+		"run_id: string;",
+		"policy_profile: PolicyProfile;",
+		"corpus_snapshot: ActionCorpusSnapshot;",
+		"lanes: ActionLaneSummary[];",
+		"work_items: ActionWorkItem[];",
+		"action_intents: ActionIntent[];",
+		"audit: ActionPlanAudit;",
+		"export interface ActionIntent",
+		"export interface ActionWorkItem",
+		"required_preflight_checks: ActionPreflight[];",
+		"export interface ActionPreflight",
+		"export interface ActionLaneSummary",
+		"export interface ActionCorpusSnapshot",
+		"export interface ActionPlanAudit",
+		"export interface ActionPlanAuditCheck",
+		"export interface ActionLease",
+		"export interface ProofBundle",
+		"export type ActionLane",
+		"export type PolicyProfile",
+		"export type ActionWorkItemState",
+		"export type ActionKind",
 	} {
 		if !bytes.Contains(raw, []byte(token)) {
 			t.Fatalf("expected token %q in api.ts", token)
@@ -537,9 +563,8 @@ func TestActionPlanJSONContract(t *testing.T) {
 				ClaimedAt: "2026-04-24T08:03:00Z",
 				ExpiresAt: "2026-04-24T08:33:00Z",
 			},
-			AllowedActions:  []ActionKind{ActionKindMerge},
-			BlockedReasons:  []string{},
-			ProofBundleRefs: []string{"proof-101"},
+			AllowedActions: []ActionKind{ActionKindMerge},
+			BlockedReasons: []string{},
 		}},
 		ActionIntents: []ActionIntent{{
 			ID:             "intent-101-merge",
@@ -555,7 +580,6 @@ func TestActionPlanJSONContract(t *testing.T) {
 			Preconditions:  []ActionPreflight{preflight},
 			IdempotencyKey: "owner/repo#101:merge:abc123",
 			CreatedAt:      "2026-04-24T08:01:00Z",
-			Payload:        map[string]any{"merge_method": "squash"},
 		}},
 		Audit: ActionPlanAudit{
 			Checks: []ActionPlanAuditCheck{{
@@ -622,7 +646,6 @@ func TestActionPlanJSONContract(t *testing.T) {
 		"lease_state",
 		"allowed_actions",
 		"blocked_reasons",
-		"proof_bundle_refs",
 	})
 
 	intents, ok := decoded["action_intents"].([]any)
@@ -647,7 +670,6 @@ func TestActionPlanJSONContract(t *testing.T) {
 		"preconditions",
 		"idempotency_key",
 		"created_at",
-		"payload",
 	})
 	if intent["action"] != string(ActionKindMerge) {
 		t.Fatalf("action = %#v, want %q", intent["action"], ActionKindMerge)
@@ -668,4 +690,153 @@ func assertExactJSONKeys(t *testing.T, decoded map[string]any, want []string) {
 			t.Fatalf("missing key %s from %#v", key, decoded)
 		}
 	}
+}
+
+// TestGoAndPythonActionPlanParity validates that a Go ActionPlan round-trips
+// through Python's ActionPlan model (Pydantic or dataclass bootstrap) without
+// data loss on the required fields.
+func TestGoAndPythonActionPlanParity(t *testing.T) {
+	t.Parallel()
+
+	plan := sampleActionPlan()
+
+	goJSON, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatalf("marshal go ActionPlan: %v", err)
+	}
+
+	pythonPath, ok := findPython()
+	if !ok {
+		t.Skip("python interpreter not available")
+	}
+
+	repoRoot := repoRoot(t)
+	pythonFile := filepath.Join(repoRoot, "ml-service", "src", "pratc_ml", "models.py")
+	cmd := exec.Command(pythonPath, pythonFile)
+	pythonSrc := filepath.Join(repoRoot, "ml-service", "src")
+	cmd.Env = append(os.Environ(),
+		"PYTHONPATH="+pythonSrc,
+		"PRATC_SAMPLE_ACTIONPLAN_JSON="+string(goJSON),
+	)
+	cmd.Dir = repoRoot
+
+	pythonJSON, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("run python serializer: %v", err)
+	}
+
+	// Normalize both sides and compare required keys/values.
+	goNorm := normalizeJSON(t, goJSON)
+	pyNorm := normalizeJSON(t, pythonJSON)
+
+	var goDecoded, pyDecoded map[string]any
+	if err := json.Unmarshal(goNorm, &goDecoded); err != nil {
+		t.Fatalf("decode go json: %v", err)
+	}
+	if err := json.Unmarshal(pyNorm, &pyDecoded); err != nil {
+		t.Fatalf("decode python json: %v", err)
+	}
+
+	// Top-level required keys must be identical.
+	requiredTopKeys := []string{
+		"schema_version", "run_id", "repo", "policy_profile",
+		"generated_at", "corpus_snapshot", "lanes", "work_items",
+		"action_intents", "audit",
+	}
+	for _, k := range requiredTopKeys {
+		if goDecoded[k] == nil {
+			t.Fatalf("go ActionPlan missing required key %q", k)
+		}
+		if pyDecoded[k] == nil {
+			t.Fatalf("python ActionPlan missing required key %q", k)
+		}
+		// Value equality check (normalize first to avoid float ordering issues).
+		goVal := normalizeJSON(t, must(json.Marshal(goDecoded[k])))
+		pyVal := normalizeJSON(t, must(json.Marshal(pyDecoded[k])))
+		if !bytes.Equal(goVal, pyVal) {
+			t.Fatalf("value mismatch for key %q\ngo=%s\npy=%s", k, goVal, pyVal)
+		}
+	}
+}
+
+func sampleActionPlan() ActionPlan {
+	preflight := ActionPreflight{
+		Check:        "pr_still_open",
+		Status:       "passed",
+		Reason:       "PR #101 is open",
+		EvidenceRefs: []string{"github:pr/101#state"},
+		Required:     true,
+		CheckedAt:    "2026-04-24T08:02:00Z",
+	}
+	return ActionPlan{
+		SchemaVersion: "2.0",
+		RunID:         "run-parity-test",
+		Repo:          "owner/repo",
+		PolicyProfile: PolicyProfileAdvisory,
+		GeneratedAt:   "2026-04-24T08:00:00Z",
+		CorpusSnapshot: ActionCorpusSnapshot{
+			TotalPRs:          1,
+			HeadSHAIndexed:    true,
+			AnalysisTruncated: false,
+			MaxPRsApplied:     0,
+		},
+		Lanes: []ActionLaneSummary{{
+			Lane:        ActionLaneFastMerge,
+			Count:       1,
+			WorkItemIDs: []string{"wi-101"},
+		}},
+		WorkItems: []ActionWorkItem{{
+			ID:                      "wi-101",
+			PRNumber:                101,
+			Lane:                    ActionLaneFastMerge,
+			State:                   ActionWorkItemStateProposed,
+			PriorityScore:           0.91,
+			Confidence:              0.95,
+			RiskFlags:               []string{"low_risk"},
+			ReasonTrail:             []string{"ci_green", "mergeable_clean"},
+			EvidenceRefs:            []string{"github:pr/101"},
+			RequiredPreflightChecks: []ActionPreflight{preflight},
+			IdempotencyKey:          "owner/repo#101:merge:abc123",
+			LeaseState: ActionLease{
+				ClaimedBy: "worker-1",
+				ClaimedAt: "2026-04-24T08:03:00Z",
+				ExpiresAt: "2026-04-24T08:33:00Z",
+			},
+			AllowedActions: []ActionKind{ActionKindMerge},
+			BlockedReasons: []string{},
+		}},
+		ActionIntents: []ActionIntent{{
+			ID:             "intent-101-merge",
+			Action:         ActionKindMerge,
+			PRNumber:       101,
+			Lane:           ActionLaneFastMerge,
+			DryRun:         true,
+			PolicyProfile:  PolicyProfileAdvisory,
+			Confidence:     0.95,
+			RiskFlags:      []string{"low_risk"},
+			Reasons:        []string{"ci_green", "mergeable_clean"},
+			EvidenceRefs:   []string{"github:pr/101"},
+			Preconditions:  []ActionPreflight{preflight},
+			IdempotencyKey: "owner/repo#101:merge:abc123",
+			CreatedAt:      "2026-04-24T08:01:00Z",
+		}},
+		Audit: ActionPlanAudit{
+			Checks: []ActionPlanAuditCheck{{
+				Name:         "lane_coverage",
+				Status:       "passed",
+				Reason:       "every PR has one primary action lane",
+				EvidenceRefs: []string{"run:run-parity-test"},
+				CheckedAt:    "2026-04-24T08:04:00Z",
+			}},
+			Warnings: []string{},
+			Errors:   []string{},
+		},
+	}
+}
+
+func must(v []byte, err error) []byte {
+	if err != nil {
+		panic(err)
+	}
+	return v
 }

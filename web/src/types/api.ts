@@ -184,11 +184,146 @@ export interface OmniPlanResponse {
   ordering: number[];
 }
 
-export interface ActionIntent {
-  action: string;
+// ── v2.0 Action Surface ───────────────────────────────────────────────────────
+
+export type ActionLane =
+  | "fast_merge"
+  | "fix_and_merge"
+  | "duplicate_close"
+  | "reject_or_close"
+  | "focused_review"
+  | "future_or_reengage"
+  | "human_escalate";
+
+export type PolicyProfile = "advisory" | "guarded" | "autonomous";
+
+export type ActionWorkItemState =
+  | "proposed"
+  | "claimable"
+  | "claimed"
+  | "preflighted"
+  | "patched"
+  | "tested"
+  | "approved_for_execution"
+  | "executed"
+  | "verified"
+  | "failed"
+  | "escalated"
+  | "canceled";
+
+export type ActionKind =
+  | "merge"
+  | "close"
+  | "comment"
+  | "label"
+  | "request_changes"
+  | "apply_fix";
+
+export interface ActionPreflight {
+  check: string;
+  status: string;
+  reason: string;
+  evidence_refs: string[];
+  required: boolean;
+  checked_at: string;
+}
+
+export interface ProofBundle {
+  id: string;
+  work_item_id: string;
   pr_number: number;
-  dry_run: boolean;
+  summary: string;
+  evidence_refs: string[];
+  artifact_refs: string[];
+  test_commands: string[];
+  test_results: string[];
+  created_by: string;
   created_at: string;
+}
+
+export interface ActionLease {
+  claimed_by?: string;
+  claimed_at?: string;
+  expires_at?: string;
+}
+
+export interface ActionWorkItem {
+  id: string;
+  pr_number: number;
+  lane: ActionLane;
+  state: ActionWorkItemState;
+  priority_score: number;
+  confidence: number;
+  risk_flags: string[];
+  reason_trail: string[];
+  evidence_refs: string[];
+  required_preflight_checks: ActionPreflight[];
+  idempotency_key: string;
+  lease_state: ActionLease;
+  allowed_actions: ActionKind[];
+  blocked_reasons: string[];
+  proof_bundle_refs?: string[];
+}
+
+/**
+ * Expanded ActionIntent — retains legacy fields (action, pr_number, dry_run,
+ * created_at) for backward compatibility with existing consumers.
+ */
+export interface ActionIntent {
+  id: string;
+  action: ActionKind;
+  pr_number: number;
+  lane: ActionLane;
+  dry_run: boolean;
+  policy_profile: PolicyProfile;
+  confidence: number;
+  risk_flags: string[];
+  reasons: string[];
+  evidence_refs: string[];
+  preconditions: ActionPreflight[];
+  idempotency_key: string;
+  created_at: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface ActionLaneSummary {
+  lane: ActionLane;
+  count: number;
+  work_item_ids: string[];
+}
+
+export interface ActionCorpusSnapshot {
+  total_prs: number;
+  head_sha_indexed: boolean;
+  analysis_truncated: boolean;
+  max_prs_applied: number;
+}
+
+export interface ActionPlanAuditCheck {
+  name: string;
+  status: string;
+  reason?: string;
+  evidence_refs?: string[];
+  checked_at?: string;
+}
+
+export interface ActionPlanAudit {
+  checks: ActionPlanAuditCheck[];
+  warnings?: string[];
+  errors?: string[];
+}
+
+export interface ActionPlan {
+  schema_version: string;
+  run_id: string;
+  repo: string;
+  policy_profile: PolicyProfile;
+  generated_at: string;
+  corpus_snapshot: ActionCorpusSnapshot;
+  lanes: ActionLaneSummary[];
+  work_items: ActionWorkItem[];
+  action_intents: ActionIntent[];
+  audit: ActionPlanAudit;
 }
 
 export interface ClusterRequest {

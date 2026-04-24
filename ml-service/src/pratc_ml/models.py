@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass, field, fields, is_dataclass
+from dataclasses import MISSING, asdict, dataclass, field, fields, is_dataclass
 from typing import Any, TypeVar, get_args, get_origin
 
 try:
@@ -203,13 +203,127 @@ if BaseModel is not None:
         reason: str
 
 
+    class ActionPreflight(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
+        check: str
+        status: str
+        reason: str
+        evidence_refs: list[str] | None = None
+        required: bool = False
+        checked_at: str | None = None
+
+
+    class ProofBundle(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
+        id: str
+        work_item_id: str
+        pr_number: int
+        summary: str
+        evidence_refs: list[str] | None = None
+        artifact_refs: list[str] | None = None
+        test_commands: list[str] | None = None
+        test_results: list[str] | None = None
+        created_by: str | None = None
+        created_at: str | None = None
+
+
+    class ActionLease(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
+        claimed_by: str | None = None
+        claimed_at: str | None = None
+        expires_at: str | None = None
+
+
+    class ActionWorkItem(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
+        id: str
+        pr_number: int
+        lane: str
+        state: str
+        priority_score: float
+        confidence: float
+        risk_flags: list[str] | None = None
+        reason_trail: list[str] | None = None
+        evidence_refs: list[str] | None = None
+        required_preflight_checks: list[ActionPreflight] | None = None
+        idempotency_key: str = ""
+        lease_state: ActionLease | None = None
+        allowed_actions: list[str] | None = None
+        blocked_reasons: list[str] | None = None
+        proof_bundle_refs: list[str] | None = None
+
+
     class ActionIntent(BaseModel):
         model_config = ConfigDict(populate_by_name=True)
 
+        id: str = ""
         action: str
         pr_number: int
+        lane: str = ""
         dry_run: bool
+        policy_profile: str = "advisory"
+        confidence: float = 0.0
+        risk_flags: list[str] | None = None
+        reasons: list[str] | None = None
+        evidence_refs: list[str] | None = None
+        preconditions: list[ActionPreflight] | None = None
+        idempotency_key: str = ""
         created_at: str
+        payload: dict[str, Any] | None = None
+
+
+    class ActionLaneSummary(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
+        lane: str
+        count: int
+        work_item_ids: list[str] | None = None
+
+
+    class ActionCorpusSnapshot(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
+        total_prs: int = 0
+        head_sha_indexed: bool = False
+        analysis_truncated: bool = False
+        max_prs_applied: int = 0
+
+
+    class ActionPlanAuditCheck(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
+        name: str
+        status: str
+        reason: str | None = None
+        evidence_refs: list[str] | None = None
+        checked_at: str | None = None
+
+
+    class ActionPlanAudit(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
+        checks: list[ActionPlanAuditCheck] = []
+        warnings: list[str] | None = None
+        errors: list[str] | None = None
+
+
+    class ActionPlan(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+
+        schema_version: str = ""
+        run_id: str = ""
+        repo: str
+        policy_profile: str = "advisory"
+        generated_at: str = ""
+        corpus_snapshot: ActionCorpusSnapshot | None = None
+        lanes: list[ActionLaneSummary] = []
+        work_items: list[ActionWorkItem] = []
+        action_intents: list[ActionIntent] = []
+        audit: ActionPlanAudit | None = None
 
 
     class ClusterRequest(BaseModel):
@@ -534,11 +648,116 @@ else:
 
 
     @dataclass
+    class ActionPreflight(_BootstrapModel):
+        check: str
+        status: str
+        reason: str
+        evidence_refs: list[str] = field(default_factory=list)
+        required: bool = False
+        checked_at: str = ""
+
+
+    @dataclass
+    class ProofBundle(_BootstrapModel):
+        id: str
+        work_item_id: str
+        pr_number: int
+        summary: str
+        evidence_refs: list[str] = field(default_factory=list)
+        artifact_refs: list[str] = field(default_factory=list)
+        test_commands: list[str] = field(default_factory=list)
+        test_results: list[str] = field(default_factory=list)
+        created_by: str = ""
+        created_at: str = ""
+
+
+    @dataclass
+    class ActionLease(_BootstrapModel):
+        claimed_by: str = ""
+        claimed_at: str = ""
+        expires_at: str = ""
+
+
+    @dataclass
+    class ActionWorkItem(_BootstrapModel):
+        id: str
+        pr_number: int
+        lane: str
+        state: str
+        priority_score: float
+        confidence: float
+        risk_flags: list[str] = field(default_factory=list)
+        reason_trail: list[str] = field(default_factory=list)
+        evidence_refs: list[str] = field(default_factory=list)
+        required_preflight_checks: list[ActionPreflight] = field(default_factory=list)
+        idempotency_key: str = ""
+        lease_state: ActionLease = field(default_factory=ActionLease)
+        allowed_actions: list[str] = field(default_factory=list)
+        blocked_reasons: list[str] = field(default_factory=list)
+        proof_bundle_refs: list[str] = field(default_factory=list)
+
+
+    @dataclass
     class ActionIntent(_BootstrapModel):
         action: str
         pr_number: int
         dry_run: bool
         created_at: str
+        id: str = ""
+        lane: str = ""
+        policy_profile: str = "advisory"
+        confidence: float = 0.0
+        risk_flags: list[str] = field(default_factory=list)
+        reasons: list[str] = field(default_factory=list)
+        evidence_refs: list[str] = field(default_factory=list)
+        preconditions: list[ActionPreflight] = field(default_factory=list)
+        idempotency_key: str = ""
+        payload: dict[str, Any] = field(default_factory=dict)
+
+
+    @dataclass
+    class ActionLaneSummary(_BootstrapModel):
+        lane: str
+        count: int
+        work_item_ids: list[str] = field(default_factory=list)
+
+
+    @dataclass
+    class ActionCorpusSnapshot(_BootstrapModel):
+        total_prs: int = 0
+        head_sha_indexed: bool = False
+        analysis_truncated: bool = False
+        max_prs_applied: int = 0
+
+
+    @dataclass
+    class ActionPlanAuditCheck(_BootstrapModel):
+        name: str
+        status: str
+        reason: str = ""
+        evidence_refs: list[str] = field(default_factory=list)
+        checked_at: str = ""
+
+
+    @dataclass
+    class ActionPlanAudit(_BootstrapModel):
+        checks: list[ActionPlanAuditCheck] = field(default_factory=list)
+        warnings: list[str] = field(default_factory=list)
+        errors: list[str] = field(default_factory=list)
+
+
+    @dataclass
+    class ActionPlan(_BootstrapModel):
+        repo: str
+        schema_version: str = ""
+        run_id: str = ""
+        policy_profile: str = "advisory"
+        generated_at: str = ""
+        corpus_snapshot: ActionCorpusSnapshot = field(default_factory=ActionCorpusSnapshot)
+        lanes: list[ActionLaneSummary] = field(default_factory=list)
+        work_items: list[ActionWorkItem] = field(default_factory=list)
+        action_intents: list[ActionIntent] = field(default_factory=list)
+        audit: ActionPlanAudit = field(default_factory=ActionPlanAudit)
 
 
     @dataclass
@@ -632,15 +851,21 @@ else:
         version: str
 
 
-def _payload_to_json(payload: AnalysisResponse) -> str:
+def _payload_to_json(payload: Any) -> str:
     if BaseModel is not None:
         return payload.model_dump_json(by_alias=True, exclude_none=True)
     return json.dumps(payload.model_dump(), separators=(",", ":"), sort_keys=False)
 
 
 if __name__ == "__main__":
+    action_plan_raw = os.environ.get("PRATC_SAMPLE_ACTIONPLAN_JSON")
+    if action_plan_raw:
+        payload = ActionPlan.model_validate(json.loads(action_plan_raw))
+        print(_payload_to_json(payload))
+        raise SystemExit(0)
+
     raw = os.environ.get("PRATC_SAMPLE_ANALYSIS_JSON")
     if not raw:
-        raise SystemExit("PRATC_SAMPLE_ANALYSIS_JSON is required")
+        raise SystemExit("PRATC_SAMPLE_ANALYSIS_JSON or PRATC_SAMPLE_ACTIONPLAN_JSON is required")
     payload = AnalysisResponse.model_validate(json.loads(raw))
     print(_payload_to_json(payload))

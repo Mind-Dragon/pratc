@@ -1,0 +1,385 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://pratc.dev/contracts/action-plan.json",
+    "title": "ActionPlan",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "schema_version": {
+            "type": "string"
+        },
+        "run_id": {
+            "type": "string"
+        },
+        "repo": {
+            "type": "string"
+        },
+        "policy_profile": {
+            "$ref": "shared-definitions.json#/$defs/PolicyProfile"
+        },
+        "generated_at": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "corpus_snapshot": {
+            "$ref": "#/$defs/ActionCorpusSnapshot"
+        },
+        "lanes": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/ActionLaneSummary"
+            }
+        },
+        "work_items": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/ActionWorkItem"
+            }
+        },
+        "action_intents": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/ActionIntent"
+            }
+        },
+        "audit": {
+            "$ref": "#/$defs/ActionPlanAudit"
+        }
+    },
+    "required": [
+        "schema_version",
+        "run_id",
+        "repo",
+        "policy_profile",
+        "generated_at",
+        "corpus_snapshot",
+        "lanes",
+        "work_items",
+        "action_intents",
+        "audit"
+    ],
+    "$defs": {
+        "ActionCorpusSnapshot": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "total_prs": {
+                    "type": "integer"
+                },
+                "head_sha_indexed": {
+                    "type": "boolean"
+                },
+                "analysis_truncated": {
+                    "type": "boolean"
+                },
+                "max_prs_applied": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "total_prs",
+                "head_sha_indexed",
+                "analysis_truncated",
+                "max_prs_applied"
+            ]
+        },
+        "ActionLaneSummary": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "lane": {
+                    "$ref": "shared-definitions.json#/$defs/ActionLane"
+                },
+                "count": {
+                    "type": "integer"
+                },
+                "work_item_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "lane",
+                "count",
+                "work_item_ids"
+            ]
+        },
+        "ActionPreflight": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "check": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "evidence_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "required": {
+                    "type": "boolean"
+                },
+                "checked_at": {
+                    "type": "string",
+                    "format": "date-time"
+                }
+            },
+            "required": [
+                "check",
+                "status",
+                "reason",
+                "evidence_refs",
+                "required",
+                "checked_at"
+            ]
+        },
+        "ActionLease": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "claimed_by": {
+                    "type": "string"
+                },
+                "claimed_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "expires_at": {
+                    "type": "string",
+                    "format": "date-time"
+                }
+            },
+            "required": []
+        },
+        "ActionWorkItem": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "pr_number": {
+                    "type": "integer"
+                },
+                "lane": {
+                    "$ref": "shared-definitions.json#/$defs/ActionLane"
+                },
+                "state": {
+                    "$ref": "shared-definitions.json#/$defs/ActionWorkItemState"
+                },
+                "priority_score": {
+                    "type": "number"
+                },
+                "confidence": {
+                    "type": "number"
+                },
+                "risk_flags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "reason_trail": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "evidence_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "required_preflight_checks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/ActionPreflight"
+                    }
+                },
+                "idempotency_key": {
+                    "type": "string"
+                },
+                "lease_state": {
+                    "$ref": "#/$defs/ActionLease"
+                },
+                "allowed_actions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "shared-definitions.json#/$defs/ActionKind"
+                    }
+                },
+                "blocked_reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "proof_bundle_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "id",
+                "pr_number",
+                "lane",
+                "state",
+                "priority_score",
+                "confidence",
+                "risk_flags",
+                "reason_trail",
+                "evidence_refs",
+                "required_preflight_checks",
+                "idempotency_key",
+                "lease_state",
+                "allowed_actions",
+                "blocked_reasons"
+            ]
+        },
+        "ActionIntent": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "action": {
+                    "$ref": "shared-definitions.json#/$defs/ActionKind"
+                },
+                "pr_number": {
+                    "type": "integer"
+                },
+                "lane": {
+                    "$ref": "shared-definitions.json#/$defs/ActionLane"
+                },
+                "dry_run": {
+                    "type": "boolean"
+                },
+                "policy_profile": {
+                    "$ref": "shared-definitions.json#/$defs/PolicyProfile"
+                },
+                "confidence": {
+                    "type": "number"
+                },
+                "risk_flags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "evidence_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "preconditions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/ActionPreflight"
+                    }
+                },
+                "idempotency_key": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "payload": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            },
+            "required": [
+                "id",
+                "action",
+                "pr_number",
+                "lane",
+                "dry_run",
+                "policy_profile",
+                "confidence",
+                "risk_flags",
+                "reasons",
+                "evidence_refs",
+                "preconditions",
+                "idempotency_key",
+                "created_at"
+            ]
+        },
+        "ActionPlanAuditCheck": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "evidence_refs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "checked_at": {
+                    "type": "string",
+                    "format": "date-time"
+                }
+            },
+            "required": [
+                "name",
+                "status"
+            ]
+        },
+        "ActionPlanAudit": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "checks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/ActionPlanAuditCheck"
+                    }
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "checks"
+            ]
+        }
+    }
+}
