@@ -13,11 +13,11 @@ func TestRunQuickWinPass(t *testing.T) {
 	thirtyDaysAgo := now.AddDate(0, 0, -30).Format(time.RFC3339)
 
 	tests := []struct {
-		name       string
-		results    []types.ReviewResult
-		prDataMap  map[int]PRData
+		name        string
+		results     []types.ReviewResult
+		prDataMap   map[int]PRData
 		wantReClass int
-		checkFn    func(*testing.T, []types.ReviewResult)
+		checkFn     func(*testing.T, []types.ReviewResult)
 	}{
 		{
 			name: "small PR with passing CI gets reclassified to merge_candidate",
@@ -33,8 +33,8 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				1: {
 					PR: types.PR{
-						Number:             1,
-						ChangedFilesCount:  2,
+						Number:            1,
+						ChangedFilesCount: 2,
 						Additions:         20,
 						Deletions:         5,
 						CIStatus:          "success",
@@ -80,8 +80,8 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				2: {
 					PR: types.PR{
-						Number:             2,
-						ChangedFilesCount:  5,
+						Number:            2,
+						ChangedFilesCount: 5,
 						Additions:         30,
 						Deletions:         10,
 						CIStatus:          "passed",
@@ -118,15 +118,15 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				3: {
 					PR: types.PR{
-						Number:        3,
-						FilesChanged:  []string{"README.md", "CHANGELOG.txt", "docs/guide.rst"},
+						Number:       3,
+						FilesChanged: []string{"README.md", "CHANGELOG.txt", "docs/guide.rst"},
 						CIStatus:     "success",
-						IsDraft:       false,
-						Additions:     100,
-						Deletions:     20,
-						Labels:        []string{},
-						UpdatedAt:     thirtyDaysAgo,
-						ReviewCount:   0,
+						IsDraft:      false,
+						Additions:    100,
+						Deletions:    20,
+						Labels:       []string{},
+						UpdatedAt:    thirtyDaysAgo,
+						ReviewCount:  0,
 					},
 					ConflictPairs: []types.ConflictPair{},
 				},
@@ -155,15 +155,15 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				4: {
 					PR: types.PR{
-						Number:        4,
-						FilesChanged:  []string{"README.md"},
+						Number:       4,
+						FilesChanged: []string{"README.md"},
 						CIStatus:     "success",
-						IsDraft:       false,
-						Additions:     10,
-						Deletions:     2,
-						Labels:        []string{},
-						UpdatedAt:     thirtyDaysAgo,
-						ReviewCount:   0,
+						IsDraft:      false,
+						Additions:    10,
+						Deletions:    2,
+						Labels:       []string{},
+						UpdatedAt:    thirtyDaysAgo,
+						ReviewCount:  0,
 					},
 					ConflictPairs: []types.ConflictPair{
 						{SourcePR: 4, TargetPR: 5},
@@ -194,9 +194,9 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				5: {
 					PR: types.PR{
-						Number:             5,
-						ChangedFilesCount:  5,
-						FilesChanged:       []string{"handler.go", "model.go", "service.go", "repo.go", "util.go"},
+						Number:            5,
+						ChangedFilesCount: 5,
+						FilesChanged:      []string{"handler.go", "model.go", "service.go", "repo.go", "util.go"},
 						CIStatus:          "success",
 						IsDraft:           false,
 						Additions:         100,
@@ -235,9 +235,9 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				6: {
 					PR: types.PR{
-						Number:             6,
-						ChangedFilesCount:  6,
-						FilesChanged:       []string{"service.go", "handler.go", "model.go", "repo.go", "util.go", "helper.go"},
+						Number:            6,
+						ChangedFilesCount: 6,
+						FilesChanged:      []string{"service.go", "handler.go", "model.go", "repo.go", "util.go", "helper.go"},
 						CIStatus:          "success",
 						IsDraft:           false,
 						Additions:         50,
@@ -270,15 +270,15 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				7: {
 					PR: types.PR{
-						Number:        7,
-						FilesChanged:  []string{"old.go"},
+						Number:       7,
+						FilesChanged: []string{"old.go"},
 						CIStatus:     "failure",
-						IsDraft:       false,
-						Additions:     5,
-						Deletions:     3,
-						Labels:        []string{},
-						UpdatedAt:     ninetyFiveDaysAgo,
-						ReviewCount:   0,
+						IsDraft:      false,
+						Additions:    5,
+						Deletions:    3,
+						Labels:       []string{},
+						UpdatedAt:    ninetyFiveDaysAgo,
+						ReviewCount:  0,
 					},
 					ConflictPairs: []types.ConflictPair{},
 				},
@@ -310,15 +310,15 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				8: {
 					PR: types.PR{
-						Number:        8,
-						FilesChanged:  []string{"old.go"},
+						Number:       8,
+						FilesChanged: []string{"old.go"},
 						CIStatus:     "success", // passing, not failing
-						IsDraft:       false,
-						Additions:     5,
-						Deletions:     3,
-						Labels:        []string{},
-						UpdatedAt:     ninetyFiveDaysAgo,
-						ReviewCount:   0,
+						IsDraft:      false,
+						Additions:    5,
+						Deletions:    3,
+						Labels:       []string{},
+						UpdatedAt:    ninetyFiveDaysAgo,
+						ReviewCount:  0,
 					},
 					ConflictPairs: []types.ConflictPair{},
 				},
@@ -344,15 +344,15 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				9: {
 					PR: types.PR{
-						Number:        9,
-						FilesChanged:  []string{"foo.go"},
+						Number:       9,
+						FilesChanged: []string{"foo.go"},
 						CIStatus:     "success",
-						IsDraft:       false,
-						Additions:     100,
-						Deletions:     50,
-						Labels:        []string{},
-						UpdatedAt:     ninetyFiveDaysAgo,
-						ReviewCount:   0,
+						IsDraft:      false,
+						Additions:    100,
+						Deletions:    50,
+						Labels:       []string{},
+						UpdatedAt:    ninetyFiveDaysAgo,
+						ReviewCount:  0,
 					},
 					ConflictPairs: []types.ConflictPair{},
 				},
@@ -378,15 +378,15 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				10: {
 					PR: types.PR{
-						Number:        10,
-						FilesChanged:  []string{"bad.go"},
+						Number:       10,
+						FilesChanged: []string{"bad.go"},
 						CIStatus:     "failure",
-						IsDraft:       false,
-						Additions:     100,
-						Deletions:     50,
-						Labels:        []string{},
-						UpdatedAt:     ninetyFiveDaysAgo,
-						ReviewCount:   0,
+						IsDraft:      false,
+						Additions:    100,
+						Deletions:    50,
+						Labels:       []string{},
+						UpdatedAt:    ninetyFiveDaysAgo,
+						ReviewCount:  0,
 					},
 					ConflictPairs: []types.ConflictPair{},
 				},
@@ -412,15 +412,15 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				11: {
 					PR: types.PR{
-						Number:        11,
-						FilesChanged:  []string{"foo.go"},
+						Number:       11,
+						FilesChanged: []string{"foo.go"},
 						CIStatus:     "failure",
-						IsDraft:       false,
-						Additions:     5,
-						Deletions:     3,
-						Labels:        []string{},
-						UpdatedAt:     ninetyFiveDaysAgo,
-						ReviewCount:   0,
+						IsDraft:      false,
+						Additions:    5,
+						Deletions:    3,
+						Labels:       []string{},
+						UpdatedAt:    ninetyFiveDaysAgo,
+						ReviewCount:  0,
 					},
 					ConflictPairs: []types.ConflictPair{},
 				},
@@ -446,15 +446,15 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				12: {
 					PR: types.PR{
-						Number:        12,
-						FilesChanged:  []string{"foo.go"},
+						Number:       12,
+						FilesChanged: []string{"foo.go"},
 						CIStatus:     "failure",
-						IsDraft:       false,
-						Additions:     5,
-						Deletions:     3,
-						Labels:        []string{},
-						UpdatedAt:     ninetyFiveDaysAgo,
-						ReviewCount:   0,
+						IsDraft:      false,
+						Additions:    5,
+						Deletions:    3,
+						Labels:       []string{},
+						UpdatedAt:    ninetyFiveDaysAgo,
+						ReviewCount:  0,
 					},
 					ConflictPairs: []types.ConflictPair{},
 				},
@@ -480,8 +480,8 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				13: {
 					PR: types.PR{
-						Number:             13,
-						ChangedFilesCount:  3,
+						Number:            13,
+						ChangedFilesCount: 3,
 						Additions:         50,
 						Deletions:         10,
 						CIStatus:          "success",
@@ -515,8 +515,8 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				14: {
 					PR: types.PR{
-						Number:             14,
-						ChangedFilesCount:  1,
+						Number:            14,
+						ChangedFilesCount: 1,
 						Additions:         5,
 						Deletions:         2,
 						CIStatus:          "success",
@@ -550,8 +550,8 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				15: {
 					PR: types.PR{
-						Number:             15,
-						ChangedFilesCount:  2,
+						Number:            15,
+						ChangedFilesCount: 2,
 						Additions:         15,
 						Deletions:         5,
 						CIStatus:          "", // unknown
@@ -585,8 +585,8 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				16: {
 					PR: types.PR{
-						Number:             16,
-						ChangedFilesCount:  2,
+						Number:            16,
+						ChangedFilesCount: 2,
 						Additions:         20,
 						Deletions:         5,
 						CIStatus:          "success",
@@ -624,8 +624,8 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				17: {
 					PR: types.PR{
-						Number:             17,
-						ChangedFilesCount:  2,
+						Number:            17,
+						ChangedFilesCount: 2,
 						Additions:         20,
 						Deletions:         5,
 						CIStatus:          "success",
@@ -659,9 +659,9 @@ func TestRunQuickWinPass(t *testing.T) {
 			prDataMap: map[int]PRData{
 				18: {
 					PR: types.PR{
-						Number:             18,
-						ChangedFilesCount:  10,    // NOT small (> 3 files)
-						Additions:         500,   // NOT small (> 50 changes)
+						Number:            18,
+						ChangedFilesCount: 10,  // NOT small (> 3 files)
+						Additions:         500, // NOT small (> 50 changes)
 						Deletions:         200,
 						CIStatus:          "failure", // failing CI
 						IsDraft:           false,
@@ -750,7 +750,7 @@ func TestIsLowValueCandidate(t *testing.T) {
 			name: "high substance is not low value candidate",
 			result: types.ReviewResult{
 				TemporalBucket:   "future",
-				SubstanceScore: 60,
+				SubstanceScore:   60,
 				Category:         types.ReviewCategoryMergeAfterFocusedReview,
 				ReclassifiedFrom: "low_value",
 			},
@@ -760,7 +760,7 @@ func TestIsLowValueCandidate(t *testing.T) {
 			name: "duplicate_superseded is not low value candidate",
 			result: types.ReviewResult{
 				TemporalBucket:   "future",
-				SubstanceScore: 30,
+				SubstanceScore:   30,
 				Category:         types.ReviewCategoryDuplicateSuperseded,
 				ReclassifiedFrom: "low_value",
 			},
@@ -770,7 +770,7 @@ func TestIsLowValueCandidate(t *testing.T) {
 			name: "problematic_quarantine is not low value candidate",
 			result: types.ReviewResult{
 				TemporalBucket:   "future",
-				SubstanceScore: 30,
+				SubstanceScore:   30,
 				Category:         types.ReviewCategoryProblematicQuarantine,
 				ReclassifiedFrom: "low_value",
 			},
@@ -780,7 +780,7 @@ func TestIsLowValueCandidate(t *testing.T) {
 			name: "substance 49 is low value",
 			result: types.ReviewResult{
 				TemporalBucket:   "future",
-				SubstanceScore: 49,
+				SubstanceScore:   49,
 				Category:         types.ReviewCategoryMergeAfterFocusedReview,
 				ReclassifiedFrom: "low_value",
 			},
@@ -790,7 +790,7 @@ func TestIsLowValueCandidate(t *testing.T) {
 			name: "substance 50 is not low value",
 			result: types.ReviewResult{
 				TemporalBucket:   "future",
-				SubstanceScore: 50,
+				SubstanceScore:   50,
 				Category:         types.ReviewCategoryMergeAfterFocusedReview,
 				ReclassifiedFrom: "low_value",
 			},
@@ -1010,10 +1010,10 @@ func TestHasQualityFindings(t *testing.T) {
 
 func TestDeriveBatchTag(t *testing.T) {
 	tests := []struct {
-		name          string
-		pr            types.PR
+		name           string
+		pr             types.PR
 		substanceScore int
-		want          string
+		want           string
 	}{
 		{
 			name: "dependencies label",
@@ -1023,7 +1023,7 @@ func TestDeriveBatchTag(t *testing.T) {
 				Deletions: 50,
 			},
 			substanceScore: 40,
-			want:          "dependency-batch",
+			want:           "dependency-batch",
 		},
 		{
 			name: "dependabot label",
@@ -1033,7 +1033,7 @@ func TestDeriveBatchTag(t *testing.T) {
 				Deletions: 50,
 			},
 			substanceScore: 40,
-			want:          "dependency-batch",
+			want:           "dependency-batch",
 		},
 		{
 			name: "tiny PR",
@@ -1043,7 +1043,7 @@ func TestDeriveBatchTag(t *testing.T) {
 				Deletions: 3,
 			},
 			substanceScore: 32,
-			want:          "typo-batch",
+			want:           "typo-batch",
 		},
 		{
 			name: "small PR but not tiny",
@@ -1053,7 +1053,7 @@ func TestDeriveBatchTag(t *testing.T) {
 				Deletions: 10,
 			},
 			substanceScore: 35,
-			want:          "",
+			want:           "",
 		},
 	}
 
@@ -1070,28 +1070,25 @@ func TestDeriveBatchTag(t *testing.T) {
 // TestIsAbandonedBoundary tests the isAbandoned function at the 90-day boundary.
 // isAbandoned returns true if days since update > 90.
 func TestIsAbandonedBoundary(t *testing.T) {
-	now := time.Now().UTC()
+	now := time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)
 
 	tests := []struct {
-		name    string
-		daysAgo int
-		want    bool
+		name string
+		age  time.Duration
+		want bool
 	}{
-		// When daysAgo <= 90, isAbandoned should return false
-		{"89 days ago is not abandoned", 89, false},
-		{"90 days ago is not abandoned (not > 90)", 90, false},
-		// When daysAgo > 90, isAbandoned should return true
-		{"91 days ago is abandoned", 91, true},
-		{"100 days ago is abandoned", 100, true},
+		{"89 days ago is not abandoned", 89 * 24 * time.Hour, false},
+		{"90 days ago is not abandoned (not > 90)", 90 * 24 * time.Hour, false},
+		{"90 days plus 1 second ago is abandoned", 90*24*time.Hour + time.Second, true},
+		{"100 days ago is abandoned", 100 * 24 * time.Hour, true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			pastTime := now.AddDate(0, 0, -tc.daysAgo)
-			pastTime = time.Date(pastTime.Year(), pastTime.Month(), pastTime.Day(), 12, 0, 0, 0, time.UTC)
+			pastTime := now.Add(-tc.age)
 			pr := types.PR{UpdatedAt: pastTime.Format(time.RFC3339)}
 
-			got := isAbandoned(pr)
+			got := isAbandonedAt(pr, now)
 			if got != tc.want {
 				t.Errorf("isAbandoned(PR with %s) = %v, want %v", pastTime.Format(time.RFC3339), got, tc.want)
 			}
@@ -1138,8 +1135,8 @@ func TestQuickwinSmallPRExactly3Conflicts(t *testing.T) {
 	prDataMap := map[int]PRData{
 		101: {
 			PR: types.PR{
-				Number:             101,
-				ChangedFilesCount:  2,
+				Number:            101,
+				ChangedFilesCount: 2,
 				Additions:         20,
 				Deletions:         5,
 				CIStatus:          "success",
@@ -1196,7 +1193,7 @@ func TestRule3_TemporalBucketGuard(t *testing.T) {
 					AnalyzerName: "security",
 					// Use prefix that WOULD match current hasQualityFindings (security_)
 					// to prove the temporal guard is needed independently
-					Finding:      "security_sql_injection: vulnerability in user input",
+					Finding: "security_sql_injection: vulnerability in user input",
 				},
 			},
 			DecisionLayers: []types.DecisionLayer{},

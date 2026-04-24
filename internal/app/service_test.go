@@ -321,10 +321,15 @@ func TestAnalyzeDoesNotTruncateByDefaultWhenMaxPRsUnset(t *testing.T) {
 }
 
 func TestAnalyzeProvidesAuthFallbackGuidanceForLiveRepoWithoutToken(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("PRATC_SETTINGS_DB", filepath.Join(dir, "missing-settings.db"))
+	t.Setenv("PRATC_GITHUB_TOKENS", "")
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_PAT", "")
 	t.Setenv("PATH", t.TempDir())
+	t.Chdir(dir)
 
 	service := Service{
 		now:           fixedNow,

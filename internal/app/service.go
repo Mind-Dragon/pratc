@@ -1673,7 +1673,7 @@ func (s Service) loadPRs(ctx context.Context, repo string) ([]types.PR, string, 
 	if targetRepo != manifest.Repo && strings.TrimSpace(s.token) == "" && s.tokenSource == nil {
 		resolved, err := gh.ResolveToken(ctx)
 		if err != nil {
-			return nil, "", truncationMeta{}, fmt.Errorf("missing auth for live repo %q: %w", targetRepo, err)
+			return nil, "", truncationMeta{}, fmt.Errorf("missing auth for live repo %q: set GITHUB_TOKEN or run `gh auth login`: %w", targetRepo, err)
 		}
 		s.token = resolved
 		s.tokenSource = gh.NewMultiTokenSource([]string{resolved}, nil)

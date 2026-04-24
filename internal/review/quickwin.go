@@ -211,6 +211,10 @@ func hasQualityFindings(findings []types.AnalyzerFinding) bool {
 
 // isAbandoned returns true if the PR has no activity for more than 90 days.
 func isAbandoned(pr types.PR) bool {
+	return isAbandonedAt(pr, time.Now().UTC())
+}
+
+func isAbandonedAt(pr types.PR, now time.Time) bool {
 	if pr.UpdatedAt == "" {
 		return false
 	}
@@ -220,9 +224,7 @@ func isAbandoned(pr types.PR) bool {
 		return false
 	}
 
-	// Use integer division to avoid floating point precision issues at boundaries.
-	// A PR is abandoned if days since update > 90, i.e., 91+ days.
-	return int(time.Since(t).Hours()/24) > 90
+	return now.Sub(t) > 90*24*time.Hour
 }
 
 // deriveBatchTag determines the batch tag for a reclassified PR.
