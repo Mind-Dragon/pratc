@@ -1,0 +1,483 @@
+{
+  "schema_version": "2.0",
+  "run_id": "fixture-action-plan-20260424",
+  "repo": "opencode-ai/opencode",
+  "policy_profile": "advisory",
+  "generated_at": "2026-04-24T00:00:00Z",
+  "corpus_snapshot": {
+    "total_prs": 7,
+    "head_sha_indexed": true,
+    "analysis_truncated": false,
+    "max_prs_applied": 0
+  },
+  "lanes": [
+    {
+      "lane": "fast_merge",
+      "count": 1,
+      "work_item_ids": [
+        "wi-fast_merge"
+      ]
+    },
+    {
+      "lane": "fix_and_merge",
+      "count": 1,
+      "work_item_ids": [
+        "wi-fix_and_merge"
+      ]
+    },
+    {
+      "lane": "duplicate_close",
+      "count": 1,
+      "work_item_ids": [
+        "wi-duplicate_close"
+      ]
+    },
+    {
+      "lane": "reject_or_close",
+      "count": 1,
+      "work_item_ids": [
+        "wi-reject_or_close"
+      ]
+    },
+    {
+      "lane": "focused_review",
+      "count": 1,
+      "work_item_ids": [
+        "wi-focused_review"
+      ]
+    },
+    {
+      "lane": "future_or_reengage",
+      "count": 1,
+      "work_item_ids": [
+        "wi-future_or_reengage"
+      ]
+    },
+    {
+      "lane": "human_escalate",
+      "count": 1,
+      "work_item_ids": [
+        "wi-human_escalate"
+      ]
+    }
+  ],
+  "work_items": [
+    {
+      "id": "wi-fast_merge",
+      "pr_number": 1001,
+      "lane": "fast_merge",
+      "state": "proposed",
+      "priority_score": 0.95,
+      "confidence": 0.9,
+      "risk_flags": [],
+      "reason_trail": [
+        "fixture_lane:fast_merge"
+      ],
+      "evidence_refs": [
+        "fixture:pr:1001"
+      ],
+      "required_preflight_checks": [
+        {
+          "check": "pr_still_open",
+          "status": "pending",
+          "reason": "fixture pending live preflight",
+          "evidence_refs": [
+            "fixture:pr:1001:state"
+          ],
+          "required": true,
+          "checked_at": "2026-04-24T00:00:00Z"
+        },
+        {
+          "check": "ci_green",
+          "status": "pending",
+          "reason": "fixture pending live preflight",
+          "evidence_refs": [
+            "fixture:pr:1001:ci"
+          ],
+          "required": true,
+          "checked_at": "2026-04-24T00:00:00Z"
+        }
+      ],
+      "idempotency_key": "fixture:opencode-ai/opencode:1001:merge",
+      "lease_state": {
+        "holder": "",
+        "leased_until": "",
+        "attempt": 0
+      },
+      "allowed_actions": [
+        "merge"
+      ],
+      "blocked_reasons": [],
+      "proof_bundle_refs": []
+    },
+    {
+      "id": "wi-fix_and_merge",
+      "pr_number": 1002,
+      "lane": "fix_and_merge",
+      "state": "proposed",
+      "priority_score": 0.9,
+      "confidence": 0.9,
+      "risk_flags": [],
+      "reason_trail": [
+        "fixture_lane:fix_and_merge"
+      ],
+      "evidence_refs": [
+        "fixture:pr:1002"
+      ],
+      "required_preflight_checks": [],
+      "idempotency_key": "fixture:opencode-ai/opencode:1002:apply_fix",
+      "lease_state": {
+        "holder": "",
+        "leased_until": "",
+        "attempt": 0
+      },
+      "allowed_actions": [
+        "apply_fix"
+      ],
+      "blocked_reasons": [],
+      "proof_bundle_refs": []
+    },
+    {
+      "id": "wi-duplicate_close",
+      "pr_number": 1003,
+      "lane": "duplicate_close",
+      "state": "proposed",
+      "priority_score": 0.85,
+      "confidence": 0.9,
+      "risk_flags": [],
+      "reason_trail": [
+        "fixture_lane:duplicate_close"
+      ],
+      "evidence_refs": [
+        "fixture:pr:1003"
+      ],
+      "required_preflight_checks": [],
+      "idempotency_key": "fixture:opencode-ai/opencode:1003:close",
+      "lease_state": {
+        "holder": "",
+        "leased_until": "",
+        "attempt": 0
+      },
+      "allowed_actions": [
+        "close"
+      ],
+      "blocked_reasons": [],
+      "proof_bundle_refs": []
+    },
+    {
+      "id": "wi-reject_or_close",
+      "pr_number": 1004,
+      "lane": "reject_or_close",
+      "state": "proposed",
+      "priority_score": 0.8,
+      "confidence": 0.9,
+      "risk_flags": [],
+      "reason_trail": [
+        "fixture_lane:reject_or_close"
+      ],
+      "evidence_refs": [
+        "fixture:pr:1004"
+      ],
+      "required_preflight_checks": [],
+      "idempotency_key": "fixture:opencode-ai/opencode:1004:close",
+      "lease_state": {
+        "holder": "",
+        "leased_until": "",
+        "attempt": 0
+      },
+      "allowed_actions": [
+        "close"
+      ],
+      "blocked_reasons": [],
+      "proof_bundle_refs": []
+    },
+    {
+      "id": "wi-focused_review",
+      "pr_number": 1005,
+      "lane": "focused_review",
+      "state": "proposed",
+      "priority_score": 0.75,
+      "confidence": 0.9,
+      "risk_flags": [],
+      "reason_trail": [
+        "fixture_lane:focused_review"
+      ],
+      "evidence_refs": [
+        "fixture:pr:1005"
+      ],
+      "required_preflight_checks": [],
+      "idempotency_key": "fixture:opencode-ai/opencode:1005:comment",
+      "lease_state": {
+        "holder": "",
+        "leased_until": "",
+        "attempt": 0
+      },
+      "allowed_actions": [
+        "comment"
+      ],
+      "blocked_reasons": [],
+      "proof_bundle_refs": []
+    },
+    {
+      "id": "wi-future_or_reengage",
+      "pr_number": 1006,
+      "lane": "future_or_reengage",
+      "state": "proposed",
+      "priority_score": 0.7,
+      "confidence": 0.9,
+      "risk_flags": [],
+      "reason_trail": [
+        "fixture_lane:future_or_reengage"
+      ],
+      "evidence_refs": [
+        "fixture:pr:1006"
+      ],
+      "required_preflight_checks": [],
+      "idempotency_key": "fixture:opencode-ai/opencode:1006:comment",
+      "lease_state": {
+        "holder": "",
+        "leased_until": "",
+        "attempt": 0
+      },
+      "allowed_actions": [
+        "comment"
+      ],
+      "blocked_reasons": [],
+      "proof_bundle_refs": []
+    },
+    {
+      "id": "wi-human_escalate",
+      "pr_number": 1007,
+      "lane": "human_escalate",
+      "state": "proposed",
+      "priority_score": 0.65,
+      "confidence": 0.45,
+      "risk_flags": [
+        "fixture_human_review_required"
+      ],
+      "reason_trail": [
+        "fixture_lane:human_escalate"
+      ],
+      "evidence_refs": [
+        "fixture:pr:1007"
+      ],
+      "required_preflight_checks": [],
+      "idempotency_key": "fixture:opencode-ai/opencode:1007:comment",
+      "lease_state": {
+        "holder": "",
+        "leased_until": "",
+        "attempt": 0
+      },
+      "allowed_actions": [
+        "comment"
+      ],
+      "blocked_reasons": [
+        "fixture_escalation"
+      ],
+      "proof_bundle_refs": []
+    }
+  ],
+  "action_intents": [
+    {
+      "id": "intent-fast_merge",
+      "action": "merge",
+      "pr_number": 1001,
+      "lane": "fast_merge",
+      "dry_run": true,
+      "policy_profile": "advisory",
+      "confidence": 0.9,
+      "risk_flags": [],
+      "reasons": [
+        "fixture_lane:fast_merge"
+      ],
+      "evidence_refs": [
+        "fixture:pr:1001"
+      ],
+      "preconditions": [
+        {
+          "check": "pr_still_open",
+          "status": "pending",
+          "reason": "fixture pending live preflight",
+          "evidence_refs": [
+            "fixture:pr:1001:state"
+          ],
+          "required": true,
+          "checked_at": "2026-04-24T00:00:00Z"
+        },
+        {
+          "check": "ci_green",
+          "status": "pending",
+          "reason": "fixture pending live preflight",
+          "evidence_refs": [
+            "fixture:pr:1001:ci"
+          ],
+          "required": true,
+          "checked_at": "2026-04-24T00:00:00Z"
+        }
+      ],
+      "idempotency_key": "fixture:opencode-ai/opencode:1001:merge",
+      "created_at": "2026-04-24T00:00:00Z",
+      "payload": {
+        "fixture": true
+      }
+    },
+    {
+      "id": "intent-fix_and_merge",
+      "action": "apply_fix",
+      "pr_number": 1002,
+      "lane": "fix_and_merge",
+      "dry_run": true,
+      "policy_profile": "advisory",
+      "confidence": 0.9,
+      "risk_flags": [],
+      "reasons": [
+        "fixture_lane:fix_and_merge"
+      ],
+      "evidence_refs": [
+        "fixture:pr:1002"
+      ],
+      "preconditions": [],
+      "idempotency_key": "fixture:opencode-ai/opencode:1002:apply_fix",
+      "created_at": "2026-04-24T00:00:00Z",
+      "payload": {
+        "fixture": true
+      }
+    },
+    {
+      "id": "intent-duplicate_close",
+      "action": "close",
+      "pr_number": 1003,
+      "lane": "duplicate_close",
+      "dry_run": true,
+      "policy_profile": "advisory",
+      "confidence": 0.9,
+      "risk_flags": [],
+      "reasons": [
+        "fixture_lane:duplicate_close"
+      ],
+      "evidence_refs": [
+        "fixture:pr:1003"
+      ],
+      "preconditions": [],
+      "idempotency_key": "fixture:opencode-ai/opencode:1003:close",
+      "created_at": "2026-04-24T00:00:00Z",
+      "payload": {
+        "fixture": true
+      }
+    },
+    {
+      "id": "intent-reject_or_close",
+      "action": "close",
+      "pr_number": 1004,
+      "lane": "reject_or_close",
+      "dry_run": true,
+      "policy_profile": "advisory",
+      "confidence": 0.9,
+      "risk_flags": [],
+      "reasons": [
+        "fixture_lane:reject_or_close"
+      ],
+      "evidence_refs": [
+        "fixture:pr:1004"
+      ],
+      "preconditions": [],
+      "idempotency_key": "fixture:opencode-ai/opencode:1004:close",
+      "created_at": "2026-04-24T00:00:00Z",
+      "payload": {
+        "fixture": true
+      }
+    },
+    {
+      "id": "intent-focused_review",
+      "action": "comment",
+      "pr_number": 1005,
+      "lane": "focused_review",
+      "dry_run": true,
+      "policy_profile": "advisory",
+      "confidence": 0.9,
+      "risk_flags": [],
+      "reasons": [
+        "fixture_lane:focused_review"
+      ],
+      "evidence_refs": [
+        "fixture:pr:1005"
+      ],
+      "preconditions": [],
+      "idempotency_key": "fixture:opencode-ai/opencode:1005:comment",
+      "created_at": "2026-04-24T00:00:00Z",
+      "payload": {
+        "fixture": true
+      }
+    },
+    {
+      "id": "intent-future_or_reengage",
+      "action": "comment",
+      "pr_number": 1006,
+      "lane": "future_or_reengage",
+      "dry_run": true,
+      "policy_profile": "advisory",
+      "confidence": 0.9,
+      "risk_flags": [],
+      "reasons": [
+        "fixture_lane:future_or_reengage"
+      ],
+      "evidence_refs": [
+        "fixture:pr:1006"
+      ],
+      "preconditions": [],
+      "idempotency_key": "fixture:opencode-ai/opencode:1006:comment",
+      "created_at": "2026-04-24T00:00:00Z",
+      "payload": {
+        "fixture": true
+      }
+    },
+    {
+      "id": "intent-human_escalate",
+      "action": "comment",
+      "pr_number": 1007,
+      "lane": "human_escalate",
+      "dry_run": true,
+      "policy_profile": "advisory",
+      "confidence": 0.45,
+      "risk_flags": [
+        "fixture_human_review_required"
+      ],
+      "reasons": [
+        "fixture_lane:human_escalate"
+      ],
+      "evidence_refs": [
+        "fixture:pr:1007"
+      ],
+      "preconditions": [],
+      "idempotency_key": "fixture:opencode-ai/opencode:1007:comment",
+      "created_at": "2026-04-24T00:00:00Z",
+      "payload": {
+        "fixture": true
+      }
+    }
+  ],
+  "audit": {
+    "checks": [
+      {
+        "name": "lane_coverage",
+        "status": "passed",
+        "reason": "fixture covers every lane",
+        "evidence_refs": [
+          "fixtures/action-plan.json"
+        ],
+        "checked_at": "2026-04-24T00:00:00Z"
+      },
+      {
+        "name": "advisory_zero_write",
+        "status": "passed",
+        "reason": "fixture intents are dry_run=true",
+        "evidence_refs": [
+          "fixtures/action-plan.json"
+        ],
+        "checked_at": "2026-04-24T00:00:00Z"
+      }
+    ],
+    "warnings": [],
+    "errors": []
+  }
+}

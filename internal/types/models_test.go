@@ -834,6 +834,49 @@ func sampleActionPlan() ActionPlan {
 	}
 }
 
+func TestActionPlanFixtureCoversAllLanes(t *testing.T) {
+	fixturePath := filepath.Join(repoRoot(t), "fixtures", "action-plan.json")
+	payload, err := os.ReadFile(fixturePath)
+	if err != nil {
+		t.Fatalf("read action plan fixture: %v", err)
+	}
+
+	var plan ActionPlan
+	if err := json.Unmarshal(payload, &plan); err != nil {
+		t.Fatalf("decode action plan fixture: %v", err)
+	}
+
+	want := []ActionLane{
+		ActionLaneFastMerge,
+		ActionLaneFixAndMerge,
+		ActionLaneDuplicateClose,
+		ActionLaneRejectOrClose,
+		ActionLaneFocusedReview,
+		ActionLaneFutureOrReengage,
+		ActionLaneHumanEscalate,
+	}
+	seen := map[ActionLane]int{}
+	for _, item := range plan.WorkItems {
+		seen[item.Lane]++
+	}
+	for _, lane := range want {
+		if seen[lane] != 1 {
+			t.Fatalf("fixture lane %s count = %d, want 1", lane, seen[lane])
+		}
+	}
+	if len(plan.Lanes) != len(want) {
+		t.Fatalf("fixture lane summaries = %d, want %d", len(plan.Lanes), len(want))
+	}
+	if plan.PolicyProfile != PolicyProfileAdvisory {
+		t.Fatalf("fixture policy profile = %q, want advisory", plan.PolicyProfile)
+	}
+	for _, intent := range plan.ActionIntents {
+		if !intent.DryRun {
+			t.Fatalf("fixture intent %s is not dry_run", intent.ID)
+		}
+	}
+}
+
 func must(v []byte, err error) []byte {
 	if err != nil {
 		panic(err)
