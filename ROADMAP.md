@@ -143,17 +143,17 @@ See `VERSION2.0.md` for the full 16-developer swarm plan.
 
 ### ActionPlan Contract
 
-- [ ] Add `ActionLane`, `ActionIntent`, `ActionWorkItem`, `ActionPlan`, `PolicyProfile`, `ActionPreflight`, and `ProofBundle` types
-- [ ] Add JSON/schema fixtures for `action-plan.json`
-- [ ] Keep Go/Python/TypeScript contract parity where those surfaces remain active
-- [ ] Make every PR land in exactly one primary action lane
+- [x] Add `ActionLane`, `ActionIntent`, `ActionWorkItem`, `ActionPlan`, `PolicyProfile`, `ActionPreflight`, and `ProofBundle` types
+- [x] Add JSON/schema fixtures for `action-plan.json`
+- [x] Keep Go/Python/TypeScript contract parity where those surfaces remain active
+- [x] Make every classifier result land in exactly one primary action lane
 
 ### Lane Classifier and Policy Gates
 
-- [ ] Add deterministic classifier for `fast_merge`, `fix_and_merge`, `duplicate_close`, `reject_or_close`, `focused_review`, `future_or_reengage`, and `human_escalate`
-- [ ] Prevent contradictions such as `blocked` plus merge intent
-- [ ] Add policy profiles: `advisory`, `guarded`, `autonomous`
-- [ ] Keep `advisory` as the default and prove it performs zero writes
+- [x] Add deterministic classifier for `fast_merge`, `fix_and_merge`, `duplicate_close`, `reject_or_close`, `focused_review`, `future_or_reengage`, and `human_escalate`
+- [x] Prevent contradictions such as `blocked` plus merge intent
+- [x] Add policy profiles: `advisory`, `guarded`, `autonomous`
+- [x] Keep `advisory` as the default and prove it performs zero executable writes
 
 ### Product Surfaces
 
@@ -165,6 +165,10 @@ See `VERSION2.0.md` for the full 16-developer swarm plan.
 ### Audit and OpenClaw Dry Run
 
 - [ ] Add v2 audit checks for lane coverage, unsafe merge intent, action reason/evidence coverage, policy profile visibility, and advisory-mode zero writes
+  - [x] Lane coverage and advisory zero-write local ActionPlan checks
+  - [x] Unsafe fast-merge contradictions covered by classifier/policy tests
+  - [ ] Action intent reason/evidence/precondition coverage in generated product artifact
+  - [ ] Policy profile visibility in CLI/API/TUI artifact surfaces
 - [ ] Produce an OpenClaw full-corpus ActionPlan artifact from the 1.7.1 cache-first baseline
 - [ ] Use the 1.7.1 report as the snapshot baseline, not as an execution manifest
 

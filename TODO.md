@@ -29,29 +29,29 @@ Build prATC 2.0 as the action engine for a swarm that can safely triage the enti
 
 Primary release goal: emit a full-corpus `ActionPlan` and TUI action dashboard in advisory mode with no GitHub writes.
 
-- [ ] Define action contracts
-  - Add `ActionLane`, `ActionIntent`, `ActionWorkItem`, `ActionPlan`, `PolicyProfile`, `ActionPreflight`, and `ProofBundle` types.
-  - Keep JSON tags stable and snake_case where existing contracts require it.
-  - Add schema fixtures for `action-plan.json`.
-- [ ] Build deterministic lane classifier
-  - Use existing review payload, duplicate synthesis, conflict graph, risk buckets, CI, mergeability, and staleness signals.
-  - Assign every PR exactly one primary lane: `fast_merge`, `fix_and_merge`, `duplicate_close`, `reject_or_close`, `focused_review`, `future_or_reengage`, `human_escalate`.
-  - Prevent contradictions such as `blocked` plus merge intent.
-- [ ] Add policy profiles
-  - `advisory`: no writes.
+- [x] Define action contracts
+  - Added `ActionLane`, `ActionIntent`, `ActionWorkItem`, `ActionPlan`, `PolicyProfile`, `ActionPreflight`, and `ProofBundle` types.
+  - Kept JSON tags stable and snake_case where existing contracts require it.
+  - Added Go/Python/TypeScript parity coverage and schema fixtures for `action-plan.json`.
+- [x] Build deterministic lane classifier
+  - Added `internal/actions.ClassifyLane` over review results plus explicit evidence hooks for duplicate, risk, ownership, and mergeability facts.
+  - Assigns exactly one primary lane: `fast_merge`, `fix_and_merge`, `duplicate_close`, `reject_or_close`, `focused_review`, `future_or_reengage`, `human_escalate`.
+  - Prevents contradictions such as blocked/high-risk PRs receiving merge actions.
+- [x] Add policy profiles
+  - `advisory`: no executable actions / zero writes.
   - `guarded`: comments/labels only.
-  - `autonomous`: mutation allowed only after live preflight and audit ledger write.
-  - Default must remain `advisory`.
+  - `autonomous`: merge/close allowed only after required live preflight checks pass; executor ledger remains a v2.0 implementation item.
+  - Default remains `advisory`.
 - [ ] Add product surfaces
   - CLI: `pratc actions --repo=owner/repo --format=json`.
   - API: `GET /api/repos/{owner}/{repo}/actions`.
   - TUI: read-only action-lane board and PR detail inspector.
   - Report bridge: reuse PDF concepts as dashboard data, not only one-off PDF pages.
-- [ ] Extend audit checks
-  - Every PR has one primary action lane.
-  - Every action intent has reasons, evidence refs, confidence, policy, and preconditions.
-  - Blocked/high-risk PRs cannot land in `fast_merge`.
-  - Advisory mode cannot emit or perform mutation side effects.
+- [x] Extend audit checks (Wave 1 local ActionPlan checks)
+  - [x] Every PR has one primary action lane in an ActionPlan work-item set.
+  - [ ] Every action intent has reasons, evidence refs, confidence, policy, and preconditions.
+  - [x] Blocked/high-risk PRs cannot land in `fast_merge` without routing to review/escalation.
+  - [x] Advisory mode cannot emit executable mutation side effects.
 
 Verification:
 
@@ -177,11 +177,11 @@ Controller owns integration, status, docs, and verification. Workers do not shar
 
 Lanes: 1-5.
 
-- [ ] action types
-- [ ] schema fixtures
-- [ ] lane classifier
-- [ ] policy profile gates
-- [ ] doc terminology synced
+- [x] action types
+- [x] schema fixtures
+- [x] lane classifier
+- [x] policy profile gates
+- [x] doc terminology synced
 
 ### Wave 2 — product surfaces and persistence
 
