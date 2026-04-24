@@ -1,44 +1,63 @@
 {
-  "recorded_at_utc": "2026-04-23T23:24:50Z",
+  "generated_at_utc": "2026-04-24T03:09:07Z",
+  "generated_at_central": "2026-04-23T22:09:07-0500",
+  "tmux_session": "pratc-autonomous",
+  "port": 7400,
   "binary": "/home/agent/pratc/bin/pratc",
-  "version_output": [
+  "version": "1.7.1",
+  "binary_version_output": [
     "version=1.7.1",
-    "commit=37f3257ba2cb",
-    "build_date=2026-04-23T23:23:21Z",
-    "dirty=true"
+    "commit=2d77e6c39842",
+    "build_date=2026-04-24T03:07:31Z",
+    "dirty=false"
   ],
-  "startup_banner": [
-    "version=1.7.1",
-    "commit=37f3257ba2cb"
-  ],
-  "tmux_session": "pratc-autonomous: 1 windows (created Fri Apr 24 01:23:53 2026)",
-  "listen": "LISTEN 0      1024                *:7400             *:*    users:((\"pratc\",pid=592701,fd=12))",
+  "runtime_target_commit": "2d77e6c39842",
+  "runtime_target_dirty_before_proof_write": false,
+  "listen": "LISTEN 0      1024                *:7400             *:*    users:((\"pratc\",pid=1131539,fd=12))",
+  "runtime_env": {
+    "PRATC_SETTINGS_DB": "/home/agent/pratc/autonomous/runtime/pratc-settings.db",
+    "PRATC_DB_PATH": "/home/agent/.pratc/pratc.db",
+    "log": "/home/agent/pratc/autonomous/runtime/logs/serve.log"
+  },
   "health": {
-    "local": {
-      "url": "http://127.0.0.1:7400/healthz",
-      "response": {
-        "status": "ok",
-        "version": "1.7.1",
-        "api_version": "v1.6"
-      }
+    "loopback": {
+      "status": "ok",
+      "version": "1.7.1",
+      "api_version": "v1.6"
     },
-    "tailscale": {
-      "url": "http://100.112.201.95:7400/healthz",
-      "response": {
-        "status": "ok",
-        "version": "1.7.1",
-        "api_version": "v1.6"
-      }
+    "vpn": {
+      "status": "ok",
+      "version": "1.7.1",
+      "api_version": "v1.6"
     }
   },
-  "env": {
-    "PRATC_SETTINGS_DB": "/home/agent/pratc/autonomous/runtime/pratc-settings.db",
-    "PRATC_DB_PATH": "/home/agent/.pratc/pratc.db"
-  },
-  "preflight_smoke": {
+  "openclaw_actions_e2e": {
     "repo": "openclaw/openclaw",
-    "token_count_observed": 2,
-    "rate_remaining_observed": 4791,
-    "recommendation": "Cache is up-to-date. No sync needed."
+    "policy_profile": "advisory",
+    "work_items": 6632,
+    "corpus_total_prs": 6632,
+    "lanes": [
+      {
+        "lane": "duplicate_close",
+        "count": 91
+      },
+      {
+        "lane": "human_escalate",
+        "count": 6541
+      }
+    ],
+    "action_intents": 182,
+    "all_intents_dry_run": true,
+    "artifact": "/home/agent/pratc/projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z/action-plan.json"
+  },
+  "audit": {
+    "artifact": "/home/agent/pratc/projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z/AUDIT_RESULTS.json",
+    "summary": {
+      "total_prs": 6632,
+      "checks_passed": 22,
+      "checks_failed": 0,
+      "checks_manual": 0
+    },
+    "passed": true
   }
 }
