@@ -4,7 +4,9 @@
 
 Current iteration: move from the verified `1.7.1` advisory baseline toward the `2.0` swarm action engine by closing ActionPlan completeness and building the first swarm API/proof surfaces.
 
-This TODO is intentionally narrow. The full 1.7.1 -> 2.0 roadmap lives in `PLAN.md` and `VERSION2.0.md`.
+**Status:** Iteration A (Wave A) complete. Wave B ownership map and implementation phase active.
+
+This TODO is intentionally narrow. The full 1.7.1 → 2.0 roadmap lives in `PLAN.md` and `VERSION2.0.md`.
 
 ## Source of truth
 
@@ -152,17 +154,148 @@ go test ./internal/monitor/...
 ## Stretch only after Iteration A is green
 
 - [ ] `fix_and_merge` sandbox workflow scaffold.
-- [ ] TUI queue/proof/executor/rate-limit/audit panels.
 - [ ] Live preflight checker scaffold.
 - [ ] Guarded comment/label executor in fake backend only.
 
+## Iteration B — v2.0 Guarded Executor Foundation
+
+### B0 — Wave B Design Lock
+
+- [x] Wave A complete: proof committed (0f2ebf0), STATE.yaml closed, audit green
+- [x] Wave B ownership map confirmed (`WAVE_B_OWNERSHIP.md`)
+- [x] Implementation boundary clean; runtime healthy on port 7400
+
+Status: **B0 done — Wave B implementation phase active.** B1 TUI panels already implemented; starting B2 preflight scaffold.
+
+### B1 — TUI Queue/Proof/Executor/Audit Panels (COMPLETED ✓)
+
+Worker output already present and reviewed by controller:
+- `internal/monitor/tui/audit.go`, `corpus.go`, `executor.go` + tests
+- Data layer: `ExecutorState`, `ProofBundleRef`, `AuditLedger`, `GetAuditLedger()` in `store.go`
+- Integration pending: connect live broadcaster, verify `monitor --once` renders
+
+Gate: B1 complete; proceed to B2–B4 parallel launch.
+
+### B2 — Live Preflight Checker (TODO)
+
+Goal: Enforce all 9 preflight gates before any mutation.
+
+- [ ] Implement `Executor.ExecuteIntent()` with live preflight checks:
+  - PR still open
+  - head SHA unchanged or revalidated
+  - base branch allowed
+  - CI/checks green for merge
+  - mergeability clean for merge
+  - branch protection/review requirements satisfied
+  - token permission sufficient
+  - rate-limit budget sufficient
+  - policy allows action
+  - idempotency key not already executed
+- [ ] Add `preflight.go` with check functions
+- [ ] Add tests for each gate (pass/fail scenarios)
+
+Verification:
+
+```bash
+go test ./internal/executor ./internal/github
+```
+
+### B3 — Guarded Comment/Label Executor (TODO)
+
+Goal: Safe mutations that don't touch code.
+
+- [ ] Add `comment` and `label` action implementations in executor
+- [ ] Use fake GitHub mutator for testing
+- [ ] Respect `--dry-run` flag
+- [ ] Record mutations in executor ledger
+
+Verification:
+
+```bash
+go test ./internal/executor ./internal/cmd
+```
+
+### B4 — Ledger Persistence (TODO)
+
+Goal: Replace MemoryLedger with SQLite for crash recovery.
+
+- [ ] Add `executor_ledger` table to cache schema
+- [ ] Implement `SQLiteLedger` with append-only writes
+- [ ] Migrate idempotency tracking from MemoryLedger
+- [ ] Ensure exactly-once execution guarantees
+
+Verification:
+
+```bash
+go test ./internal/cache ./internal/executor
+```
+
+### B5 — Post-Action Verification (TODO)
+
+Goal: Confirm mutations succeeded after execution.
+
+- [ ] Add verification loop after each mutation
+- [ ] Check GitHub state matches expected result
+- [ ] Return work items to safe state on failure
+
+Verification:
+
+```bash
+go test ./internal/executor
+```
+
+### B6 — Fix-and-Merge Sandbox (TODO)
+
+Goal: Local proof path for `fix_and_merge` items.
+
+- [ ] Create isolated worktree/checkout per work item
+- [ ] Capture patch/rebase proof
+- [ ] Capture test command output and exit code
+- [ ] Attach proof bundle to queue item
+- [ ] Keep dry-run/local-only until v2 gates green
+
+Verification:
+
+```bash
+go test ./internal/repo ./internal/executor
+```
+
+### B7 — E2E Harness and Audit Expansion (TODO)
+
+Goal: End-to-end test coverage for guarded executor.
+
+- [ ] Create fake GitHub mutator with full API surface
+- [ ] Build e2e harness for comment/label actions
+- [ ] Expand audit checks for guarded mode
+- [ ] Verify zero GitHub writes in advisory mode
+
+Verification:
+
+```bash
+python -m pytest -q tests/test_audit_guideline.py
+```
+
+### B8 — Docs and Runbook Sync (TODO)
+
+Goal: Keep docs aligned with implementation.
+
+- [ ] Update `autonomous/RUNBOOK.md` with Wave B commands
+- [ ] Update `VERSION2.0.md` with completion status
+- [ ] Refresh `autonomous/STATE.yaml` from audit output
+
+Verification:
+
+```bash
+git diff --check
+```
+
 ## Not this iteration
 
-- [ ] Real GitHub mutation.
-- [ ] Autonomous merge/close.
-- [ ] Direct swarm-worker GitHub access.
-- [ ] Browser dashboard revival.
-- [ ] Multi-repo orchestration.
+- [ ] Real GitHub mutation (requires Wave B completion)
+- [ ] Autonomous merge/close (requires Wave C)
+- [ ] Direct swarm-worker GitHub access
+- [ ] Browser dashboard revival
+- [ ] Multi-repo orchestration
 
 ## Completion gate for this iteration
 
@@ -172,4 +305,15 @@ go test ./internal/monitor/...
 - [x] TUI PR detail inspector has testable output.
 - [x] OpenClaw ActionPlan run remains audit-green.
 - [x] No GitHub writes occurred.
-- [x] Runtime proof deferred until implementation commit/final runtime probe boundary; no proof-only refresh mixed into Wave A source edits.
+- [x] Runtime proof deferred until implementation commit/final runtime probe boundary.
+
+## Wave B completion gate
+
+- [ ] TUI panels render with live data (verified)
+- [ ] Live preflight checker enforces all 9 gates
+- [ ] Guarded comment/label executor works with fake GitHub
+- [ ] Ledger persistence survives restart
+- [ ] Post-action verification confirms mutations
+- [ ] Fix-and-merge sandbox produces valid proof bundles
+- [ ] E2E harness passes all audit checks
+- [ ] Docs aligned with implementation
