@@ -1,6 +1,6 @@
 {
-  "generated_at_utc": "2026-04-24T17:51:08Z",
-  "generated_at_central": "2026-04-24T12:51:08-0500",
+  "generated_at_utc": "2026-04-24T22:35:00Z",
+  "generated_at_central": "2026-04-24T17:35:00-0500",
   "tmux_session": "pratc-autonomous",
   "port": 7400,
   "binary": "/home/agent/pratc/bin/pratc",
@@ -46,14 +46,8 @@
     "work_items": 6632,
     "corpus_total_prs": 6632,
     "lanes": [
-      {
-        "lane": "duplicate_close",
-        "count": 91
-      },
-      {
-        "lane": "human_escalate",
-        "count": 6541
-      }
+      { "lane": "duplicate_close", "count": 91 },
+      { "lane": "human_escalate", "count": 6541 }
     ],
     "action_intents": 182,
     "all_intents_dry_run": true,
@@ -79,5 +73,18 @@
     "artifact": "/home/agent/pratc/projects/openclaw_openclaw/runs/v171-head-20260424T153126Z/report.pdf",
     "exists": true,
     "bytes": 45721
+  },
+  "wave_a_closeout": {
+    "commit": "0f2ebf0",
+    "phase": "wave-a-complete",
+    "items_completed": [
+      "action_intent_completeness",
+      "queue_api_foundation",
+      "proof_bundle_attach",
+      "tui_pr_detail_inspector",
+      "controller_integration"
+    ],
+    "test_bundle_passed": true,
+    "audit_green": true
   }
 }
