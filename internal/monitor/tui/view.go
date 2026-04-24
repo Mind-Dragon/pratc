@@ -18,16 +18,24 @@ func Render(m Model) string {
 	actionPanel := m.ActionLaneBoard.View(94)
 	consolePanel := m.ConsolePanel.View(94)
 
+	// v2.0 panels - render below console
+	corpusPanel := m.CorpusOverview.View(94)
+	executorPanel := m.ExecutorConsole.View(94)
+	auditPanel := m.AuditLedgerPanel.View(94)
+
 	var helpOverlay string
 	if m.ShowHelp {
 		helpOverlay = renderHelpOverlay()
 	}
 
-	return fmt.Sprintf("%s\n%s\n%s\n%s\n%s%s",
+	return fmt.Sprintf("%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s%s",
 		header,
 		zones,
 		actionPanel,
 		consolePanel,
+		corpusPanel,
+		executorPanel,
+		auditPanel,
 		footer,
 		helpOverlay,
 	)

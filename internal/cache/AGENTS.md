@@ -4,7 +4,16 @@
 **Driver**: `modernc.org/sqlite` (pure Go, no CGO)
 
 ## Schema Version
-Current: **2** (`supportedSchemaVersion` in `sqlite.go`)
+Current: **7** (`supportedSchemaVersion` in `sqlite.go`)
+
+Migrations:
+- v1 (baseline) - 2026-03-12
+- v2 (audit_log) - 2026-03-22
+- v3 (sync_progress_scheduling) - 2026-04-02
+- v4 (field_provenance) - 2026-04-12
+- v5 (sync_snapshot_ceiling) - 2026-04-16
+- v6 (intermediate_cache) - 2026-04-18
+- v7 (repo_name_normalization) - 2026-04-18
 
 ## Tables
 

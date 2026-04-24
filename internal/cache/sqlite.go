@@ -17,6 +17,14 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+type AuditLedgerEntry struct {
+	ID        int64
+	Timestamp time.Time
+	Action    string
+	Repo      string
+	Details   string
+}
+
 type Store struct {
 	db  *sql.DB
 	now func() time.Time
@@ -1617,4 +1625,78 @@ func (s *Store) LoadSubstanceCache(repo string, fingerprint string) (map[int]int
 		return nil, false, nil
 	}
 	return scores, true, nil
+}
+
+// GetCorpusStats returns aggregate statistics about the PR corpus.
+// totalPRs: COUNT(*) from pull_requests table
+// lastSync: most recent last_sync_at from sync_progress (any repo)
+// syncJobs: COUNT(*) from sync_jobs where status in ('queued','running','resuming','paused')
+// auditEntries: approximate COUNT(*) from audit_log table (for audit status indicator)
+// All queries should handle empty tables gracefully (return 0/empty time)
+func (s *Store) GetCorpusStats() (totalPRs int, lastSync time.Time, syncJobs int, auditEntries int, err error) {
+	ctx := context.Background()
+
+	// totalPRs: COUNT(*) from pull_requests table
+	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pull_requests`).Scan(&totalPRs)
+	if err != nil {
+		return 0, time.Time{}, 0, 0, fmt.Errorf("count pull_requests: %w", err)
+	}
+
+	// lastSync: most recent last_sync_at from sync_progress (any repo)
+	var lastSyncRaw string
+	err = s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(last_sync_at), '') FROM sync_progress`).Scan(&lastSyncRaw)
+	if err != nil {
+		return 0, time.Time{}, 0, 0, fmt.Errorf("get last sync: %w", err)
+	}
+	if lastSyncRaw != "" {
+		parsed, parseErr := time.Parse(time.RFC3339, lastSyncRaw)
+		if parseErr != nil {
+			return 0, time.Time{}, 0, 0, fmt.Errorf("parse last sync %q: %w", lastSyncRaw, parseErr)
+		}
+		lastSync = parsed
+	}
+	// If lastSyncRaw is empty, lastSync remains zero time (empty table)
+
+	// syncJobs: COUNT(*) from sync_jobs where status in ('queued','running','resuming','paused')
+	err = s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sync_jobs WHERE status IN ('queued','running','resuming','paused')`).
+		Scan(&syncJobs)
+	if err != nil {
+		return 0, time.Time{}, 0, 0, fmt.Errorf("count sync_jobs: %w", err)
+	}
+
+	// auditEntries: approximate COUNT(*) from audit_log table
+	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_log`).Scan(&auditEntries)
+	if err != nil {
+		return 0, time.Time{}, 0, 0, fmt.Errorf("count audit_log: %w", err)
+	}
+
+	return totalPRs, lastSync, syncJobs, auditEntries, nil
+}
+
+func (s *Store) GetAuditLedger(limit int) (entries []AuditLedgerEntry, err error) {
+	rows, err := s.db.QueryContext(context.Background(),
+		`SELECT id, timestamp, action, repo, details FROM audit_log ORDER BY timestamp DESC LIMIT ?`,
+		limit)
+	if err != nil {
+		return nil, fmt.Errorf("query audit ledger: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var e AuditLedgerEntry
+		var ts string
+		if err := rows.Scan(&e.ID, &ts, &e.Action, &e.Repo, &e.Details); err != nil {
+			return nil, fmt.Errorf("scan audit ledger: %w", err)
+		}
+		e.Timestamp, err = time.Parse(time.RFC3339, ts)
+		if err != nil {
+			return nil, fmt.Errorf("parse timestamp: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate audit ledger: %w", err)
+	}
+	return entries, nil
 }

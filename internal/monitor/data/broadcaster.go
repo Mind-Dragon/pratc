@@ -3,6 +3,7 @@ package data
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,7 +27,7 @@ type Broadcaster struct {
 	running          bool
 	inFlight         sync.WaitGroup
 	actionPlan       *types.ActionPlan
-	actionPlanHash   int
+	actionPlanHash   uint64
 }
 
 func NewBroadcaster(store *Store, rateLimitFetcher *RateLimitFetcher, timelineAgg *TimelineAggregator) *Broadcaster {
@@ -130,21 +131,24 @@ func (b *Broadcaster) Stop() {
 func (b *Broadcaster) run(ctx context.Context, stopCh chan struct{}, done chan struct{}) {
 	defer close(done)
 
-	var lastJobsHash int
-	var lastRateLimitHash int
-	var lastTimelineHash int
-	var lastActionPlanHash int
+	var lastJobsHash uint64
+	var lastRateLimitHash uint64
+	var lastTimelineHash uint64
+	var lastActionPlanHash uint64
+	var lastExecutorHash uint64
 
 	jobsTicker := time.NewTicker(2 * time.Second)
 	rateLimitTicker := time.NewTicker(10 * time.Second)
 	timelineTicker := time.NewTicker(30 * time.Second)
 	actionPlanTicker := time.NewTicker(30 * time.Second)
+	executorTicker := time.NewTicker(10 * time.Second)
 
 	defer func() {
 		jobsTicker.Stop()
 		rateLimitTicker.Stop()
 		timelineTicker.Stop()
 		actionPlanTicker.Stop()
+		executorTicker.Stop()
 	}()
 
 	for {
@@ -161,11 +165,13 @@ func (b *Broadcaster) run(ctx context.Context, stopCh chan struct{}, done chan s
 			b.pollAndBroadcastTimeline(ctx, &lastTimelineHash)
 		case <-actionPlanTicker.C:
 			b.pollAndBroadcastActionPlan(ctx, &lastActionPlanHash)
+		case <-executorTicker.C:
+			b.pollAndBroadcastExecutorStats(ctx, &lastExecutorHash)
 		}
 	}
 }
 
-func (b *Broadcaster) pollAndBroadcastJobs(ctx context.Context, lastHash *int) {
+func (b *Broadcaster) pollAndBroadcastJobs(ctx context.Context, lastHash *uint64) {
 	jobs := b.store.GetActiveJobs()
 	hash := hashJobs(jobs)
 	if hash != *lastHash {
@@ -177,7 +183,7 @@ func (b *Broadcaster) pollAndBroadcastJobs(ctx context.Context, lastHash *int) {
 	}
 }
 
-func (b *Broadcaster) pollAndBroadcastRateLimit(ctx context.Context, lastHash *int) {
+func (b *Broadcaster) pollAndBroadcastRateLimit(ctx context.Context, lastHash *uint64) {
 	rl, err := b.rateLimitFetcher.Fetch(ctx)
 	if err != nil {
 		return
@@ -198,7 +204,7 @@ func (b *Broadcaster) pollAndBroadcastRateLimit(ctx context.Context, lastHash *i
 	}
 }
 
-func (b *Broadcaster) pollAndBroadcastTimeline(ctx context.Context, lastHash *int) {
+func (b *Broadcaster) pollAndBroadcastTimeline(ctx context.Context, lastHash *uint64) {
 	buckets := b.timelineAgg.GetTimeline(4)
 	hash := hashTimeline(buckets)
 	if hash != *lastHash {
@@ -211,7 +217,7 @@ func (b *Broadcaster) pollAndBroadcastTimeline(ctx context.Context, lastHash *in
 	}
 }
 
-func (b *Broadcaster) pollAndBroadcastActionPlan(ctx context.Context, lastHash *int) {
+func (b *Broadcaster) pollAndBroadcastActionPlan(ctx context.Context, lastHash *uint64) {
 	b.mu.RLock()
 	plan := b.actionPlan
 	hash := b.actionPlanHash
@@ -225,6 +231,93 @@ func (b *Broadcaster) pollAndBroadcastActionPlan(ctx context.Context, lastHash *
 			Timestamp:  time.Now(),
 			ActionPlan: plan,
 		})
+	}
+}
+
+func (b *Broadcaster) pollAndBroadcastExecutorStats(ctx context.Context, lastHash *uint64) {
+	wq := b.store.GetWorkqueue()
+	if wq == nil {
+		return // no workqueue configured
+	}
+
+	// Build ExecutorState
+	summary, err := wq.GetQueueSummary()
+	if err != nil {
+		return
+	}
+	ledger, err := wq.GetExecutorLedger(50)
+	if err != nil {
+		return
+	}
+
+	state := ExecutorState{
+		PendingIntents:    summary.ByState["proposed"] + summary.ByState["claimable"],
+		ClaimedItems:      summary.ByState["claimed"],
+		InProgressItems:  summary.ByState["preflighted"] + summary.ByState["patched"] + summary.ByState["tested"] + summary.ByState["approved_for_execution"],
+		CompletedItems:   summary.ByState["completed"],
+		FailedItems:      summary.ByState["failed"] + summary.ByState["escalated"] + summary.ByState["canceled"],
+		ProofBundleCount: len(ledger.ProofBundles),
+	}
+
+	// Also get corpus stats from cache
+	totalPRs, lastSync, syncJobs, auditEntries, err := b.store.GetCorpusStats()
+	if err != nil {
+		return
+	}
+	corpus := CorpusStats{
+		TotalPRs:       totalPRs,
+		LastSync:       lastSync,
+		SyncJobsActive: syncJobs,
+		AuditEntries:   auditEntries,
+	}
+
+	// Also get recent audit ledger from cache
+	auditEntriesList, err := b.store.GetAuditLedger(20)
+	if err != nil {
+		return
+	}
+	auditLedger := AuditLedger{
+		Entries: make([]AuditLedgerEntry, len(auditEntriesList)),
+	}
+	for i, e := range auditEntriesList {
+		auditLedger.Entries[i] = AuditLedgerEntry{
+			Timestamp: e.Timestamp,
+			Action:    e.Action,
+			WorkItemID: "",
+			PRNumber:  0,
+			Reason:    e.Reason,
+			Actor:     e.Actor,
+		}
+	}
+
+	// Also get proof bundles from workqueue
+	proofBundles, err := b.store.GetRecentProofBundles(10)
+	if err != nil {
+		return
+	}
+
+	// Combined hash for state + corpus + audit + proof
+	h := hashExecutorState(state)
+	h = hashCorpusStats(h, corpus)
+	h = hashAuditLedger(h, auditLedger)
+	h = hashProofBundles(h, proofBundles)
+
+	if h != *lastHash {
+		*lastHash = h
+		update := DataUpdate{
+			Timestamp:      time.Now(),
+			ExecutorState:  state,
+			CorpusStats:    corpus,
+			AuditLedger:    auditLedger,
+			ProofBundles:   proofBundles,
+		}
+		// Keep existing subscribers warm - merge with any existing update pattern
+		b.mu.RLock()
+		hasExisting := len(b.subscribers) > 0
+		b.mu.RUnlock()
+		if hasExisting {
+			b.broadcast(update)
+		}
 	}
 }
 
@@ -250,48 +343,101 @@ func (b *Broadcaster) broadcast(update DataUpdate) {
 	}
 }
 
-func hashJobs(jobs []SyncJobView) int {
-	h := 0
+func hashJobs(jobs []SyncJobView) uint64 {
+	var h uint64
 	for _, job := range jobs {
 		h ^= hashStrings(job.ID, job.Repo, job.Status)
 	}
 	return h
 }
 
-func hashRateLimit(rl RateLimitView) int {
-	return rl.Remaining ^ rl.Total ^ int(rl.ResetTime.Unix())
+func hashRateLimit(rl RateLimitView) uint64 {
+	return uint64(rl.Remaining) ^ uint64(rl.Total) ^ uint64(rl.ResetTime.Unix())
 }
 
-func hashTimeline(buckets []ActivityBucket) int {
-	h := 0
+func hashTimeline(buckets []ActivityBucket) uint64 {
+	var h uint64
 	for _, b := range buckets {
-		h ^= int(b.TimeWindow.Unix()) ^ b.JobCount ^ b.RequestCount
+		h ^= uint64(b.TimeWindow.Unix()) ^ uint64(b.JobCount) ^ uint64(b.RequestCount)
 	}
 	return h
 }
 
-func hashStrings(strs ...string) int {
-	h := 0
+func hashStrings(strs ...string) uint64 {
+	var h uint64
 	for _, s := range strs {
 		for _, c := range s {
-			h ^= int(c)
+			h ^= uint64(c)
 		}
 	}
 	return h
 }
 
-func hashActionPlan(plan *types.ActionPlan) int {
+func hashActionPlan(plan *types.ActionPlan) uint64 {
 	if plan == nil {
 		return 0
 	}
 	h := hashStrings(plan.RunID, plan.Repo, string(plan.PolicyProfile))
 	for _, lane := range plan.Lanes {
 		h ^= hashStrings(string(lane.Lane))
-		h ^= lane.Count
+		h ^= uint64(lane.Count)
 	}
 	for _, wi := range plan.WorkItems {
 		h ^= hashStrings(wi.ID, string(wi.Lane), string(wi.State))
-		h ^= int(wi.PRNumber)
+		h ^= uint64(wi.PRNumber)
+	}
+	return h
+}
+
+// fnv1aInit is the initial hash value for FNV-1a.
+const fnv1aInit uint64 = 14695981039346656037
+
+// fnv1aUpdate updates the hash with the given string using FNV-1a algorithm.
+func fnv1aUpdate(h uint64, s string) uint64 {
+	const fnvPrime uint64 = 1099511628211
+	for i := 0; i < len(s); i++ {
+		h ^= uint64(s[i])
+		h *= fnvPrime
+	}
+	return h
+}
+
+func hashExecutorState(s ExecutorState) uint64 {
+	h := fnv1aInit
+	h = fnv1aUpdate(h, strconv.Itoa(s.PendingIntents))
+	h = fnv1aUpdate(h, strconv.Itoa(s.ClaimedItems))
+	h = fnv1aUpdate(h, strconv.Itoa(s.InProgressItems))
+	h = fnv1aUpdate(h, strconv.Itoa(s.CompletedItems))
+	h = fnv1aUpdate(h, strconv.Itoa(s.FailedItems))
+	h = fnv1aUpdate(h, strconv.Itoa(s.ProofBundleCount))
+	return h
+}
+
+func hashCorpusStats(h uint64, s CorpusStats) uint64 {
+	h = fnv1aUpdate(h, strconv.Itoa(s.TotalPRs))
+	h = fnv1aUpdate(h, strconv.FormatInt(s.LastSync.Unix(), 10))
+	h = fnv1aUpdate(h, strconv.Itoa(s.SyncJobsActive))
+	h = fnv1aUpdate(h, strconv.Itoa(s.AuditEntries))
+	return h
+}
+
+func hashAuditLedger(h uint64, s AuditLedger) uint64 {
+	for _, e := range s.Entries {
+		h = fnv1aUpdate(h, e.Action)
+		h = fnv1aUpdate(h, e.WorkItemID)
+		h = fnv1aUpdate(h, strconv.Itoa(e.PRNumber))
+		h = fnv1aUpdate(h, e.Actor)
+	}
+	return h
+}
+
+func hashProofBundles(h uint64, refs []ProofBundleRef) uint64 {
+	for _, r := range refs {
+		h = fnv1aUpdate(h, r.ID)
+		h = fnv1aUpdate(h, r.WorkItemID)
+		h = fnv1aUpdate(h, strconv.Itoa(r.PRNumber))
+		h = fnv1aUpdate(h, r.Summary)
+		h = fnv1aUpdate(h, strconv.FormatInt(r.CreatedAt.Unix(), 10))
 	}
 	return h
 }

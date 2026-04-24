@@ -699,3 +699,222 @@ func (q *Queue) GetProofsForItem(ctx context.Context, workItemID string) ([]type
 	}
 	return bundles, nil
 }
+
+// GetActionQueueStats returns nested map: byLane[lane][state] = count
+func (q *Queue) GetActionQueueStats() (byLane map[string]map[string]int, err error) {
+	ctx := context.Background()
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	byLane = make(map[string]map[string]int)
+
+	rows, err := q.db.QueryContext(ctx, `SELECT lane, state, COUNT(*) FROM action_work_items GROUP BY lane, state`)
+	if err != nil {
+		return nil, fmt.Errorf("query action queue stats: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var lane, state string
+		var count int
+		if err := rows.Scan(&lane, &state, &count); err != nil {
+			return nil, fmt.Errorf("scan action queue stats: %w", err)
+		}
+		if byLane[lane] == nil {
+			byLane[lane] = make(map[string]int)
+		}
+		byLane[lane][state] = count
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return byLane, nil
+}
+
+// ExecutorLedger contains transitions and proof bundles for executor audit
+type ExecutorLedger struct {
+	Transitions   []ActionTransition `json:"transitions"`
+	ProofBundles  []ProofBundleView  `json:"proof_bundles"`
+}
+
+// ActionTransition represents a state change in the action work queue
+type ActionTransition struct {
+	WorkItemID string    `json:"work_item_id"`
+	FromState  string    `json:"from_state"`
+	ToState    string    `json:"to_state"`
+	Actor      string    `json:"actor"`
+	Reason     string    `json:"reason"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// ProofBundleView represents a proof bundle for audit purposes
+type ProofBundleView struct {
+	ID           string    `json:"id"`
+	WorkItemID   string    `json:"work_item_id"`
+	PRNumber     int       `json:"pr_number"`
+	Summary      string    `json:"summary"`
+	CreatedBy    string    `json:"created_by"`
+	CreatedAt    time.Time `json:"created_at"`
+	TestCommands []string  `json:"test_commands"`
+	TestResults  []string  `json:"test_results"`
+}
+
+// GetExecutorLedger returns structured ledger with transitions and proof bundles
+func (q *Queue) GetExecutorLedger(limit int) (ExecutorLedger, error) {
+	ctx := context.Background()
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if limit <= 0 {
+		limit = 100
+	}
+
+	// Query transitions
+	transRows, err := q.db.QueryContext(ctx, `
+		SELECT work_item_id, from_state, to_state, actor, reason, created_at
+		FROM action_state_transitions
+		ORDER BY created_at DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return ExecutorLedger{}, fmt.Errorf("query transitions: %w", err)
+	}
+	defer transRows.Close()
+
+	var transitions []ActionTransition
+	for transRows.Next() {
+		var t ActionTransition
+		var createdAtStr string
+		if err := transRows.Scan(&t.WorkItemID, &t.FromState, &t.ToState, &t.Actor, &t.Reason, &createdAtStr); err != nil {
+			return ExecutorLedger{}, fmt.Errorf("scan transition: %w", err)
+		}
+		t.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAtStr)
+		if err != nil {
+			t.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr) // Try RFC3339 as fallback
+		}
+		transitions = append(transitions, t)
+	}
+
+	if err := transRows.Err(); err != nil {
+		return ExecutorLedger{}, err
+	}
+
+	// Query proof bundles
+	bundleRows, err := q.db.QueryContext(ctx, `
+		SELECT id, work_item_id, pr_number, summary, test_commands_json, test_results_json, created_by, created_at
+		FROM action_proof_bundles
+		ORDER BY created_at DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return ExecutorLedger{}, fmt.Errorf("query proof bundles: %w", err)
+	}
+	defer bundleRows.Close()
+
+	var bundles []ProofBundleView
+	for bundleRows.Next() {
+		var b ProofBundleView
+		var testCommandsJSON, testResultsJSON, createdAtStr string
+		if err := bundleRows.Scan(&b.ID, &b.WorkItemID, &b.PRNumber, &b.Summary, &testCommandsJSON, &testResultsJSON, &b.CreatedBy, &createdAtStr); err != nil {
+			return ExecutorLedger{}, fmt.Errorf("scan proof bundle: %w", err)
+		}
+		b.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAtStr)
+		if err != nil {
+			b.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr) // Try RFC3339 as fallback
+		}
+		if err := json.Unmarshal([]byte(testCommandsJSON), &b.TestCommands); err != nil {
+			return ExecutorLedger{}, fmt.Errorf("unmarshal test commands: %w", err)
+		}
+		if err := json.Unmarshal([]byte(testResultsJSON), &b.TestResults); err != nil {
+			return ExecutorLedger{}, fmt.Errorf("unmarshal test results: %w", err)
+		}
+		bundles = append(bundles, b)
+	}
+
+	if err := bundleRows.Err(); err != nil {
+		return ExecutorLedger{}, err
+	}
+
+	return ExecutorLedger{
+		Transitions:  transitions,
+		ProofBundles: bundles,
+	}, nil
+}
+
+// QueueSummary contains summary statistics for the work queue
+type QueueSummary struct {
+	TotalItems    int            `json:"total_items"`
+	ByState       map[string]int `json:"by_state"`
+	ByLane        map[string]int `json:"by_lane"`
+	ExpiredLeases int            `json:"expired_leases"`
+}
+
+// GetQueueSummary returns summary statistics for the work queue
+func (q *Queue) GetQueueSummary() (QueueSummary, error) {
+	ctx := context.Background()
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	var summary QueueSummary
+	summary.ByState = make(map[string]int)
+	summary.ByLane = make(map[string]int)
+
+	// Total items
+	err := q.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM action_work_items`).Scan(&summary.TotalItems)
+	if err != nil {
+		return QueueSummary{}, fmt.Errorf("query total items: %w", err)
+	}
+
+	// By state
+	stateRows, err := q.db.QueryContext(ctx, `SELECT state, COUNT(*) FROM action_work_items GROUP BY state`)
+	if err != nil {
+		return QueueSummary{}, fmt.Errorf("query by state: %w", err)
+	}
+	defer stateRows.Close()
+
+	for stateRows.Next() {
+		var state string
+		var count int
+		if err := stateRows.Scan(&state, &count); err != nil {
+			return QueueSummary{}, fmt.Errorf("scan by state: %w", err)
+		}
+		summary.ByState[state] = count
+	}
+
+	if err := stateRows.Err(); err != nil {
+		return QueueSummary{}, err
+	}
+
+	// By lane
+	laneRows, err := q.db.QueryContext(ctx, `SELECT lane, COUNT(*) FROM action_work_items GROUP BY lane`)
+	if err != nil {
+		return QueueSummary{}, fmt.Errorf("query by lane: %w", err)
+	}
+	defer laneRows.Close()
+
+	for laneRows.Next() {
+		var lane string
+		var count int
+		if err := laneRows.Scan(&lane, &count); err != nil {
+			return QueueSummary{}, fmt.Errorf("scan by lane: %w", err)
+		}
+		summary.ByLane[lane] = count
+	}
+
+	if err := laneRows.Err(); err != nil {
+		return QueueSummary{}, err
+	}
+
+	// Expired leases
+	err = q.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM action_work_items
+		WHERE lease_expires_at < ? AND state IN (?, ?)
+	`, q.now().UTC().Format(time.RFC3339Nano), string(types.ActionWorkItemStateClaimed), string(types.ActionWorkItemStatePreflighted)).Scan(&summary.ExpiredLeases)
+	if err != nil {
+		return QueueSummary{}, fmt.Errorf("query expired leases: %w", err)
+	}
+
+	return summary, nil
+}

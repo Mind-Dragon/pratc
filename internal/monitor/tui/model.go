@@ -24,6 +24,11 @@ type Model struct {
 	ActionLaneBoard *ActionLaneBoard
 	PRDetailBoard   *PRDetailBoard
 
+	// v2.0 panels
+	CorpusOverview   *CorpusOverviewPanel
+	ExecutorConsole  *ExecutorConsolePanel
+	AuditLedgerPanel *AuditLedgerPanel
+
 	// Zone state
 	width        int
 	height       int
@@ -73,6 +78,9 @@ func New(broadcaster *data.Broadcaster) Model {
 		ConsolePanel:    NewConsolePanel(),
 		ActionLaneBoard: NewActionLaneBoard(),
 		PRDetailBoard:   NewPRDetailBoard(),
+		CorpusOverview:  NewCorpusOverviewPanel(),
+		ExecutorConsole: NewExecutorConsolePanel(),
+		AuditLedgerPanel: NewAuditLedgerPanel(),
 		ActiveZone:      ZoneJobs,
 		BudgetRemaining: 4200,
 		BudgetTotal:     5000,
@@ -150,6 +158,19 @@ func (m *Model) handleDataUpdate(update data.DataUpdate) (tea.Model, tea.Cmd) {
 	}
 	if update.ActionPlan != nil {
 		m.ActionLaneBoard.SetPlan(update.ActionPlan)
+	}
+	// v2.0 panels
+	if update.CorpusStats.TotalPRs > 0 || !update.CorpusStats.LastSync.IsZero() {
+		m.CorpusOverview.SetStats(update.CorpusStats)
+	}
+	if update.ExecutorState.PendingIntents > 0 || update.ExecutorState.CompletedItems > 0 {
+		m.ExecutorConsole.SetState(update.ExecutorState)
+	}
+	if len(update.ProofBundles) > 0 {
+		m.ExecutorConsole.SetProofBundles(update.ProofBundles)
+	}
+	if len(update.AuditLedger.Entries) > 0 {
+		m.AuditLedgerPanel.SetLedger(update.AuditLedger)
 	}
 	return m, nil
 }

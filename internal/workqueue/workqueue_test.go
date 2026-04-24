@@ -311,3 +311,211 @@ func TestQueueAttachProof(t *testing.T) {
 		t.Fatalf("expected state preflighted after proof attach, got %s", itemAfterAttach.State)
 	}
 }
+
+func TestGetActionQueueStats(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 4, 24, 10, 0, 0, 0, time.UTC)
+	q := testQueue(t, now)
+
+	// Create items in different lanes and states
+	item1 := sampleItem("wi-stats-1")
+	item1.Lane = types.ActionLaneFocusedReview
+	item1.State = types.ActionWorkItemStateClaimable
+	if err := q.Upsert(ctx, "owner/repo", item1); err != nil {
+		t.Fatalf("upsert item1: %v", err)
+	}
+
+	item2 := sampleItem("wi-stats-2")
+	item2.Lane = types.ActionLaneFocusedReview
+	item2.State = types.ActionWorkItemStateClaimed
+	if err := q.Upsert(ctx, "owner/repo", item2); err != nil {
+		t.Fatalf("upsert item2: %v", err)
+	}
+
+	item3 := sampleItem("wi-stats-3")
+	item3.Lane = types.ActionLaneHumanEscalate
+	item3.State = types.ActionWorkItemStateClaimable
+	if err := q.Upsert(ctx, "owner/repo", item3); err != nil {
+		t.Fatalf("upsert item3: %v", err)
+	}
+
+	stats, err := q.GetActionQueueStats()
+	if err != nil {
+		t.Fatalf("GetActionQueueStats: %v", err)
+	}
+
+	// Verify the stats
+	focusedReviewStats, ok := stats["focused_review"]
+	if !ok {
+		t.Fatal("focused_review lane not found in stats")
+	}
+	if focusedReviewStats["claimable"] != 1 {
+		t.Fatalf("focused_review claimable count = %d, want 1", focusedReviewStats["claimable"])
+	}
+	if focusedReviewStats["claimed"] != 1 {
+		t.Fatalf("focused_review claimed count = %d, want 1", focusedReviewStats["claimed"])
+	}
+
+	humanEscalateStats, ok := stats["human_escalate"]
+	if !ok {
+		t.Fatal("human_escalate lane not found in stats")
+	}
+	if humanEscalateStats["claimable"] != 1 {
+		t.Fatalf("human_escalate claimable count = %d, want 1", humanEscalateStats["claimable"])
+	}
+}
+
+func TestGetExecutorLedger(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 4, 24, 10, 0, 0, 0, time.UTC)
+	q := testQueue(t, now)
+
+	// Create items and transitions
+	item1 := sampleItem("wi-ledger-1")
+	if err := q.Upsert(ctx, "owner/repo", item1); err != nil {
+		t.Fatalf("upsert item1: %v", err)
+	}
+
+	// Claim the item to create a transition
+	_, err := q.Claim(ctx, "wi-ledger-1", "worker-a", 10*time.Minute)
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+
+	// Create a proof bundle
+	bundle := sampleProofBundle("wi-ledger-1", 101)
+	_, err = q.AttachProof(ctx, "wi-ledger-1", "worker-a", bundle)
+	if err != nil {
+		t.Fatalf("attach proof: %v", err)
+	}
+
+	// Get the ledger
+	ledger, err := q.GetExecutorLedger(10)
+	if err != nil {
+		t.Fatalf("GetExecutorLedger: %v", err)
+	}
+
+	// Verify transitions
+	if len(ledger.Transitions) == 0 {
+		t.Fatal("expected at least one transition in ledger")
+	}
+
+	// Verify the transition details
+	foundClaimTransition := false
+	for _, tr := range ledger.Transitions {
+		if tr.WorkItemID == "wi-ledger-1" && tr.ToState == "claimed" && tr.Actor == "worker-a" {
+			foundClaimTransition = true
+			if tr.FromState != "claimable" {
+				t.Fatalf("expected from_state = claimable, got %s", tr.FromState)
+			}
+			if tr.Reason != "claim" {
+				t.Fatalf("expected reason = claim, got %s", tr.Reason)
+			}
+		}
+	}
+	if !foundClaimTransition {
+		t.Fatal("expected claim transition not found in ledger")
+	}
+
+	// Verify proof bundles
+	if len(ledger.ProofBundles) == 0 {
+		t.Fatal("expected at least one proof bundle in ledger")
+	}
+
+	foundBundle := false
+	for _, b := range ledger.ProofBundles {
+		if b.ID == "proof-wi-ledger-1" {
+			foundBundle = true
+			if b.WorkItemID != "wi-ledger-1" {
+				t.Fatalf("proof bundle work item mismatch: got %s, want wi-ledger-1", b.WorkItemID)
+			}
+			if b.PRNumber != 101 {
+				t.Fatalf("proof bundle PR number mismatch: got %d, want 101", b.PRNumber)
+			}
+			if b.Summary != "test proof" {
+				t.Fatalf("proof bundle summary mismatch: got %s, want 'test proof'", b.Summary)
+			}
+			if len(b.TestCommands) != 1 || b.TestCommands[0] != "go test ./..." {
+				t.Fatalf("proof bundle test commands mismatch: %v", b.TestCommands)
+			}
+		}
+	}
+	if !foundBundle {
+		t.Fatal("expected proof bundle not found in ledger")
+	}
+}
+
+func TestGetQueueSummary(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 4, 24, 10, 0, 0, 0, time.UTC)
+	q := testQueue(t, now)
+
+	// Create items in different states and lanes
+	item1 := sampleItem("wi-summary-1")
+	item1.Lane = types.ActionLaneFocusedReview
+	item1.State = types.ActionWorkItemStateClaimable
+	if err := q.Upsert(ctx, "owner/repo", item1); err != nil {
+		t.Fatalf("upsert item1: %v", err)
+	}
+
+	item2 := sampleItem("wi-summary-2")
+	item2.Lane = types.ActionLaneFocusedReview
+	item2.State = types.ActionWorkItemStateClaimed
+	if err := q.Upsert(ctx, "owner/repo", item2); err != nil {
+		t.Fatalf("upsert item2: %v", err)
+	}
+
+	item3 := sampleItem("wi-summary-3")
+	item3.Lane = types.ActionLaneHumanEscalate
+	item3.State = types.ActionWorkItemStatePreflighted
+	if err := q.Upsert(ctx, "owner/repo", item3); err != nil {
+		t.Fatalf("upsert item3: %v", err)
+	}
+
+	// Claim item2 to set up lease
+	_, err := q.Claim(ctx, "wi-summary-2", "worker-a", time.Minute)
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+
+	// Expire the lease
+	q.SetNow(func() time.Time { return now.Add(2 * time.Minute) })
+	_, err = q.ExpireLeases(ctx)
+	if err != nil {
+		t.Fatalf("expire leases: %v", err)
+	}
+
+	// Reset time for summary
+	q.SetNow(func() time.Time { return now })
+
+	summary, err := q.GetQueueSummary()
+	if err != nil {
+		t.Fatalf("GetQueueSummary: %v", err)
+	}
+
+	// Verify total items
+	if summary.TotalItems != 3 {
+		t.Fatalf("total items = %d, want 3", summary.TotalItems)
+	}
+
+	// Verify by state
+	if summary.ByState["claimable"] != 2 {
+		t.Fatalf("claimable count = %d, want 2", summary.ByState["claimable"])
+	}
+	if summary.ByState["preflighted"] != 1 {
+		t.Fatalf("preflighted count = %d, want 1", summary.ByState["preflighted"])
+	}
+
+	// Verify by lane
+	if summary.ByLane["focused_review"] != 2 {
+		t.Fatalf("focused_review count = %d, want 2", summary.ByLane["focused_review"])
+	}
+	if summary.ByLane["human_escalate"] != 1 {
+		t.Fatalf("human_escalate count = %d, want 1", summary.ByLane["human_escalate"])
+	}
+
+	// Verify expired leases (item2 should have expired lease)
+	if summary.ExpiredLeases != 1 {
+		t.Fatalf("expired leases = %d, want 1", summary.ExpiredLeases)
+	}
+}

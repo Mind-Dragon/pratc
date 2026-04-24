@@ -15,6 +15,7 @@ import (
 	"github.com/jeffersonnunn/pratc/internal/logger"
 	"github.com/jeffersonnunn/pratc/internal/monitor/data"
 	"github.com/jeffersonnunn/pratc/internal/monitor/tui"
+	"github.com/jeffersonnunn/pratc/internal/workqueue"
 	"github.com/spf13/cobra"
 )
 
@@ -78,7 +79,18 @@ Examples:
 			}
 			defer cacheStore.Close()
 
-			store := data.NewStore(cacheStore)
+			queueDB := strings.TrimSpace(os.Getenv("PRATC_QUEUE_DB_PATH"))
+			if queueDB == "" {
+				home, _ := os.UserHomeDir()
+				queueDB = filepath.Join(home, ".pratc", "queue.db")
+			}
+			wq, err := workqueue.OpenSQLite(queueDB)
+			if err != nil {
+				return fmt.Errorf("open workqueue: %w", err)
+			}
+			defer wq.Close()
+
+			store := data.NewStoreWithWorkqueue(cacheStore, wq)
 
 			// Resolve GitHub access using settings-driven config
 			githubAccess, err := ResolveGitHubAccess(ctx, repo)

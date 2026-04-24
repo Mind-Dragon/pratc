@@ -422,7 +422,7 @@ func TestBroadcasterPollAndBroadcastJobs(t *testing.T) {
 	b := NewBroadcaster(store, nil, nil)
 	ch := b.Subscribe()
 
-	var lastHash int
+	var lastHash uint64
 	b.pollAndBroadcastJobs(context.Background(), &lastHash)
 
 	select {
@@ -458,7 +458,7 @@ func TestBroadcasterPollAndBroadcastJobsNoChange(t *testing.T) {
 	b := NewBroadcaster(store, nil, nil)
 	ch := b.Subscribe()
 
-	var lastHash int
+	var lastHash uint64
 	b.pollAndBroadcastJobs(context.Background(), &lastHash)
 
 	select {
@@ -488,7 +488,7 @@ func TestBroadcasterPollAndBroadcastRateLimit(t *testing.T) {
 	b := NewBroadcaster(nil, fetcher, nil)
 	ch := b.Subscribe()
 
-	var lastHash int
+	var lastHash uint64
 	b.pollAndBroadcastRateLimit(context.Background(), &lastHash)
 
 	select {
@@ -510,7 +510,7 @@ func TestBroadcasterPollAndBroadcastRateLimitError(t *testing.T) {
 	b := NewBroadcaster(nil, fetcher, nil)
 	ch := b.Subscribe()
 
-	var lastHash int
+	var lastHash uint64
 	b.pollAndBroadcastRateLimit(context.Background(), &lastHash)
 
 	select {
@@ -527,7 +527,7 @@ func TestBroadcasterPollAndBroadcastTimeline(t *testing.T) {
 	b := NewBroadcaster(nil, nil, timelineAgg)
 	ch := b.Subscribe()
 
-	var lastHash int
+	var lastHash uint64
 	b.pollAndBroadcastTimeline(context.Background(), &lastHash)
 
 	select {

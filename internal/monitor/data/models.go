@@ -86,6 +86,45 @@ type PRDetailView struct {
 	State          types.ActionWorkItemState
 }
 
+// New v2.0 types
+
+type CorpusStats struct {
+	TotalPRs       int
+	LastSync       time.Time
+	SyncJobsActive int
+	AuditEntries   int
+}
+
+type ExecutorState struct {
+	PendingIntents   int
+	ClaimedItems     int
+	InProgressItems  int
+	CompletedItems   int
+	FailedItems      int
+	ProofBundleCount int
+}
+
+type ProofBundleRef struct {
+	ID         string
+	WorkItemID string
+	PRNumber   int
+	Summary    string
+	CreatedAt  time.Time
+}
+
+type AuditLedgerEntry struct {
+	Timestamp  time.Time
+	Action     string // state transition or audit action
+	WorkItemID string
+	PRNumber   int
+	Reason     string
+	Actor      string
+}
+
+type AuditLedger struct {
+	Entries []AuditLedgerEntry
+}
+
 // DataUpdate is a container for all monitor view data.
 // It is sent by the broadcaster to all connected clients when state changes.
 type DataUpdate struct {
@@ -95,4 +134,10 @@ type DataUpdate struct {
 	RecentLogs      []LogEntry
 	ActivityBuckets []ActivityBucket
 	ActionPlan      *types.ActionPlan `json:"action_plan,omitempty"`
+
+	// New v2.0 fields
+	CorpusStats   CorpusStats     `json:"corpus_stats,omitempty"`
+	ExecutorState ExecutorState   `json:"executor_state,omitempty"`
+	ProofBundles  []ProofBundleRef `json:"proof_bundles,omitempty"`
+	AuditLedger   AuditLedger     `json:"audit_ledger,omitempty"`
 }

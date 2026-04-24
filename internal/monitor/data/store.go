@@ -3,19 +3,27 @@ package data
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
+	"github.com/jeffersonnunn/pratc/internal/workqueue"
 )
 
 // Store provides read-only access to sync job data from the SQLite cache.
 // It wraps the cache.Store and exposes simplified views for the monitor.
 type Store struct {
 	cache *cache.Store
+	wq    *workqueue.Queue
 }
 
 // NewStore creates a new data store backed by the provided cache store.
 func NewStore(cacheStore *cache.Store) *Store {
-	return &Store{cache: cacheStore}
+	return &Store{cache: cacheStore, wq: nil}
+}
+
+// NewStoreWithWorkqueue creates a new data store backed by the provided cache store and workqueue.
+func NewStoreWithWorkqueue(cacheStore *cache.Store, wq *workqueue.Queue) *Store {
+	return &Store{cache: cacheStore, wq: wq}
 }
 
 // GetActiveJobs returns sync jobs that are currently active, paused, or queued.
@@ -128,4 +136,58 @@ func mapCacheStatus(status cache.SyncJobStatus) string {
 // This is intended for cases where the Store's simple query methods are insufficient.
 func (s *Store) DB() *sql.DB {
 	return s.cache.DB()
+}
+
+// GetWorkqueue returns the workqueue associated with this store.
+func (s *Store) GetWorkqueue() *workqueue.Queue {
+	return s.wq
+}
+
+// GetCorpusStats returns aggregate statistics about the PR corpus.
+// Delegates to cache.Store.GetCorpusStats.
+func (s *Store) GetCorpusStats() (totalPRs int, lastSync time.Time, syncJobs int, auditEntries int, err error) {
+	return s.cache.GetCorpusStats()
+}
+
+// GetAuditLedger returns recent audit log entries.
+// Delegates to cache.Store.GetAuditLedger and converts types.
+func (s *Store) GetAuditLedger(limit int) ([]AuditLedgerEntry, error) {
+	cacheEntries, err := s.cache.GetAuditLedger(limit)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]AuditLedgerEntry, len(cacheEntries))
+	for i, e := range cacheEntries {
+		entries[i] = AuditLedgerEntry{
+			Timestamp:  e.Timestamp,
+			Action:     e.Action,
+			WorkItemID: "",
+			PRNumber:   0,
+			Reason:     e.Details,
+			Actor:      e.Repo,
+		}
+	}
+	return entries, nil
+}
+
+// GetRecentProofBundles returns recent proof bundles from workqueue, converted to view refs.
+func (s *Store) GetRecentProofBundles(limit int) ([]ProofBundleRef, error) {
+	if s.wq == nil {
+		return nil, nil
+	}
+	ledger, err := s.wq.GetExecutorLedger(limit)
+	if err != nil {
+		return nil, err
+	}
+	refs := make([]ProofBundleRef, len(ledger.ProofBundles))
+	for i, pb := range ledger.ProofBundles {
+		refs[i] = ProofBundleRef{
+			ID:         pb.ID,
+			WorkItemID: pb.WorkItemID,
+			PRNumber:   pb.PRNumber,
+			Summary:    pb.Summary,
+			CreatedAt:  pb.CreatedAt,
+		}
+	}
+	return refs, nil
 }
