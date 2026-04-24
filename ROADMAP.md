@@ -157,32 +157,33 @@ See `VERSION2.0.md` for the full 16-developer swarm plan.
 
 ### Product Surfaces
 
-- [ ] CLI: `pratc actions --repo=owner/repo --format=json`
-- [ ] API: `GET /api/repos/{owner}/{repo}/actions`
-- [ ] TUI: action-lane board and PR detail inspector
+- [x] CLI: `pratc actions --repo=owner/repo --format=json`
+- [x] API: `GET /api/repos/{owner}/{repo}/actions`
+- [x] TUI: read-only action-lane board
+- [ ] TUI: PR detail inspector
 - [ ] PDF: remains point-in-time snapshot; useful concepts move into TUI as live state
 
 ### Audit and OpenClaw Dry Run
 
-- [ ] Add v2 audit checks for lane coverage, unsafe merge intent, action reason/evidence coverage, policy profile visibility, and advisory-mode zero writes
-  - [x] Lane coverage and advisory zero-write local ActionPlan checks
+- [x] Add v2 audit checks for lane coverage, unsafe merge intent, action reason/evidence coverage, policy profile visibility, and advisory-mode zero writes
+  - [x] Lane coverage and advisory zero-write run-dir ActionPlan checks
   - [x] Unsafe fast-merge contradictions covered by classifier/policy tests
-  - [ ] Action intent reason/evidence/precondition coverage in generated product artifact
-  - [ ] Policy profile visibility in CLI/API/TUI artifact surfaces
-- [ ] Produce an OpenClaw full-corpus ActionPlan artifact from the 1.7.1 cache-first baseline
-- [ ] Use the 1.7.1 report as the snapshot baseline, not as an execution manifest
+  - [ ] Action intent precondition coverage in generated product artifact
+  - [x] Policy profile visibility in CLI/API/TUI artifact surfaces
+- [x] Produce an OpenClaw full-corpus ActionPlan artifact from the 1.7.1 cache-first baseline
+- [x] Use the 1.7.1 report as the snapshot baseline, not as an execution manifest
 
 ## Version 1.9 — Swarm Dry-Run + Proof Loop
 
 **Goal:** allow a 16-agent swarm to claim work from prATC, produce proof bundles, and exercise a dry-run executor without mutating GitHub.
 
-- [ ] Durable work-item queue with claim/release/heartbeat/expiry
-- [ ] Queue leases stored in SQLite with race-safe transitions
+- [x] Durable work-item queue with claim/release/heartbeat/expiry
+- [x] Queue leases stored in SQLite with race-safe transitions
 - [ ] Swarm APIs for claim, release, heartbeat, proof attach, and status
-- [ ] Dry-run GitHub executor with fake backend and idempotency checks
+- [x] Dry-run GitHub executor with fake backend and idempotency checks
 - [ ] `fix_and_merge` sandbox workflow with patch/test/proof bundle capture
 - [ ] TUI panels for queue leases, proof bundles, executor dry-run stream, rate limits, and audit ledger
-- [ ] OpenClaw representative dry-run across all action lanes
+- [x] OpenClaw representative dry-run across current generated action lanes
 
 ## Version 2.0 — Guarded Autonomous Mutation
 

@@ -31,7 +31,12 @@ The CLI-only autonomous workflow can run without the API service, but service pr
 
 ```bash
 cd /home/agent/pratc
-./bin/pratc serve --port 7400
+mkdir -p autonomous/runtime/logs
+: > autonomous/runtime/logs/serve.log
+if tmux has-session -t pratc-autonomous 2>/dev/null; then tmux kill-session -t pratc-autonomous; fi
+tmux new-session -d -s pratc-autonomous -c /home/agent/pratc \
+  'echo "[tmux-start] $(date -u +%Y-%m-%dT%H:%M:%SZ)"; ./bin/pratc version; PRATC_SETTINGS_DB=/home/agent/pratc/autonomous/runtime/pratc-settings.db PRATC_DB_PATH=/home/agent/.pratc/pratc.db ./bin/pratc serve --port 7400 --force-cache 2>&1 | tee -a autonomous/runtime/logs/serve.log'
+tmux capture-pane -pt pratc-autonomous -S -80
 ```
 
 Health probes:
@@ -138,8 +143,7 @@ cd /home/agent/pratc
 ./bin/pratc cluster --repo openclaw/openclaw --force-cache --format=json > "$RUN_DIR/step-3-cluster.json"
 ./bin/pratc graph --repo openclaw/openclaw --force-cache --format=json > "$RUN_DIR/step-4-graph.json"
 ./bin/pratc plan --repo openclaw/openclaw --force-cache --target 20 --format=json > "$RUN_DIR/step-5-plan.json"
-# v2.0 target after `actions` exists:
-# ./bin/pratc actions --repo openclaw/openclaw --force-cache --policy=advisory --format=json > "$RUN_DIR/action-plan.json"
+./bin/pratc actions --repo openclaw/openclaw --force-cache --policy=advisory --format=json > "$RUN_DIR/action-plan.json"
 ./bin/pratc report --repo openclaw/openclaw --input-dir "$RUN_DIR" --output "$RUN_DIR/report.pdf"
 python3 scripts/audit_guideline.py "$RUN_DIR"
 python3 scripts/gap_list_from_audit.py \
@@ -232,14 +236,17 @@ Current v1.7.1 action-engine baseline:
 
 - repo: `openclaw/openclaw`
 - corpus dir: `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z`
-- audit: `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z/AUDIT_RESULTS.json`
+- action plan: `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z/action-plan.json`
+- audit: `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z/AUDIT_RESULTS.json` (`22` pass, `0` fail, `0` manual)
 - report: `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z/report.pdf`
-- status: snapshot packet only; not an execution manifest
+- runtime proof: `autonomous/runtime/runtime-proof.json`
+- tmux session: `pratc-autonomous` on port `7400`
+- status: advisory ActionPlan and snapshot packet; not an execution manifest
 
-Required next corpus for v1.8/v2.0:
+Required next corpus for guarded/autonomous v2.0:
 
 - repo: `openclaw/openclaw`
 - corpus dir: `autonomous/runs/<fresh-current-head-run-id>`
-- required new artifact: `action-plan.json`
-- policy: `advisory`
+- policy: `guarded` or `autonomous` only after operator enablement
+- required new artifact: executor ledger plus post-action verification results
 - status: pending implementation
