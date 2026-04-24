@@ -155,7 +155,8 @@ When adding new fields, update all three files to maintain consistency.
 
 1. **Open an issue** describing the feature
 2. **Explain the use case** — what problem does it solve?
-3. **Reference the scope guardrails** in AGENTS.md — features outside v0.1 scope may be deferred
+3. **Reference the scope guardrails** in AGENTS.md and `GUIDELINE.md`
+4. For v2.0 action-engine work, link the relevant section in `VERSION2.0.md` and state whether the change affects advisory, guarded, or autonomous policy behavior
 
 ## Pull Request Process
 
@@ -193,6 +194,8 @@ make build && make test
 - Never store GitHub PAT in SQLite or config files; only use runtime env vars
 - Never run combinatorial planning on raw PR universe; always pre-filter first
 - Never commit secrets (GITHUB_PAT, OPENROUTER_API_KEY, etc.)
+- Never let swarm workers mutate GitHub directly; only the central executor may write after policy, preflight, idempotency, and audit
+- Never treat a PDF report or v1.x merge plan as an execution manifest
 - Never leave `main` red; post-merge verification is mandatory
 
 ## Project Structure Quick Reference
@@ -207,10 +210,14 @@ internal/           # Go packages
   formula/          # Combinatorial engine
   graph/            # Dependency graph
   planner/          # Merge planning
+  actions/          # v2.0 target: ActionPlan, action lanes, policy gates
+  workqueue/        # v2.0 target: swarm claims, leases, proof bundles
+  executor/         # v2.0 target: dry-run/live preflight and centralized GitHub mutation
+  monitor/          # TUI dashboard panels
   settings/         # Settings management
   types/            # Shared types
 ml-service/         # Python ML service
-web/                # TypeScript Next.js dashboard (deprecated)
+web/                # Archived/deferred browser dashboard; v2.0 dashboard is TUI-first
 ```
 
 ## Getting Help

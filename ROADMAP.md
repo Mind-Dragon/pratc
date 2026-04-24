@@ -135,46 +135,70 @@ Cache-backed verification run `projects/openclaw_openclaw/runs/final-wave` now p
 - Verify cache and sync paths under `-race`
 - Keep `go test ./...`, `go test ./... -race`, and Python tests green after every merge
 
-## Version 1.8 — ML Automation + TUI Feedback
+## Version 1.8 — Action-Readiness Dry Run
 
-**Goal:** improve automation quality through ML feedback while preserving prATC's advisory/read-only contract. v1.8 is single-repo-first and OpenClaw-validated; multi-repo moves later.
+**Goal:** generate a full-corpus `ActionPlan` and live TUI action dashboard in advisory mode. v1.8 is still read-only: it prepares prATC to become the engine a swarm can consume, but it performs no GitHub mutations.
 
-### ML Feedback Loop — primary release target
+See `VERSION2.0.md` for the full 16-developer swarm plan.
 
-- Capture operator bucket/category overrides as structured feedback
-- Capture recommendation rejections, duplicate/canonicalization corrections, and plan-order changes
-- Persist feedback append-only with audit metadata, idempotency keys, and replay protection
-- Export privacy-safe training/evaluation batches for the optional Python ML bridge
-- Improve duplicate detection, canonical selection, bucket scoring, and selected-plan ranking through explicit batch/evaluation gates
-- Keep online recommendations deterministic by default; do not silently mutate model behavior during a run
+### ActionPlan Contract
 
-### ML Automation Evaluation
+- [ ] Add `ActionLane`, `ActionIntent`, `ActionWorkItem`, `ActionPlan`, `PolicyProfile`, `ActionPreflight`, and `ProofBundle` types
+- [ ] Add JSON/schema fixtures for `action-plan.json`
+- [ ] Keep Go/Python/TypeScript contract parity where those surfaces remain active
+- [ ] Make every PR land in exactly one primary action lane
 
-- Run before/after evaluation against saved OpenClaw runs
-- Track duplicate accuracy, disposal false positives, bucket override rate, selected-plan acceptance, and confidence calibration
-- Emit an analyst-readable ML automation report section that explains what changed and why
-- Treat ML bridge unavailability as a degraded optional path, not a hard product failure
+### Lane Classifier and Policy Gates
 
-### TUI Operator Feedback Surface
+- [ ] Add deterministic classifier for `fast_merge`, `fix_and_merge`, `duplicate_close`, `reject_or_close`, `focused_review`, `future_or_reengage`, and `human_escalate`
+- [ ] Prevent contradictions such as `blocked` plus merge intent
+- [ ] Add policy profiles: `advisory`, `guarded`, `autonomous`
+- [ ] Keep `advisory` as the default and prove it performs zero writes
 
-- Use the terminal UI as the release-facing feedback surface
-- Show recommendation provenance: deterministic rule vs ML-assisted signal, confidence, reason trail, and audit check linkage
-- Let operators accept, reject, override buckets, correct duplicate groups, and annotate plan-order changes
-- Write all feedback through the same append-only feedback path used by CLI/API
+### Product Surfaces
 
-### Deferred from v1.8
+- [ ] CLI: `pratc actions --repo=owner/repo --format=json`
+- [ ] API: `GET /api/repos/{owner}/{repo}/actions`
+- [ ] TUI: action-lane board and PR detail inspector
+- [ ] PDF: remains point-in-time snapshot; useful concepts move into TUI as live state
 
-- Multi-repo aggregation, cross-repo dependency detection, and unified multi-repo planning
-- Web-based dashboard/UI
-- Automatic PR actions, auto-merge, or auto-approve
-- GitHub App/OAuth/webhook implementation unless needed for feedback capture; keep design artifacts current only
+### Audit and OpenClaw Dry Run
+
+- [ ] Add v2 audit checks for lane coverage, unsafe merge intent, action reason/evidence coverage, policy profile visibility, and advisory-mode zero writes
+- [ ] Produce an OpenClaw full-corpus ActionPlan artifact from the 1.7.1 cache-first baseline
+- [ ] Use the 1.7.1 report as the snapshot baseline, not as an execution manifest
+
+## Version 1.9 — Swarm Dry-Run + Proof Loop
+
+**Goal:** allow a 16-agent swarm to claim work from prATC, produce proof bundles, and exercise a dry-run executor without mutating GitHub.
+
+- [ ] Durable work-item queue with claim/release/heartbeat/expiry
+- [ ] Queue leases stored in SQLite with race-safe transitions
+- [ ] Swarm APIs for claim, release, heartbeat, proof attach, and status
+- [ ] Dry-run GitHub executor with fake backend and idempotency checks
+- [ ] `fix_and_merge` sandbox workflow with patch/test/proof bundle capture
+- [ ] TUI panels for queue leases, proof bundles, executor dry-run stream, rate limits, and audit ledger
+- [ ] OpenClaw representative dry-run across all action lanes
+
+## Version 2.0 — Guarded Autonomous Mutation
+
+**Goal:** central executor can perform policy-approved GitHub actions only after live preflight, audit, idempotency check, and post-action verification.
+
+- [ ] Live preflight for open state, head SHA, CI, mergeability, branch protection, review requirements, token permission, rate-limit budget, and policy profile
+- [ ] Guarded mode: comments and labels only; no merge or close
+- [ ] Autonomous mode: merge `fast_merge`, close/comment duplicates and rejects, merge `fix_and_merge` after proof validation
+- [ ] Append-only executor ledger for preflight, denial, mutation, and verification
+- [ ] TUI operator controls for hold/resume and policy visibility
+- [ ] No direct swarm-worker-to-GitHub mutation path
+- [ ] OpenClaw full-corpus v2 run audit-green
 
 ---
 
 ## Guardrails (All Versions)
 
-1. **No auto-merge or auto-approve** — prATC is advisory only
-2. **No silent exclusion** — every PR accounted for with reason codes
-3. **No hidden caps** — corpus coverage is explicit and configurable
-4. **Read-only by default** — all destructive operations require explicit opt-in
-5. **Non-commercial use** — FSL-1.1-Apache-2.0 license
+1. **No unaudited GitHub mutation** — every mutation requires typed intent, live preflight, idempotency, audit ledger write, and post-action verification
+2. **No direct swarm mutation** — swarm workers claim work and attach proof; only the central executor mutates GitHub
+3. **No silent exclusion** — every PR accounted for with reason codes
+4. **No hidden caps** — corpus coverage is explicit and configurable
+5. **Read-only by default** — `advisory` remains the default policy profile
+6. **Non-commercial use** — FSL-1.1-Apache-2.0 license

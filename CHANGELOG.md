@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Reframed the active roadmap around the v2.0 Action Engine: full-corpus ActionPlan, action lanes, TUI dashboard, swarm work queue, guarded executor, and centralized GitHub mutation safety.
+- Added `VERSION2.0.md` as the execution plan for the 16-developer swarm path from v1.8 dry-run to v2.0 guarded autonomous mutation.
+- Updated governing docs so the PDF is treated as a point-in-time snapshot while the TUI becomes the live dashboard/control surface for 2.0.
+
 ## [1.7.0] — 2026-04-23
 
 ### Added

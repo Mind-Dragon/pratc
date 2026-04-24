@@ -2,13 +2,12 @@
 
 **Deprecated:** This directory is retained for historical reference only.
 
-The Next.js web dashboard is not part of the v1.6 product surface. The active
-product surfaces are:
+The Next.js web dashboard is not part of the active v2.0 product surface. The live dashboard/control surface is TUI-first. Active product surfaces are:
 
-- **CLI** (`pratc analyze`, `pratc cluster`, `pratc graph`, `pratc plan`)
+- **CLI** (`pratc analyze`, `pratc cluster`, `pratc graph`, `pratc plan`, v2.0 `pratc actions`)
 - **HTTP API** (`pratc serve` on port 7400)
-- **PDF Reports** (`pratc report`)
-- **TUI Monitor** (`pratc monitor`)
+- **TUI Dashboard** (`pratc monitor`, v2.0 action lanes / queue / executor / audit stream)
+- **PDF Snapshot Reports** (`pratc report`)
 
 Historical scaffold notes:
 

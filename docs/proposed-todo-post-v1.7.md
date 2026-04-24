@@ -1,5 +1,7 @@
 # prATC TODO — Post-v1.7 / v1.8 Preparation
 
+Status: historical proposal. This file was superseded by the active root `TODO.md` and `VERSION2.0.md` action-engine plan. Keep it as release-history context only; do not use it as the active queue.
+
 ## Goal
 
 Clean up the v1.7 release artifacts and prepare the foundation for v1.8 (Multi-Repo + ML Feedback).

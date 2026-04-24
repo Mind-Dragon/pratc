@@ -1,9 +1,9 @@
 # AGENTS.md — prATC Knowledge Base
 
-**Generated:** 2026-04-23 | **Commit:** 58af834 | **Branch:** main
+**Generated:** 2026-04-24 | **Commit:** 8be25e9 | **Branch:** main
 
 ## Overview
-prATC (PR Air Traffic Control) — self-hostable, repo-agnostic system for large-scale PR triage and merge planning. Go CLI + Python ML service + HTTP API.
+prATC (PR Air Traffic Control) — self-hostable, repo-agnostic system for large-scale PR triage, merge planning, and v2.0 action-lane orchestration. Go CLI + Python ML service + HTTP API + TUI dashboard. The active v2.0 plan is `VERSION2.0.md`.
 
 ## Structure
 ```
@@ -26,11 +26,15 @@ pratc/
 │   ├── analysis/       # Bot detection
 │   ├── audit/          # Audit log (memory + SQLite)
 │   ├── repo/           # Git mirror management
-│   ├── report/         # PDF report generation
+│   ├── report/         # PDF snapshot generation
+│   ├── actions/        # v2.0 target: ActionPlan, action lanes, policy gates
+│   ├── workqueue/      # v2.0 target: swarm claims, leases, proof bundles
+│   ├── executor/       # v2.0 target: dry-run/live preflight and GitHub mutation
+│   ├── monitor/        # TUI dashboard and monitoring surfaces
 │   └── testutil/       # Fixture loading helpers
 ├── ml-service/         # Python ML service (see ml-service/AGENTS.md)
 │   └── src/pratc_ml/   # Clustering, duplicates, overlap, providers
-├── web/                # Next.js dashboard (deprecated — not part of v1.6 product surface)
+├── web/                # Archived/deferred browser dashboard; v2.0 dashboard is TUI-first
 │   └── src/            # Pages, components, lib, types, styles
 ├── fixtures/           # Test data (~5,500 PR snapshot)
 ├── contracts/          # API contract definitions
@@ -42,8 +46,11 @@ pratc/
 |------|----------|-------|
 | CLI command wiring | `cmd/pratc/*.go` | `init()` → `cmd.RegisterXCommand()` |
 | HTTP API routes | `internal/cmd/root.go` | All routes registered via `RegisterServeCommand` |
-| Core business logic | `internal/app/service.go` | Service methods: Analyze, Cluster, Graph, Plan |
-| PR type definitions | `internal/types/models.go` | All domain types + response/request structs |
+| Core business logic | `internal/app/service.go` | Service methods: Analyze, Cluster, Graph, Plan, v2.0 Actions |
+| PR type definitions | `internal/types/models.go` | Domain types + response/request structs; add ActionPlan types here first |
+| Action lanes/policy | `internal/actions/` | v2.0 target: classifier, policy gates, ActionPlan builder |
+| Work queue | `internal/workqueue/` | v2.0 target: claim leases, heartbeat, proof bundle association |
+| Executor | `internal/executor/` | v2.0 target: dry-run/live preflight and centralized GitHub mutation |
 | Pre-filter pipeline | `internal/filter/pipeline.go` | Draft → conflict → CI → bot filtering |
 | Combinatorial engine | `internal/formula/modes.go` | `Count()` + `GenerateByIndex()` with math/big |
 | Pool selection | `internal/planning/pool.go` | Priority weights, time decay, cluster coherence |
@@ -57,7 +64,7 @@ pratc/
 ## Cross-Cutting Patterns
 
 ### Type Consistency
-Go, Python, and TypeScript share **identical** type definitions with `snake_case` JSON keys.
+Go, Python, and TypeScript share **identical** type definitions with `snake_case` JSON keys for active cross-language surfaces. v2.0 ActionPlan fields must be added to all retained consumers before release.
 - Go: `internal/types/models.go`
 - Python: `ml-service/src/pratc_ml/models.py` (Pydantic with bootstrap fallback)
 - TypeScript: `web/src/types/api.ts`
@@ -67,13 +74,13 @@ All responses include `repo` + `generatedAt` + operation-specific payload.
 Error format: `{"error": "...", "message": "...", "status": "..."}`
 
 ### Configuration Flow
-`env vars → Go (root.go) → Go app (service.go) → Python ML (via stdin JSON) → React (NEXT_PUBLIC_*)`
+`env vars → Go (root.go) → Go app (service.go/actions) → Python ML (via stdin JSON, optional) → TUI/API/PDF consumers`
 
 ### Go↔Python IPC
 JSON over stdin/stdout via `exec.CommandContext` (`internal/ml/bridge.go`). Actions: `health`, `cluster`, `duplicates`, `overlap`.
 
 ### Shared Thresholds
-`duplicateThreshold = 0.90`, `overlapThreshold = 0.70` — defined in `internal/app/service.go`, mirrored in Python defaults, documented in AGENTS.md.
+`duplicateThreshold = 0.85`, `overlapThreshold = 0.70` — defined in `internal/types/constants.go` / app defaults, mirrored in Python defaults, documented in AGENTS.md.
 
 ## Commands
 ```bash
@@ -92,11 +99,13 @@ make docker-down   # docker-compose down --remove-orphans
 - Never read raw secret values; use `psst SECRET_NAME -- <command>`
 - Never run combinatorial planning on raw PR universe; always pre-filter first
 - Never store GitHub PAT in SQLite or config files; only runtime env
+- Never let swarm workers mutate GitHub directly; only the central executor may write after policy + preflight
+- Never treat a v1.x `plan` or PDF report as an execution manifest
 - Never commit GITHUB_PAT, OPENROUTER_API_KEY, or other secrets
 - Never leave `main` red; post-merge verification is mandatory
 - Never self-expand task scope without coordinator approval
 - Never use port 8080 for prATC — reserved port range is **7400–7500** (default: 7400)
-- v0.1 scope: no GitHub App/OAuth/webhooks, no ML feedback loops, no gRPC, no auto PR actions
+- Historical v0.1 scope excluded GitHub App/OAuth/webhooks, ML feedback loops, multi-repo UI, gRPC, and auto PR actions. v2.0 explicitly reopens GitHub actions only through `VERSION2.0.md`, `GUIDELINE.md`, policy profiles, and centralized executor gates.
 
 ## Go Conventions (All internal/ packages)
 - Error wrapping: `fmt.Errorf("context: %w", err)` — never bare `err`
@@ -108,8 +117,8 @@ make docker-down   # docker-compose down --remove-orphans
 - Ports: default API port 7400, reserved range 7400–7500, never 8080
 
 ## Scope Guardrails
-Must have: rate-limit-aware GitHub client, pre-filter pipeline, dry-run default, audit logging.
-Must not have in v0.1: GitHub App/OAuth/webhooks, ML feedback loops, multi-repo UI, gRPC, auto PR actions, Nx/Turborepo.
+Must have: rate-limit-aware GitHub client, pre-filter pipeline, dry-run default, audit logging, action-policy enforcement, live preflight before mutation.
+Must not have: hidden corpus caps, direct swarm GitHub mutation, un-audited merge/close actions, browser dashboard as required v2.0 surface.
 
 ---
 
@@ -120,6 +129,7 @@ Must not have in v0.1: GitHub App/OAuth/webhooks, ML feedback loops, multi-repo 
 - `cluster --format=json` → exit `0`, keys: `repo`, `generatedAt`, `model`, `thresholds`, `clusters`
 - `graph --format=dot` → exit `0`, non-empty DOT with `digraph`
 - `plan --target=N --format=json` → exit `0`, keys: `repo`, `generatedAt`, `target`, `candidatePoolSize`, `strategy`, `selected`, `ordering`, `rejections`
+- `actions --format=json` → v2.0 target exit `0`, keys: `repo`, `generatedAt`, `policy_profile`, `lanes`, `work_items`, `action_intents`, `audit`
 - `serve` → exit `0` on shutdown, `/healthz` returns `200` with `{"status":"...", "version":"..."}`
 - Exit codes: `2` = invalid args, `1` = runtime failure
 - Runtime SLOs (5.5k PRs, warm cache): analyze ≤300s, cluster ≤180s, graph ≤120s, plan ≤90s

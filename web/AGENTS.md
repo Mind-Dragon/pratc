@@ -25,7 +25,7 @@ const ForceGraph = dynamic(() => import("react-force-graph-2d"), { ssr: false })
 **All pages use `getServerSideProps`:**
 - No SWR, no React Query
 - Default repo: `opencode-ai/opencode`
-- API URL: `NEXT_PUBLIC_PRATC_API_URL` or `http://localhost:8080`
+- API URL: `NEXT_PUBLIC_PRATC_API_URL` or `http://localhost:7400`
 
 **API client (`lib/api.ts`):**
 - `fetchJSON<T>(path, fallback)` — returns fallback on error, never throws

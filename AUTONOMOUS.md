@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines the stable operating contract for autonomous improvement of prATC against real corpus outputs.
+This document defines the stable operating contract for autonomous improvement of prATC against real corpus outputs. In v2.0, the same controller discipline applies to action-engine buildout: every ActionPlan, queue, proof bundle, executor path, and TUI dashboard claim must be audited against `GUIDELINE.md`.
 
 Autonomous mode is a closed loop:
 1. run the pipeline on a real corpus
@@ -11,6 +11,13 @@ Autonomous mode is a closed loop:
 4. dispatch subagents to fix those gaps
 5. re-run the pipeline and audit again
 6. stop only on success, true blocker, or stall budget
+
+For v2.0 action-engine work, the loop also verifies:
+- `action-plan.json` covers the full corpus
+- every PR has exactly one primary action lane
+- advisory mode performs zero writes
+- swarm workers claim work through leases and never mutate GitHub directly
+- the executor writes only after policy, preflight, idempotency, and audit
 
 This document is the normative spec. It should stay stable. Volatile run-specific findings live under `autonomous/`.
 
@@ -55,7 +62,7 @@ Findings that remain only in chat are not part of the autonomous system.
 ### Authority order
 
 On conflicts:
-1. `GUIDELINE.md` wins on rules, buckets, and non-negotiables
+1. `GUIDELINE.md` wins on rules, buckets, action lanes, policy profiles, and non-negotiables
 2. `ARCHITECTURE.md` wins on system shape and file ownership
 3. `AUTONOMOUS.md` wins on autonomous loop behavior
 4. `TODO.md` wins on current durable backlog ordering
@@ -78,6 +85,7 @@ Each autonomous cycle must create or update these artifacts:
 ### Stable artifacts
 
 - `AUTONOMOUS.md`
+- `VERSION2.0.md`
 - `TODO.md`
 - `autonomous/RUNBOOK.md`
 - `autonomous/STATE.yaml`
@@ -90,6 +98,7 @@ Each autonomous cycle must create or update these artifacts:
 
 Under `autonomous/runs/<timestamp>/`:
 - `AUDIT_RESULTS.json`
+- `action-plan.json` for v2.0 action-engine runs
 - `controller-log.md`
 - `wave-summary.md`
 - `subagent-results/` directory
@@ -144,6 +153,7 @@ Minimum expected outputs:
 - cluster output
 - graph output
 - plan output
+- `action-plan.json` when the active milestone is v1.8/v1.9/v2.0
 - PDF report output
 
 ### Phase 2 — audit
@@ -174,8 +184,9 @@ The controller converts open gaps into implementation waves.
 Default wave ordering:
 1. data model / type surface
 2. core decision logic
-3. wiring / report population / artifact flow
-4. verification and doc sync
+3. action policy / queue / executor safety
+4. wiring / report-dashboard population / artifact flow
+5. verification and doc sync
 
 Rules:
 - independent gaps may run in parallel
@@ -212,6 +223,7 @@ The audit layer is deterministic code, not prose.
 At minimum it must evaluate:
 - PR accounting coverage
 - bucket coverage
+- action-lane coverage for v2.0 artifacts
 - reason coverage
 - confidence coverage
 - duplicate handling presence
@@ -222,6 +234,10 @@ At minimum it must evaluate:
 - no opaque top-N reasoning
 - graph noise thresholds
 - performance and artifact presence checks
+- advisory-mode zero-write proof
+- action intent precondition/evidence coverage
+- blocked/high-risk PRs excluded from unsafe merge lanes
+- queue/executor state transitions recorded when action artifacts are present
 
 If a rule cannot yet be machine-checked, it must be listed explicitly in `AUTONOMOUS.md` or `RUNBOOK.md` as a manual audit item rather than implied.
 

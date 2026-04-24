@@ -1,9 +1,11 @@
 # prATC Autonomous Runtime Architecture Plan
 
-Status: swarm-audited draft
+Status: historical swarm-audited draft, superseded by current `AUTONOMOUS.md`, root `TODO.md`, and `VERSION2.0.md`
 Date: 2026-04-23
 Repo: /home/agent/pratc
 Baseline commit: 3b70307 feat: complete prATC v1.7 ML honesty slice
+
+Current note: the NO-GO findings in this plan were resolved during later autonomous-readiness work. Do not use this file as live runtime truth; use it as historical audit context only.
 
 ## Multi-model audit consensus
 

@@ -29,7 +29,7 @@ This will:
 | Python 3.11+ | Optional | Local ML clustering service |
 | uv | Optional | Python package management |
 | Docker | Optional | Containerized deployment |
-| Bun | Optional | Optional: web UI development only (deprecated in v1.6) |
+| Bun | Optional | Optional: archived browser UI development only; v2.0 dashboard is TUI-first |
 
 ### Install Prerequisites
 
@@ -78,7 +78,7 @@ pratc --help | sed -n '1,2p'
 
 Expected output begins with:
 ```text
-Harness Optimizer v1.6.0 built on <timestamp>
+prATC v1.7.1 built on <timestamp>
 Using Config from: settings=... | cache=...
 ```
 
@@ -234,7 +234,8 @@ After installation:
 1. **Read [RATELIMITS.md](RATELIMITS.md)** — Understand GitHub API rate limits and cache-first defaults
 2. **Run your first full workflow**: `pratc workflow --repo=owner/repo --progress`
 3. **Query the API**: `curl http://localhost:7400/api/health` or use `pratc audit`
-4. **Read [README.md](README.md)** — Feature overview, CLI commands, and architecture
+4. **Read [VERSION2.0.md](VERSION2.0.md)** if you are building the ActionPlan, TUI dashboard, swarm queue, or executor path
+5. **Read [README.md](README.md)** — Feature overview, CLI commands, and architecture
 
 For usage examples, see [README.md](README.md).
 

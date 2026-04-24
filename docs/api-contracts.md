@@ -1,8 +1,8 @@
 # prATC API Contracts Guide
 
-**Last Updated:** 2026-03-23  
-**System Version:** v0.1  
-**Base URL:** `http://localhost:8080` (configurable via `PRATC_PORT`)
+**Last Updated:** 2026-04-24
+**Version:** 1.7.1 current, v2.0 target additions noted
+**Base URL:** `http://localhost:7400` (configurable via `PRATC_PORT`)
 
 ## Table of Contents
 
@@ -13,21 +13,22 @@
 5. [Clustering Endpoints](#clustering-endpoints)
 6. [Graph Endpoints](#graph-endpoints)
 7. [Planning Endpoints](#planning-endpoints)
-8. [Sync Endpoints](#sync-endpoints)
-9. [Settings Endpoints](#settings-endpoints)
-10. [Error Responses](#error-responses)
-11. [Type Reference](#type-reference)
+8. [Action Endpoints v2.0 Target](#action-endpoints-v20-target)
+9. [Sync Endpoints](#sync-endpoints)
+10. [Settings Endpoints](#settings-endpoints)
+11. [Error Responses](#error-responses)
+12. [Type Reference](#type-reference)
 
 ---
 
 ## Overview
 
-prATC exposes a RESTful API for PR analysis, clustering, graphing, and planning. All responses include `repo` and `generatedAt` fields. Error responses follow a standard format.
+prATC exposes a RESTful API for PR analysis, clustering, graphing, planning, and v2.0 action-plan orchestration. All responses include `repo` and `generatedAt` fields. Error responses follow a standard format.
 
 ### Base URL
 
 ```
-http://localhost:8080
+http://localhost:7400
 ```
 
 ### Content Type
@@ -500,6 +501,54 @@ Legacy query-string version.
 - `repo` (query, required): Repository in owner/repo format
 
 **Response:** Same as `/api/repos/{owner}/{repo}/plan`
+
+---
+
+## Action Endpoints v2.0 Target
+
+These endpoints are planned for the v2.0 action engine. They must remain read-only in `advisory` policy profile unless a specific executor endpoint is called under `guarded` or `autonomous` policy.
+
+### GET /api/repos/{owner}/{repo}/actions
+
+Generate or fetch a full-corpus ActionPlan.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `policy` | string | `advisory` | `advisory`, `guarded`, or `autonomous` |
+| `lane` | string | none | Optional lane filter |
+| `limit` | integer | none | Optional page limit |
+| `cursor` | string | none | Optional page cursor |
+| `dry_run` | boolean | `true` | Must default true |
+
+**Response:**
+
+```json
+{
+  "repo": "openclaw/openclaw",
+  "generatedAt": "2026-04-24T00:00:00Z",
+  "policy_profile": "advisory",
+  "lanes": [],
+  "work_items": [],
+  "action_intents": [],
+  "audit": {
+    "advisory_zero_writes": true
+  }
+}
+```
+
+### POST /api/repos/{owner}/{repo}/actions/claim
+
+Claim a work item for a swarm worker. Must create a lease with expiry and idempotency key.
+
+### POST /api/repos/{owner}/{repo}/actions/{work_item_id}/proof
+
+Attach a proof bundle to a claimed work item.
+
+### POST /api/repos/{owner}/{repo}/actions/{work_item_id}/execute
+
+Executor-only endpoint. Must reject unless policy, live preflight, idempotency, and audit requirements pass. Swarm workers must not call this directly.
 
 ---
 
@@ -1017,37 +1066,37 @@ For 5,500 PR scale with warm cache:
 
 **Health check:**
 ```bash
-curl http://localhost:8080/healthz
+curl http://localhost:7400/healthz
 ```
 
 **Analyze repository:**
 ```bash
-curl "http://localhost:8080/api/repos/opencode-ai/opencode/analyze"
+curl "http://localhost:7400/api/repos/opencode-ai/opencode/analyze"
 ```
 
 **Generate plan:**
 ```bash
-curl "http://localhost:8080/api/repos/opencode-ai/opencode/plan?target=10&mode=combination"
+curl "http://localhost:7400/api/repos/opencode-ai/opencode/plan?target=10&mode=combination"
 ```
 
 **Trigger sync:**
 ```bash
-curl -X POST "http://localhost:8080/api/repos/opencode-ai/opencode/sync"
+curl -X POST "http://localhost:7400/api/repos/opencode-ai/opencode/sync"
 ```
 
 **Get settings:**
 ```bash
-curl "http://localhost:8080/api/settings?repo=opencode-ai/opencode"
+curl "http://localhost:7400/api/settings?repo=opencode-ai/opencode"
 ```
 
 **Update setting:**
 ```bash
-curl -X POST "http://localhost:8080/api/settings" \
+curl -X POST "http://localhost:7400/api/settings" \
   -H "Content-Type: application/json" \
   -d '{"scope":"repo","repo":"opencode-ai/opencode","key":"weights.review","value":10}'
 ```
 
 **Stream sync progress:**
 ```bash
-curl "http://localhost:8080/api/repos/opencode-ai/opencode/sync/stream"
+curl "http://localhost:7400/api/repos/opencode-ai/opencode/sync/stream"
 ```

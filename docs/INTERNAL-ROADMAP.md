@@ -2,16 +2,18 @@
 
 Internal strategic notes for where the product gets genuinely strange and powerful after the v1.6 pipeline-first reset.
 
+Status: historical strategy note. The active execution plan is now `VERSION2.0.md`. Concepts here that survived into the current plan: continuous state, diff-grounded evidence, PR memory, backlog surgery, and operator-grade report/dashboard surfaces.
+
 ## Grounded take from the repo
 
-- The real product already lives in the pipeline plus `report.pdf`.
+- The real product already lives in the pipeline plus durable artifacts.
 - `serve` already gives us the API surface.
 - The standalone review endpoint is still not implemented anyway.
-- The dashboard (web/ presentation layer) is not part of v1.6 product surface.
+- The browser dashboard (`web/`) is not the active product surface; v2.0 dashboard work is TUI-first.
 
 If the goal is a 24/7 system that eats PRs and processes them, the center of gravity should be:
 
-`sync → analyze → review → artifact/report → persistent state → repeat`
+`sync → analyze → review → action-plan/dashboard → persistent state → executor → repeat`
 
 Not:
 
@@ -101,27 +103,28 @@ This would let prATC say things like:
 
 ---
 
-### 4. Report as an operator packet, not just a summary PDF
+### 4. Report packet becomes live TUI action dashboard
 
 **Difficulty:** medium  
 **Impact:** huge
 
 #### What it is
-Make the PDF report the product.  
-Not pretty. Operational.
+Make the report concepts the product surface, not just a static PDF. The PDF remains the snapshot packet; the TUI becomes the live dashboard.
 
 For each run, emit:
 - executive summary
 - now / future / blocked queues
 - canonical duplicate chains
 - high-risk patch evidence
-- “if I had one hour, review these 12 PRs”
+- action lanes and queue state
+- executor/preflight state
+- proof bundle status
 - “if I wanted to reduce backlog fastest, close these 40”
 - “if I wanted to unlock merge flow, resolve these 6 conflict hubs”
 - “this run changed these judgments since last run”
 
 #### Why it matters
-The PDF becomes the handoff packet. If it becomes unnervingly actionable, nobody will miss the dashboard.
+The PDF becomes the snapshot packet; the TUI becomes the live battle board. If the TUI exposes the same reasoning with queue/executor state, nobody will miss the browser dashboard.
 
 #### The “IT DOES WHAT?!” moment
 “It hands me a battle plan, not a report.”
@@ -165,19 +168,13 @@ If we want maximum holy hell per unit effort:
 
 ---
 
-## Relationship to v1.6
+## Relationship to current plan
 
-The current v1.6 reset should prepare for these, not try to do all of them at once.
-
-v1.6 should focus on:
-- CLI + API + PDF only
-- mandatory 16-gate funnel semantics
-- first diff-grounded evidence slice
-- duplicate synthesis planning outputs
-
-That gives 2.0 a clean base for:
-- long-lived daemon behavior
-- incremental analysis
-- backlog memory
-- operator-grade PDF packets
-- synthesis/merge-bot handoff artifacts
+The v1.6 reset prepared the foundation. `VERSION2.0.md` is now the active plan for:
+- full-corpus ActionPlan
+- action lanes
+- TUI dashboard
+- swarm work queue
+- proof bundles
+- centralized executor
+- guarded/autonomous GitHub actions with live preflight

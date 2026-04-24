@@ -1,5 +1,7 @@
 # prATC v1.6.1 Precision Improvement Plan
 
+Status: historical remediation plan. The active v2.0 action-engine plan is `../VERSION2.0.md`; keep this file as release-history context, not the current queue.
+
 **Branch:** `fix/v1.6.1-post-review`  
 **Base Commit:** `74cdc35`  
 **Goal:** Fix all CRITICAL/HIGH/MEDIUM findings from multi-model synthesis without breaking existing functionality  

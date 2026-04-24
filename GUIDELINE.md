@@ -2,9 +2,9 @@
 
 ## Purpose
 
-This document sets the operating rules for the v1.7.0 full-corpus triage engine.
+This document sets the operating rules for the v1.x full-corpus triage engine and the v2.0 action engine.
 
-The system does not get to ignore PRs. It does not get to hide uncertainty. It does not get to collapse the world into a single score and pretend that is enough.
+The system does not get to ignore PRs. It does not get to hide uncertainty. It does not get to collapse the world into a single score and pretend that is enough. In v2.0, it also does not get to mutate GitHub directly from a vague recommendation: every action must be typed, preflighted, auditable, and policy-allowed.
 
 ## Core rules
 
@@ -43,11 +43,18 @@ The system does not get to ignore PRs. It does not get to hide uncertainty. It d
    - Inner layers should be more expensive, more precise, and reserved for surviving PRs.
    - The system must not spend diff-level or synthesis-level effort on obvious trash.
 
-8. The product surface is CLI + API + PDF.
+8. The product surface is CLI + API + TUI + PDF.
    - CLI exists for humans operating the system.
-   - API exists for AI systems consuming structured outputs.
-   - PDF exists as the final human-facing report artifact.
-   - Browser/dashboard surfaces are not part of the v1.6 product contract.
+   - API exists for AI systems and swarm workers consuming structured outputs.
+   - TUI exists as the live terminal dashboard and operator control surface for v2.0 action lanes, queue leases, executor state, and audit stream.
+   - PDF exists as a point-in-time human-facing snapshot artifact, not the live control plane.
+   - Browser/dashboard surfaces are not part of the active v2.0 product contract unless explicitly revived later.
+
+9. Action decisions are separate from bucket decisions.
+   - A bucket describes what the PR is.
+   - An action lane describes what should happen next.
+   - An ActionIntent describes a possible mutation or non-mutating operation.
+   - No ActionIntent may execute without policy approval, live preflight, reason trail, evidence refs, idempotency, and audit ledger write.
 
 ## The 16-layer decision ladder
 
@@ -116,6 +123,35 @@ Every PR must land in at least one bucket. A PR may hold multiple buckets when t
 - Disposal buckets are terminal unless overridden by a human: once `junk`, it stays `junk` unless someone says otherwise.
 - Every bucket assignment must carry a reason code.
 
+## Action lanes
+
+Every PR must land in exactly one primary action lane before it can become swarm work. Risk buckets remain additive.
+
+- `fast_merge` — clean, low-risk PR that can be merged after live preflight.
+- `fix_and_merge` — valid PR that a swarm can repair, test, and resubmit for executor approval.
+- `duplicate_close` — duplicate or superseded PR that should be closed or commented with a canonical link.
+- `reject_or_close` — invalid, junk, unsafe, or structurally broken PR that should be closed/rejected with a visible reason.
+- `focused_review` — meaningful PR that needs deeper agent/human review before an action can be chosen.
+- `future_or_reengage` — valid work that belongs later or needs author/product re-engagement.
+- `human_escalate` — PR that cannot be safely acted on by automation.
+
+### Action lane rules
+
+- A blocked PR cannot emit a merge ActionIntent.
+- A high-risk PR cannot land in `fast_merge` without explicit human override recorded in the ledger.
+- A duplicate-close action must name the canonical PR and duplicate group.
+- A reject/close action must carry stronger confidence than ordinary routing.
+- A fix-and-merge action must produce a proof bundle before executor approval.
+- A human-escalate item remains visible and claimable for review, but not executable.
+
+## Policy profiles
+
+- `advisory` — default; produces plans, lanes, dashboard data, and reports with zero GitHub writes.
+- `guarded` — allows non-destructive actions such as comments and labels; no merge or close.
+- `autonomous` — allows merge/close/comment/label only through typed ActionIntents that pass live preflight and audit.
+
+Policy profile is part of the output contract. A caller must never infer mutation permission from bucket names or scores.
+
 ## Confidence
 
 The system uses confidence scores to express how much it trusts its own judgment on a PR.
@@ -141,12 +177,15 @@ ML-backed judgments must describe what actually happened, not the best-case path
 - Planned ML feedback work belongs in roadmap or design documents until it is implemented; reports and user-facing outputs must describe current behavior, not intended future behavior.
 
 ## Non-negotiables
-- No auto-merge.
+- No unaudited GitHub mutation.
+- No direct swarm-worker-to-GitHub mutation path.
 - No silent exclusion.
 - No opaque ranking without reasons.
 - No pretending a truncated view is the whole corpus.
-- No changing the meaning of a bucket without updating this guideline.
+- No changing the meaning of a bucket or action lane without updating this guideline.
 - No claiming certainty when confidence is low.
+- No merge/close action without live preflight, idempotency key, and post-action verification.
+- Advisory mode must perform zero writes.
 
 ## What good looks like
 - The full corpus is visible.
@@ -155,10 +194,14 @@ ML-backed judgments must describe what actually happened, not the best-case path
 - The risky work is called out clearly.
 - The future work is preserved without crowding the present.
 - The report reads like a decision map, not a dump.
+- The TUI shows the live version of that decision map.
+- The ActionPlan gives a swarm multiple safe work queues, not one top-20 list.
+- The executor can explain every action before and after it acts.
 
 ## Relationship to other documents
 - **ROADMAP.md** defines what gets built and when.
 - **ARCHITECTURE.md** defines the system shape and data flow.
+- **VERSION2.0.md** defines the v2.0 action-engine execution plan.
 - **This document** defines the rules the system must follow.
 - **CHANGELOG.md** records what actually shipped in each version.
-- If any document conflicts with this one on bucket definitions, layer ordering, or non-negotiables, this document wins.
+- If any document conflicts with this one on bucket definitions, action lanes, policy profiles, layer ordering, or non-negotiables, this document wins.

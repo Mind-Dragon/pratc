@@ -119,6 +119,9 @@ pratc audit --limit=5 --format=json
 curl http://localhost:7400/api/health
 ```
 
+### 6. Reserve Budget for v2.0 Executor Actions
+Action-engine writes are more sensitive than analysis reads. The v2.0 executor must reserve budget for live preflight, mutation, and post-action verification, and must refuse execution when budget cannot cover the full sequence safely.
+
 ## Rate Limit Headers
 
 GitHub includes these headers in every response:

@@ -1,6 +1,6 @@
 # Autonomous Runbook
 
-Use this file for exact operator and controller commands. `AUTONOMOUS.md` defines policy; this file defines execution mechanics.
+Use this file for exact operator and controller commands. `AUTONOMOUS.md` defines policy; this file defines execution mechanics. `VERSION2.0.md` defines the active action-engine buildout plan.
 
 ## Bootstrap
 
@@ -51,7 +51,7 @@ cd /home/agent/pratc
 # or: go run ./cmd/pratc monitor
 ```
 
-The monitor is observational only. It is not a control surface or completion proof.
+The monitor is observational in v1.x. In v2.0 it becomes the TUI dashboard for action lanes, queue leases, executor state, and audit stream. Completion proof still comes from artifacts and audits, not from visual state alone.
 
 ### 5. Initialize controller checkpoint
 
@@ -138,6 +138,8 @@ cd /home/agent/pratc
 ./bin/pratc cluster --repo openclaw/openclaw --force-cache --format=json > "$RUN_DIR/step-3-cluster.json"
 ./bin/pratc graph --repo openclaw/openclaw --force-cache --format=json > "$RUN_DIR/step-4-graph.json"
 ./bin/pratc plan --repo openclaw/openclaw --force-cache --target 20 --format=json > "$RUN_DIR/step-5-plan.json"
+# v2.0 target after `actions` exists:
+# ./bin/pratc actions --repo openclaw/openclaw --force-cache --policy=advisory --format=json > "$RUN_DIR/action-plan.json"
 ./bin/pratc report --repo openclaw/openclaw --input-dir "$RUN_DIR" --output "$RUN_DIR/report.pdf"
 python3 scripts/audit_guideline.py "$RUN_DIR"
 python3 scripts/gap_list_from_audit.py \
@@ -189,7 +191,7 @@ If manual audit checks remain, record explicit operator acceptance in `autonomou
 
 ## Expected controller flow
 
-1. Read `GUIDELINE.md`, `ARCHITECTURE.md`, `AUTONOMOUS.md`, `TODO.md`
+1. Read `GUIDELINE.md`, `ARCHITECTURE.md`, `VERSION2.0.md`, `AUTONOMOUS.md`, `TODO.md`
 2. Read `autonomous/STATE.yaml` and `autonomous/GAP_LIST.md`
 3. Reconcile live repo state and latest run artifacts
 4. Seed the Hermes session todo with the current wave
@@ -226,14 +228,18 @@ If manual audit checks remain, record explicit operator acceptance in `autonomou
 
 ## Current canonical corpus
 
-Historical bootstrap corpus until replaced by a fresher verified run:
+Current v1.7.1 action-engine baseline:
 
 - repo: `openclaw/openclaw`
-- corpus dir: `projects/openclaw_openclaw/runs/release-audit-20260421T023224Z`
-- audit: `projects/openclaw_openclaw/runs/release-audit-20260421T023224Z/AUDIT_RESULTS.json`
+- corpus dir: `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z`
+- audit: `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z/AUDIT_RESULTS.json`
+- report: `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z/report.pdf`
+- status: snapshot packet only; not an execution manifest
 
-Required next corpus:
+Required next corpus for v1.8/v2.0:
 
 - repo: `openclaw/openclaw`
 - corpus dir: `autonomous/runs/<fresh-current-head-run-id>`
-- status: pending
+- required new artifact: `action-plan.json`
+- policy: `advisory`
+- status: pending implementation

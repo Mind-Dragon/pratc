@@ -75,7 +75,7 @@ Use INFO for normal, expected operations. If something is working as designed, i
 | Graph operations | "graph built: 120 nodes, 85 edges" |
 | Filter pipeline | "filter stage completed: conflict_detection, dropped 12" |
 | Planning | "pool selected: 87 candidates", "plan generated: 20 selected" |
-| Service lifecycle | "server started on :8080", "server shutting down" |
+| Service lifecycle | "server started on :7400", "server shutting down" |
 
 ### 3.2 ERROR
 
@@ -302,7 +302,7 @@ For hot paths (e.g., per-PR iterations in the filter pipeline), use `slog.Enable
 ### 8.4 Process Lifecycle (no request_id)
 
 ```json
-{"ts":"2026-04-02T14:00:00.000Z","level":"INFO","component":"serve","msg":"server started","port":8080,"version":"0.1.0"}
+{"ts":"2026-04-02T14:00:00.000Z","level":"INFO","component":"serve","msg":"server started","port":7400,"version":"1.7.1"}
 {"ts":"2026-04-02T18:30:00.000Z","level":"INFO","component":"serve","msg":"server shutting down","signal":"SIGTERM"}
 ```
 

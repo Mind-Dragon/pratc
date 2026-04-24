@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-1.6.0-1BC3F3?style=for-the-badge" alt="Release 1.6.0"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-1.7.1-1BC3F3?style=for-the-badge" alt="Release 1.7.1"></a>
   <a href="RATELIMITS.md"><img src="https://img.shields.io/badge/status-audit--green-1F9D55?style=for-the-badge" alt="Audit green"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-FSL--1.1--Apache--2.0-4B5563?style=for-the-badge" alt="License"></a>
   <a href="INSTALL.md"><img src="https://img.shields.io/badge/port-7400-0F172A?style=for-the-badge" alt="Default port 7400"></a>
@@ -27,21 +27,25 @@
 
 ## About
 
-prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull request triage and merge planning.
+prATC (PR Air Traffic Control) is a self-hostable system for large-scale pull request triage, merge planning, and v2.0 action-lane orchestration.
 
-It gives you a cache-first workflow for repositories with hundreds or thousands of PRs, then turns that corpus into something navigable: duplicate groups, conflict maps, ranked merge queues, and a PDF report you can hand to humans.
+It gives you a cache-first workflow for repositories with hundreds or thousands of PRs, then turns that corpus into something navigable: duplicate groups, conflict maps, ranked merge queues, action lanes, and snapshot reports.
+
+The v2.0 direction is to make prATC the engine a swarm consumes: prATC classifies every PR, exposes multiple work queues, accepts proof bundles, and routes all GitHub mutations through a centralized audited executor.
 
 Use it when "just open the PR list" has stopped being a serious plan.
 
 ## Project Status
 
-- **Current release line:** `1.6.0`
-- **Validation status:** cache-first and explicit live full-corpus workflows are audit-green against `openclaw/openclaw` (`6,632` PRs, `17` required checks passing, `0` failures)
+- **Current release line:** `1.7.1`
+- **Validation status:** cache-first full-corpus workflow is audit-green against `openclaw/openclaw` (`6,632` PRs, `19` required checks passing, `0` failures, `0` manual)
+- **v2.0 planning status:** `VERSION2.0.md` defines the ActionPlan, action lanes, TUI dashboard, queue, executor, and 16-developer swarm plan
 - **Default execution model:** cache-first local snapshot reuse; fresh sync happens only when you explicitly request `--refresh-sync` or `--force-live`
 - **Default API port:** `7400` (reserved prATC range: `7400-7500`)
 
 ## Documentation
 
+- [VERSION2.0.md](VERSION2.0.md) — Action engine, TUI dashboard, executor, and 16-developer swarm plan
 - [CHANGELOG.md](CHANGELOG.md) — Release history
 - [ROADMAP.md](ROADMAP.md) — Current release status and next product phases
 - [ARCHITECTURE.md](ARCHITECTURE.md) — System shape, data flow, and technical reference
@@ -60,7 +64,9 @@ Use it when "just open the PR list" has stopped being a serious plan.
 - **Deep Judgment Layers**: 16-layer decision ladder (confidence, dependency, blast radius, leverage, ownership, stability, mergeability, strategic weight, attention cost, reversibility, signal quality)
 - **Temporal Routing**: PRs split into `now`, `future`, and `blocked` buckets
 - **Intermediate Caching**: Duplicate groups, conflict graph, and substance scores cached in SQLite with corpus fingerprinting
-- **PDF Report**: Workflow-generated real PDF with executive summary, junk section, duplicate chains, near-duplicates, now/future/blocked queues, and full appendix
+- **PDF Report**: Workflow-generated point-in-time PDF with executive summary, junk section, duplicate chains, near-duplicates, now/future/blocked queues, and full appendix
+- **TUI Dashboard (v2.0 target)**: live action-lane board, PR detail inspector, queue leases, executor state, rate-limit/auth, and audit stream
+- **ActionPlan (v2.0 target)**: full-corpus action lanes and typed ActionIntents for swarm workers; advisory mode stays read-only by default
 - **Preflight Check**: Estimate sync time and delta before committing to a long run
 - **Singleton Lock**: Prevents concurrent prATC instances against the same repo
 - **Repo Normalization**: Case-insensitive repo names (OpenClaw/openclaw → openclaw/openclaw)
@@ -167,6 +173,14 @@ pratc plan --repo=owner/repo --target=20
 pratc plan --repo=owner/repo --target=20 --mode=combination
 ```
 
+### actions (v2.0 target)
+Generate the full-corpus ActionPlan consumed by the TUI, API, swarm workers, and executor. Advisory mode performs no GitHub writes.
+
+```bash
+pratc actions --repo=owner/repo --policy=advisory --format=json
+pratc actions --repo=owner/repo --lane=fix_and_merge --format=json
+```
+
 ### report
 Generate PDF report from workflow artifacts.
 
@@ -207,7 +221,7 @@ Deep judgment (16 layers: confidence, dependency, blast radius, ...)
     ↓
 Review pipeline (security, reliability, performance analyzers)
     ↓
-PDF report (executive summary → junk → dupes → now → review → future → appendix)
+PDF snapshot + TUI live dashboard (executive summary → action lanes → junk → dupes → now → review → future → appendix/detail)
 ```
 
 Every PR is accounted for. Every decision carries a reason code. No PR vanishes without an explanation.
@@ -223,12 +237,16 @@ internal/
   github/           GitHub client with auth passthrough
   graph/            Dependency graph engine
   planning/         Pool selection, hierarchical planning, pairwise executor
-  report/           PDF generation (analyst sections, near-duplicate detail)
+  report/           PDF generation (point-in-time snapshot packets)
   review/           Deep judgment layers, substance scoring, temporal routing
+  actions/          v2.0 target: ActionPlan, action lanes, policy gates
+  workqueue/        v2.0 target: swarm claims, leases, proof bundles
+  executor/         v2.0 target: dry-run/live preflight and centralized GitHub mutation
+  monitor/          TUI dashboard panels
   sync/             Background sync, rate-limit guard, bootstrap streaming
   types/            Shared types, constants, repo normalization
 ml-service/         Python ML service
-web/                TypeScript Next.js dashboard (deprecated — not part of v1.6 product surface)
+web/                Archived/deferred browser dashboard; v2.0 dashboard is TUI-first
 fixtures/           Test fixtures
 projects/           Persistent workflow runs and PDF reports
 ```

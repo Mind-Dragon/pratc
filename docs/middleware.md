@@ -1,8 +1,8 @@
 # prATC HTTP Middleware Guide
 
-**Last Updated:** 2026-03-23  
-**System Version:** v0.1  
-**Location:** `internal/cmd/root.go`
+**Last Updated:** 2026-04-24
+**System Version:** v1.7.1 current, v2.0 target additions noted
+**Location:** `internal/cmd/serve.go`
 
 ## Table of Contents
 
@@ -60,28 +60,29 @@ Request
 
 ### Location
 
-`internal/cmd/root.go:754-765`
+`internal/cmd/serve.go:827-874`
 
 ### Implementation
 
 ```go
 func corsMiddleware(next http.Handler) http.Handler {
+  allowedOrigins := corsAllowedOrigins()
   return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-    // Hardcoded origin
-    w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-    
-    // Allowed methods
-    w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-    
-    // Allowed headers
-    w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-    
-    // Handle preflight
+    origin := r.Header.Get("Origin")
     if r.Method == http.MethodOptions {
+      if isOriginAllowed(origin, allowedOrigins) {
+        w.Header().Set("Access-Control-Allow-Origin", origin)
+        w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+      }
       w.WriteHeader(http.StatusOK)
       return
     }
-    
+    if isOriginAllowed(origin, allowedOrigins) {
+      w.Header().Set("Access-Control-Allow-Origin", origin)
+      w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+      w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+    }
     next.ServeHTTP(w, r)
   })
 }
@@ -89,12 +90,12 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 ### Configuration
 
-**Hardcoded values:**
-- Origin: `http://localhost:3000` (Next.js dev server)
+**Configuration values:**
+- Origins: `PRATC_CORS_ALLOWED_ORIGINS`, comma-separated. Empty disables CORS by default.
 - Methods: `GET, POST, DELETE, OPTIONS`
 - Headers: `Content-Type`
 
-**Known issue:** Production config needed. Currently only allows localhost.
+Browser dashboard origins are historical/deferred. The v2.0 dashboard is TUI-first, so no browser origin is enabled unless an operator explicitly configures it.
 
 ### Usage
 
@@ -501,7 +502,7 @@ if syncAPI == nil {
 
 ```go
 server := &http.Server{
-  Addr:    ":" + strconv.Itoa(port),  // Default: :8080
+  Addr:    ":" + strconv.Itoa(port),  // Default: :7400
   Handler: corsMiddleware(mux),
 }
 ```
@@ -510,7 +511,7 @@ server := &http.Server{
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `PRATC_PORT` | 8080 | Server port |
+| `PRATC_PORT` | 7400 | Server port |
 
 ### Graceful Shutdown
 
@@ -536,7 +537,7 @@ return err
 
 1. **No authentication** — API is open
 2. **No rate limiting** — HTTP layer has no rate limiting (GitHub client has rate limiting)
-3. **CORS hardcoded** — Only allows localhost:3000
+3. **CORS hardcoded** — Browser-dashboard CORS examples are historical; v2.0 dashboard is TUI-first
 4. **No request size limits** — Except settings import (1MB)
 5. **No TLS** — HTTP only (use reverse proxy for HTTPS)
 

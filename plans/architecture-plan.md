@@ -1,14 +1,16 @@
 # prATC — App Architecture Plan
 
+Status: historical architecture seed. The active system shape is `ARCHITECTURE.md`; the active v2.0 execution plan is `VERSION2.0.md`.
+
 ## System Overview
 
-prATC is an AI-powered, self-hostable, and repo-agnostic platform designed to manage extremely large repositories with 5,500+ open pull requests. Targeted at solo maintainers, it applies combinatorial optimization—as in air traffic control—to PR triage, deduplication, and merge planning. The system is a polyglot monorepo with three major components: the `pratc` binary (Go CLI and optional HTTP API), a Python-based ML service invoked via subprocess and JSON, and a Next.js-powered web dashboard. The architecture is a monolith-style CLI that can optionally expose an HTTP API (`pratc serve`).
+prATC is an AI-powered, self-hostable, and repo-agnostic platform designed to manage extremely large repositories with thousands of open pull requests. The current v2.0 direction applies air-traffic-control style planning to PR triage, deduplication, action-lane orchestration, and guarded GitHub execution. The system is a polyglot monorepo with the `pratc` binary (Go CLI, TUI, optional HTTP API), a Python-based ML service invoked via subprocess and JSON, and archived/deferred browser dashboard code.
 
 ### Architecture Pattern
 
 - **Type**: Monolith (polyglot, CLI-first) with optional web API and ML subprocesses
-- **Frontend**: Next.js 14+ web dashboard (port 3000)
-- **Backend API**: Go-based HTTP API (port 8080), part of `pratc serve`
+- **Frontend**: TUI-first dashboard via `pratc monitor`; archived/deferred Next.js web dashboard
+- **Backend API**: Go-based HTTP API (port 7400), part of `pratc serve`
 - **Database**: SQLite (file-based, WAL mode)
 - **Background Jobs**: In-process background sync worker for PR metadata
 - **External Services**: GitHub GraphQL/REST, Python ML subprocess (local) or OpenRouter (hosted ML/AI), Weave CLI (optional)
@@ -16,7 +18,7 @@ prATC is an AI-powered, self-hostable, and repo-agnostic platform designed to ma
 ### System Diagram
 
 ```
-User (browser) → [Next.js (3000)] → REST → [Go HTTP API (8080)] → [SQLite DB]
+Operator/Swarm → [CLI/TUI/API] → [Go HTTP API (7400)] → [SQLite DB]
                                               ↓           ↑
                                    Python ML subprocess  (JSON, stdin/stdout)
                                               ↓
@@ -121,7 +123,7 @@ SQLite schema designed for scale and fast lookups:
 
 ## API Design
 
-All routes served from `pratc serve` (Go net/http) on port 8080. No authentication (localhost only). CORS restricts origins to localhost:3000.
+All active routes are served from `pratc serve` (Go net/http) on port 7400 by default. No authentication (localhost/operator network only) unless a deployment adds a reverse proxy or auth wrapper. Browser-dashboard CORS notes are historical; the v2.0 dashboard is TUI-first.
 
 ### Routes
 
@@ -207,7 +209,7 @@ POST /api/repos/:owner/:repo/actions
 
 - **Provider**: None (v0.1) — single-user, localhost only
 - **GitHub PAT**: Handled by `psst` (secret manager) or `GITHUB_PAT` env var. Never stored in SQLite/config files.
-- **All routes**: Public, CORS-restricted to localhost:3000.
+- **All routes**: Public unless deployment adds auth; CORS is disabled unless `PRATC_CORS_ALLOWED_ORIGINS` is configured.
 - **Repo scoping**: All queries namespaced by `owner/repo`. No cross-repo data leaks.
 
 ---

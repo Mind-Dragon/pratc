@@ -1,5 +1,7 @@
 # GitHub App Integration Design for prATC v1.8
 
+Status: historical/auth design input. v2.0 action mutation policy is governed by `../../VERSION2.0.md`, `../../GUIDELINE.md`, and the central executor model.
+
 ## Merged Recommendations
 
 Summary: The GitHub App direction is correct, but the design should separate operator login from repository access, tighten webhook/job ordering semantics, and make transition and uninstall behavior explicit before implementation.
@@ -528,7 +530,7 @@ That means:
 
 ## Non-goals
 
-- no auto-merge or auto-approve
+- historical v1.8 design did not allow auto-merge or auto-approve; v2.0 reopens mutations only through typed ActionIntents and the central executor
 - no requirement to abandon PAT fallback immediately
 - no broad GitHub write scope beyond statuses/checks in v1.8
 - no assumption that every deployment exposes a public webhook endpoint on day one
