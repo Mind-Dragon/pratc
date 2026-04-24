@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbletea"
 	"github.com/jeffersonnunn/pratc/internal/monitor/data"
 	"github.com/jeffersonnunn/pratc/internal/monitor/tui"
+	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
 func TestTUI_RenderWithoutCrash(t *testing.T) {
@@ -146,6 +147,32 @@ func TestTUI_DataUpdatesRenderCorrectly(t *testing.T) {
 	view := m.View()
 	if !strings.Contains(view, "owner/repo") {
 		t.Error("expected view to contain repo name after data update")
+	}
+}
+
+func TestTUI_ActionPlanDashboardRendersReadOnlyLaneSummary(t *testing.T) {
+	t.Parallel()
+
+	m := tui.New(nil)
+	plan := &types.ActionPlan{
+		Repo:          "openclaw/openclaw",
+		PolicyProfile: types.PolicyProfileAdvisory,
+		CorpusSnapshot: types.ActionCorpusSnapshot{
+			TotalPRs: 3,
+		},
+		Lanes: []types.ActionLaneSummary{
+			{Lane: types.ActionLaneFastMerge, Count: 2},
+			{Lane: types.ActionLaneHumanEscalate, Count: 1},
+		},
+	}
+
+	_, _ = m.Update(data.DataUpdate{Timestamp: time.Now(), ActionPlan: plan})
+
+	view := m.View()
+	for _, expected := range []string{"ACTIONS", "read-only", "openclaw/openclaw", "advisory", "fast_merge", "2", "human_escalate", "1"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("expected action dashboard to contain %q; view:\n%s", expected, view)
+		}
 	}
 }
 

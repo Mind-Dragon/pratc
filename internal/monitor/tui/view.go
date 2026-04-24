@@ -15,6 +15,7 @@ func Render(m Model) string {
 
 	zones := sideBySide(jobsPanel, timelinePanel, rateLimitPanel, 30, 40, 30)
 
+	actionPanel := m.ActionLaneBoard.View(94)
 	consolePanel := m.ConsolePanel.View(94)
 
 	var helpOverlay string
@@ -22,9 +23,10 @@ func Render(m Model) string {
 		helpOverlay = renderHelpOverlay()
 	}
 
-	return fmt.Sprintf("%s\n%s\n%s\n%s%s",
+	return fmt.Sprintf("%s\n%s\n%s\n%s\n%s%s",
 		header,
 		zones,
+		actionPanel,
 		consolePanel,
 		footer,
 		helpOverlay,

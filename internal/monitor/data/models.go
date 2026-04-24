@@ -5,6 +5,8 @@ package data
 
 import (
 	"time"
+
+	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
 const (
@@ -71,4 +73,5 @@ type DataUpdate struct {
 	RateLimit       RateLimitView
 	RecentLogs      []LogEntry
 	ActivityBuckets []ActivityBucket
+	ActionPlan      *types.ActionPlan `json:"action_plan,omitempty"`
 }

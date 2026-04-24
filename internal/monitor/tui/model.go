@@ -16,10 +16,11 @@ type Model struct {
 	refreshInterval time.Duration
 
 	// Panel components for real data display
-	JobsPanel      *JobsList
-	TimelinePanel  *TimelinePanel
-	RateLimitPanel *RateLimitPanel
-	ConsolePanel   *ConsolePanel
+	JobsPanel       *JobsList
+	TimelinePanel   *TimelinePanel
+	RateLimitPanel  *RateLimitPanel
+	ConsolePanel    *ConsolePanel
+	ActionLaneBoard *ActionLaneBoard
 
 	// Zone state
 	width        int
@@ -65,6 +66,7 @@ func New(broadcaster *data.Broadcaster) Model {
 		TimelinePanel:   NewTimelinePanel(),
 		RateLimitPanel:  NewRateLimitPanel(),
 		ConsolePanel:    NewConsolePanel(),
+		ActionLaneBoard: NewActionLaneBoard(),
 		ActiveZone:      ZoneJobs,
 		BudgetRemaining: 4200,
 		BudgetTotal:     5000,
@@ -139,6 +141,9 @@ func (m *Model) handleDataUpdate(update data.DataUpdate) (tea.Model, tea.Cmd) {
 	}
 	if len(update.RecentLogs) > 0 {
 		m.ConsolePanel.SetEntries(update.RecentLogs)
+	}
+	if update.ActionPlan != nil {
+		m.ActionLaneBoard.SetPlan(update.ActionPlan)
 	}
 	return m, nil
 }
