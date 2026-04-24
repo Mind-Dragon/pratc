@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -13,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -607,6 +607,50 @@ func handlePlan(w http.ResponseWriter, r *http.Request, service app.Service, rep
 	writeHTTPJSON(w, http.StatusOK, result)
 }
 
+func handleActions(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
+	if !ensureGET(w, r) || !ensureRepo(w, r, repo) {
+		return
+	}
+	log := logger.FromContext(r.Context())
+	rawPolicy := r.URL.Query().Get("policy")
+	if rawPolicy == "" {
+		rawPolicy = string(types.PolicyProfileAdvisory)
+	}
+	policy, err := parsePolicyProfile(rawPolicy)
+	if err != nil {
+		writeHTTPError(w, r, http.StatusBadRequest, "invalid policy")
+		return
+	}
+	lane := r.URL.Query().Get("lane")
+	if lane != "" {
+		if _, err := parseActionLaneFlag(lane); err != nil {
+			writeHTTPError(w, r, http.StatusBadRequest, "invalid lane")
+			return
+		}
+	}
+	dryRun := true
+	if raw := r.URL.Query().Get("dry_run"); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			writeHTTPError(w, r, http.StatusBadRequest, "invalid dry_run")
+			return
+		}
+		dryRun = parsed
+	}
+
+	plan, err := service.Actions(r.Context(), repo, app.ActionOptions{
+		PolicyProfile: policy,
+		LaneFilter:    lane,
+		DryRun:        dryRun,
+	})
+	if err != nil {
+		log.Error("handleActions: service.Actions failed", "error", err.Error(), "repo", repo, "policy", policy, "lane", lane)
+		writeHTTPError(w, r, http.StatusInternalServerError, sanitizedError(err))
+		return
+	}
+	writeHTTPJSON(w, http.StatusOK, plan)
+}
+
 // handleReview is not implemented - service.Review does not exist
 // func handleReview(w http.ResponseWriter, r *http.Request, service app.Service, repo string) {
 // 	if !ensureGET(w, r) || !ensureRepo(w, r, repo) {
@@ -794,6 +838,8 @@ func handleRepoAction(w http.ResponseWriter, r *http.Request, service app.Servic
 		handleGraph(w, r, service, repo)
 	case "plan", "plans":
 		handlePlan(w, r, service, repo)
+	case "actions":
+		handleActions(w, r, service, repo)
 	case "sync":
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -1187,6 +1233,9 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst,
 	})
 	mux.HandleFunc("/plan", func(w http.ResponseWriter, r *http.Request) {
 		handlePlan(w, r, service, repoFromQuery(r, defaultRepo))
+	})
+	mux.HandleFunc("/actions", func(w http.ResponseWriter, r *http.Request) {
+		handleActions(w, r, service, repoFromQuery(r, defaultRepo))
 	})
 
 	mux.HandleFunc("/api/repos/", func(w http.ResponseWriter, r *http.Request) {
