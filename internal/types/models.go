@@ -252,11 +252,156 @@ type PlanRejection struct {
 	Reason   string `json:"reason"`
 }
 
+type ActionLane string
+
+const (
+	ActionLaneFastMerge        ActionLane = "fast_merge"
+	ActionLaneFixAndMerge      ActionLane = "fix_and_merge"
+	ActionLaneDuplicateClose   ActionLane = "duplicate_close"
+	ActionLaneRejectOrClose    ActionLane = "reject_or_close"
+	ActionLaneFocusedReview    ActionLane = "focused_review"
+	ActionLaneFutureOrReengage ActionLane = "future_or_reengage"
+	ActionLaneHumanEscalate    ActionLane = "human_escalate"
+)
+
+type PolicyProfile string
+
+const (
+	PolicyProfileAdvisory   PolicyProfile = "advisory"
+	PolicyProfileGuarded    PolicyProfile = "guarded"
+	PolicyProfileAutonomous PolicyProfile = "autonomous"
+	DefaultPolicyProfile                  = PolicyProfileAdvisory
+)
+
+type ActionWorkItemState string
+
+const (
+	ActionWorkItemStateProposed             ActionWorkItemState = "proposed"
+	ActionWorkItemStateClaimable            ActionWorkItemState = "claimable"
+	ActionWorkItemStateClaimed              ActionWorkItemState = "claimed"
+	ActionWorkItemStatePreflighted          ActionWorkItemState = "preflighted"
+	ActionWorkItemStatePatched              ActionWorkItemState = "patched"
+	ActionWorkItemStateTested               ActionWorkItemState = "tested"
+	ActionWorkItemStateApprovedForExecution ActionWorkItemState = "approved_for_execution"
+	ActionWorkItemStateExecuted             ActionWorkItemState = "executed"
+	ActionWorkItemStateVerified             ActionWorkItemState = "verified"
+	ActionWorkItemStateFailed               ActionWorkItemState = "failed"
+	ActionWorkItemStateEscalated            ActionWorkItemState = "escalated"
+	ActionWorkItemStateCanceled             ActionWorkItemState = "canceled"
+)
+
+type ActionKind string
+
+const (
+	ActionKindMerge          ActionKind = "merge"
+	ActionKindClose          ActionKind = "close"
+	ActionKindComment        ActionKind = "comment"
+	ActionKindLabel          ActionKind = "label"
+	ActionKindRequestChanges ActionKind = "request_changes"
+	ActionKindApplyFix       ActionKind = "apply_fix"
+)
+
+type ActionPreflight struct {
+	Check        string   `json:"check"`
+	Status       string   `json:"status"`
+	Reason       string   `json:"reason"`
+	EvidenceRefs []string `json:"evidence_refs"`
+	Required     bool     `json:"required"`
+	CheckedAt    string   `json:"checked_at"`
+}
+
+type ProofBundle struct {
+	ID           string   `json:"id"`
+	WorkItemID   string   `json:"work_item_id"`
+	PRNumber     int      `json:"pr_number"`
+	Summary      string   `json:"summary"`
+	EvidenceRefs []string `json:"evidence_refs"`
+	ArtifactRefs []string `json:"artifact_refs"`
+	TestCommands []string `json:"test_commands"`
+	TestResults  []string `json:"test_results"`
+	CreatedBy    string   `json:"created_by"`
+	CreatedAt    string   `json:"created_at"`
+}
+
+type ActionLease struct {
+	ClaimedBy string `json:"claimed_by,omitempty"`
+	ClaimedAt string `json:"claimed_at,omitempty"`
+	ExpiresAt string `json:"expires_at,omitempty"`
+}
+
+type ActionWorkItem struct {
+	ID                      string              `json:"id"`
+	PRNumber                int                 `json:"pr_number"`
+	Lane                    ActionLane          `json:"lane"`
+	State                   ActionWorkItemState `json:"state"`
+	PriorityScore           float64             `json:"priority_score"`
+	Confidence              float64             `json:"confidence"`
+	RiskFlags               []string            `json:"risk_flags"`
+	ReasonTrail             []string            `json:"reason_trail"`
+	EvidenceRefs            []string            `json:"evidence_refs"`
+	RequiredPreflightChecks []ActionPreflight   `json:"required_preflight_checks"`
+	IdempotencyKey          string              `json:"idempotency_key"`
+	LeaseState              ActionLease         `json:"lease_state"`
+	AllowedActions          []ActionKind        `json:"allowed_actions"`
+	BlockedReasons          []string            `json:"blocked_reasons"`
+	ProofBundleRefs         []string            `json:"proof_bundle_refs,omitempty"`
+}
+
 type ActionIntent struct {
-	Action    string `json:"action"`
-	PRNumber  int    `json:"pr_number"`
-	DryRun    bool   `json:"dry_run"`
-	CreatedAt string `json:"created_at"`
+	ID             string            `json:"id"`
+	Action         ActionKind        `json:"action"`
+	PRNumber       int               `json:"pr_number"`
+	Lane           ActionLane        `json:"lane"`
+	DryRun         bool              `json:"dry_run"`
+	PolicyProfile  PolicyProfile     `json:"policy_profile"`
+	Confidence     float64           `json:"confidence"`
+	RiskFlags      []string          `json:"risk_flags"`
+	Reasons        []string          `json:"reasons"`
+	EvidenceRefs   []string          `json:"evidence_refs"`
+	Preconditions  []ActionPreflight `json:"preconditions"`
+	IdempotencyKey string            `json:"idempotency_key"`
+	CreatedAt      string            `json:"created_at"`
+	Payload        map[string]any    `json:"payload,omitempty"`
+}
+
+type ActionLaneSummary struct {
+	Lane        ActionLane `json:"lane"`
+	Count       int        `json:"count"`
+	WorkItemIDs []string   `json:"work_item_ids"`
+}
+
+type ActionCorpusSnapshot struct {
+	TotalPRs          int  `json:"total_prs"`
+	HeadSHAIndexed    bool `json:"head_sha_indexed"`
+	AnalysisTruncated bool `json:"analysis_truncated"`
+	MaxPRsApplied     int  `json:"max_prs_applied"`
+}
+
+type ActionPlanAuditCheck struct {
+	Name         string   `json:"name"`
+	Status       string   `json:"status"`
+	Reason       string   `json:"reason,omitempty"`
+	EvidenceRefs []string `json:"evidence_refs,omitempty"`
+	CheckedAt    string   `json:"checked_at,omitempty"`
+}
+
+type ActionPlanAudit struct {
+	Checks   []ActionPlanAuditCheck `json:"checks"`
+	Warnings []string               `json:"warnings,omitempty"`
+	Errors   []string               `json:"errors,omitempty"`
+}
+
+type ActionPlan struct {
+	SchemaVersion  string               `json:"schema_version"`
+	RunID          string               `json:"run_id"`
+	Repo           string               `json:"repo"`
+	PolicyProfile  PolicyProfile        `json:"policy_profile"`
+	GeneratedAt    string               `json:"generated_at"`
+	CorpusSnapshot ActionCorpusSnapshot `json:"corpus_snapshot"`
+	Lanes          []ActionLaneSummary  `json:"lanes"`
+	WorkItems      []ActionWorkItem     `json:"work_items"`
+	ActionIntents  []ActionIntent       `json:"action_intents"`
+	Audit          ActionPlanAudit      `json:"audit"`
 }
 
 type ClusterRequest struct {

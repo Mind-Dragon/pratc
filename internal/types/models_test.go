@@ -399,3 +399,273 @@ func TestReviewPayloadOmittedWhenNil(t *testing.T) {
 		}
 	}
 }
+
+func TestActionConstantsContract(t *testing.T) {
+	t.Parallel()
+
+	lanes := []ActionLane{
+		ActionLaneFastMerge,
+		ActionLaneFixAndMerge,
+		ActionLaneDuplicateClose,
+		ActionLaneRejectOrClose,
+		ActionLaneFocusedReview,
+		ActionLaneFutureOrReengage,
+		ActionLaneHumanEscalate,
+	}
+	wantLanes := []string{
+		"fast_merge",
+		"fix_and_merge",
+		"duplicate_close",
+		"reject_or_close",
+		"focused_review",
+		"future_or_reengage",
+		"human_escalate",
+	}
+	for i, lane := range lanes {
+		if string(lane) != wantLanes[i] {
+			t.Fatalf("lane %d = %q, want %q", i, lane, wantLanes[i])
+		}
+	}
+
+	profiles := []PolicyProfile{
+		PolicyProfileAdvisory,
+		PolicyProfileGuarded,
+		PolicyProfileAutonomous,
+	}
+	wantProfiles := []string{"advisory", "guarded", "autonomous"}
+	for i, profile := range profiles {
+		if string(profile) != wantProfiles[i] {
+			t.Fatalf("policy profile %d = %q, want %q", i, profile, wantProfiles[i])
+		}
+	}
+	if DefaultPolicyProfile != PolicyProfileAdvisory {
+		t.Fatalf("default policy profile = %q, want %q", DefaultPolicyProfile, PolicyProfileAdvisory)
+	}
+
+	states := []ActionWorkItemState{
+		ActionWorkItemStateProposed,
+		ActionWorkItemStateClaimable,
+		ActionWorkItemStateClaimed,
+		ActionWorkItemStatePreflighted,
+		ActionWorkItemStatePatched,
+		ActionWorkItemStateTested,
+		ActionWorkItemStateApprovedForExecution,
+		ActionWorkItemStateExecuted,
+		ActionWorkItemStateVerified,
+		ActionWorkItemStateFailed,
+		ActionWorkItemStateEscalated,
+		ActionWorkItemStateCanceled,
+	}
+	wantStates := []string{
+		"proposed",
+		"claimable",
+		"claimed",
+		"preflighted",
+		"patched",
+		"tested",
+		"approved_for_execution",
+		"executed",
+		"verified",
+		"failed",
+		"escalated",
+		"canceled",
+	}
+	for i, state := range states {
+		if string(state) != wantStates[i] {
+			t.Fatalf("work item state %d = %q, want %q", i, state, wantStates[i])
+		}
+	}
+
+	kinds := []ActionKind{
+		ActionKindMerge,
+		ActionKindClose,
+		ActionKindComment,
+		ActionKindLabel,
+		ActionKindRequestChanges,
+		ActionKindApplyFix,
+	}
+	wantKinds := []string{"merge", "close", "comment", "label", "request_changes", "apply_fix"}
+	for i, kind := range kinds {
+		if string(kind) != wantKinds[i] {
+			t.Fatalf("action kind %d = %q, want %q", i, kind, wantKinds[i])
+		}
+	}
+}
+
+func TestActionPlanJSONContract(t *testing.T) {
+	t.Parallel()
+
+	preflight := ActionPreflight{
+		Check:        "pr_still_open",
+		Status:       "passed",
+		Reason:       "PR #101 is open",
+		EvidenceRefs: []string{"github:pr/101#state"},
+		Required:     true,
+		CheckedAt:    "2026-04-24T08:02:00Z",
+	}
+	plan := ActionPlan{
+		SchemaVersion: "2.0",
+		RunID:         "run-123",
+		Repo:          "owner/repo",
+		PolicyProfile: PolicyProfileAdvisory,
+		GeneratedAt:   "2026-04-24T08:00:00Z",
+		CorpusSnapshot: ActionCorpusSnapshot{
+			TotalPRs:          1,
+			HeadSHAIndexed:    true,
+			AnalysisTruncated: false,
+			MaxPRsApplied:     0,
+		},
+		Lanes: []ActionLaneSummary{{
+			Lane:        ActionLaneFastMerge,
+			Count:       1,
+			WorkItemIDs: []string{"wi-101"},
+		}},
+		WorkItems: []ActionWorkItem{{
+			ID:                      "wi-101",
+			PRNumber:                101,
+			Lane:                    ActionLaneFastMerge,
+			State:                   ActionWorkItemStateProposed,
+			PriorityScore:           0.91,
+			Confidence:              0.95,
+			RiskFlags:               []string{"low_risk"},
+			ReasonTrail:             []string{"ci_green", "mergeable_clean"},
+			EvidenceRefs:            []string{"github:pr/101"},
+			RequiredPreflightChecks: []ActionPreflight{preflight},
+			IdempotencyKey:          "owner/repo#101:merge:abc123",
+			LeaseState: ActionLease{
+				ClaimedBy: "worker-1",
+				ClaimedAt: "2026-04-24T08:03:00Z",
+				ExpiresAt: "2026-04-24T08:33:00Z",
+			},
+			AllowedActions:  []ActionKind{ActionKindMerge},
+			BlockedReasons:  []string{},
+			ProofBundleRefs: []string{"proof-101"},
+		}},
+		ActionIntents: []ActionIntent{{
+			ID:             "intent-101-merge",
+			Action:         ActionKindMerge,
+			PRNumber:       101,
+			Lane:           ActionLaneFastMerge,
+			DryRun:         true,
+			PolicyProfile:  PolicyProfileAdvisory,
+			Confidence:     0.95,
+			RiskFlags:      []string{"low_risk"},
+			Reasons:        []string{"ci_green", "mergeable_clean"},
+			EvidenceRefs:   []string{"github:pr/101"},
+			Preconditions:  []ActionPreflight{preflight},
+			IdempotencyKey: "owner/repo#101:merge:abc123",
+			CreatedAt:      "2026-04-24T08:01:00Z",
+			Payload:        map[string]any{"merge_method": "squash"},
+		}},
+		Audit: ActionPlanAudit{
+			Checks: []ActionPlanAuditCheck{{
+				Name:         "lane_coverage",
+				Status:       "passed",
+				Reason:       "every PR has one primary action lane",
+				EvidenceRefs: []string{"run:run-123"},
+				CheckedAt:    "2026-04-24T08:04:00Z",
+			}},
+		},
+	}
+
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatalf("marshal action plan: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("decode action plan: %v", err)
+	}
+	assertExactJSONKeys(t, decoded, []string{
+		"schema_version",
+		"run_id",
+		"repo",
+		"policy_profile",
+		"generated_at",
+		"corpus_snapshot",
+		"lanes",
+		"work_items",
+		"action_intents",
+		"audit",
+	})
+
+	corpus, ok := decoded["corpus_snapshot"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected corpus_snapshot payload: %#v", decoded["corpus_snapshot"])
+	}
+	assertExactJSONKeys(t, corpus, []string{"total_prs", "head_sha_indexed", "analysis_truncated", "max_prs_applied"})
+	if corpus["head_sha_indexed"] != true {
+		t.Fatalf("head_sha_indexed = %#v, want true", corpus["head_sha_indexed"])
+	}
+
+	workItems, ok := decoded["work_items"].([]any)
+	if !ok || len(workItems) != 1 {
+		t.Fatalf("unexpected work_items payload: %#v", decoded["work_items"])
+	}
+	workItem, ok := workItems[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected work item payload: %#v", workItems[0])
+	}
+	assertExactJSONKeys(t, workItem, []string{
+		"id",
+		"pr_number",
+		"lane",
+		"state",
+		"priority_score",
+		"confidence",
+		"risk_flags",
+		"reason_trail",
+		"evidence_refs",
+		"required_preflight_checks",
+		"idempotency_key",
+		"lease_state",
+		"allowed_actions",
+		"blocked_reasons",
+		"proof_bundle_refs",
+	})
+
+	intents, ok := decoded["action_intents"].([]any)
+	if !ok || len(intents) != 1 {
+		t.Fatalf("unexpected action_intents payload: %#v", decoded["action_intents"])
+	}
+	intent, ok := intents[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected action intent payload: %#v", intents[0])
+	}
+	assertExactJSONKeys(t, intent, []string{
+		"id",
+		"action",
+		"pr_number",
+		"lane",
+		"dry_run",
+		"policy_profile",
+		"confidence",
+		"risk_flags",
+		"reasons",
+		"evidence_refs",
+		"preconditions",
+		"idempotency_key",
+		"created_at",
+		"payload",
+	})
+	if intent["action"] != string(ActionKindMerge) {
+		t.Fatalf("action = %#v, want %q", intent["action"], ActionKindMerge)
+	}
+	if intent["dry_run"] != true {
+		t.Fatalf("dry_run = %#v, want true", intent["dry_run"])
+	}
+}
+
+func assertExactJSONKeys(t *testing.T, decoded map[string]any, want []string) {
+	t.Helper()
+
+	if len(decoded) != len(want) {
+		t.Fatalf("keys = %#v, want exactly %#v", decoded, want)
+	}
+	for _, key := range want {
+		if _, ok := decoded[key]; !ok {
+			t.Fatalf("missing key %s from %#v", key, decoded)
+		}
+	}
+}
