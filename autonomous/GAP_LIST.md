@@ -1,6 +1,6 @@
 # Autonomous Gap List
 
-Updated from audit: `autonomous/runs/20260423T203433Z/AUDIT_RESULTS.json`
+Updated from audit: `projects/openclaw_openclaw/runs/v171-head-20260424T153126Z/AUDIT_RESULTS.json`
 
 ## Open gaps
 

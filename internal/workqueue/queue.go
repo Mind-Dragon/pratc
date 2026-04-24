@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jeffersonnunn/pratc/internal/executor"
 	"github.com/jeffersonnunn/pratc/internal/types"
 	_ "modernc.org/sqlite"
 )
@@ -97,6 +98,19 @@ func (q *Queue) init(ctx context.Context) error {
 			reason TEXT NOT NULL,
 			created_at TEXT NOT NULL
 		);`,
+		`CREATE TABLE IF NOT EXISTS action_proof_bundles (
+			id TEXT PRIMARY KEY,
+			work_item_id TEXT NOT NULL,
+			pr_number INTEGER NOT NULL,
+			summary TEXT NOT NULL,
+			evidence_refs_json TEXT NOT NULL,
+			artifact_refs_json TEXT NOT NULL,
+			test_commands_json TEXT NOT NULL,
+			test_results_json TEXT NOT NULL,
+			created_by TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_action_proof_bundles_work_item_id ON action_proof_bundles(work_item_id);`,
 	}
 	for _, stmt := range stmts {
 		if _, err := q.db.ExecContext(ctx, stmt); err != nil {
@@ -439,4 +453,249 @@ func validTransition(from, to types.ActionWorkItemState) bool {
 		}
 	}
 	return false
+}
+
+// GetLaneCounts returns claimable and claimed counts per lane for a given repo.
+func (q *Queue) GetLaneCounts(ctx context.Context, repo string) (map[types.ActionLane]struct{ Claimable, Claimed int }, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	// Query counts grouped by lane and state
+	query := `SELECT lane, state, COUNT(*) FROM action_work_items WHERE repo = ? GROUP BY lane, state`
+	rows, err := q.db.QueryContext(ctx, query, repo)
+	if err != nil {
+		return nil, fmt.Errorf("query lane counts: %w", err)
+	}
+	defer rows.Close()
+
+	counts := make(map[types.ActionLane]struct{ Claimable, Claimed int })
+	for rows.Next() {
+		var laneStr, stateStr string
+		var cnt int
+		if err := rows.Scan(&laneStr, &stateStr, &cnt); err != nil {
+			return nil, fmt.Errorf("scan lane count: %w", err)
+		}
+		lane := types.ActionLane(laneStr)
+		state := types.ActionWorkItemState(stateStr)
+		entry := counts[lane]
+		if state == types.ActionWorkItemStateClaimable {
+			entry.Claimable = cnt
+		} else if state == types.ActionWorkItemStateClaimed {
+			entry.Claimed = cnt
+		}
+		counts[lane] = entry
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return counts, nil
+}
+
+// AttachProof validates and attaches a proof bundle to a claimed work item.
+// If the bundle ID already exists for the work item, returns the existing bundle idempotently.
+// On successful attach, appends bundle.ID to item.ProofBundleRefs and transitions item to preflighted.
+func (q *Queue) AttachProof(ctx context.Context, workItemID, workerID string, bundle types.ProofBundle) (types.ProofBundle, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	// Get work item
+	item, err := q.getUnlocked(ctx, workItemID)
+	if err != nil {
+		return types.ProofBundle{}, err
+	}
+
+	// Check if bundle ID already exists for this work item (idempotent)
+	existing, err := q.getProofUnlocked(ctx, bundle.ID)
+	if err == nil {
+		// Bundle already exists; ensure it's for the same work item
+		if existing.WorkItemID != workItemID {
+			return types.ProofBundle{}, fmt.Errorf("proof bundle %s belongs to different work item %s", bundle.ID, existing.WorkItemID)
+		}
+		// Ensure ProofBundleRefs includes the bundle ID (should already)
+		found := false
+		for _, ref := range item.ProofBundleRefs {
+			if ref == bundle.ID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			item.ProofBundleRefs = append(item.ProofBundleRefs, bundle.ID)
+			if err := q.saveUnlocked(ctx, item); err != nil {
+				return types.ProofBundle{}, fmt.Errorf("save work item after proof attach (idempotent): %w", err)
+			}
+		}
+		// Return existing bundle idempotently
+		return existing, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return types.ProofBundle{}, fmt.Errorf("checking existing proof bundle: %w", err)
+	}
+
+	// Bundle ID not found; validate item state and lease ownership
+	if item.State != types.ActionWorkItemStateClaimed {
+		return types.ProofBundle{}, fmt.Errorf("work item %s is not claimed (state=%s)", workItemID, item.State)
+	}
+	if item.LeaseState.ClaimedBy != workerID {
+		return types.ProofBundle{}, fmt.Errorf("work item %s not claimed by worker %s", workItemID, workerID)
+	}
+	if leaseExpired(item.LeaseState.ExpiresAt, q.now()) {
+		return types.ProofBundle{}, fmt.Errorf("lease for work item %s has expired", workItemID)
+	}
+
+	// Validate proof bundle fields
+	if err := executor.ValidateProofBundle(item, bundle); err != nil {
+		return types.ProofBundle{}, fmt.Errorf("proof bundle validation failed: %w", err)
+	}
+
+	// Insert new proof bundle
+	evidenceRefsJSON, err := json.Marshal(bundle.EvidenceRefs)
+	if err != nil {
+		return types.ProofBundle{}, fmt.Errorf("marshal evidence refs: %w", err)
+	}
+	artifactRefsJSON, err := json.Marshal(bundle.ArtifactRefs)
+	if err != nil {
+		return types.ProofBundle{}, fmt.Errorf("marshal artifact refs: %w", err)
+	}
+	testCommandsJSON, err := json.Marshal(bundle.TestCommands)
+	if err != nil {
+		return types.ProofBundle{}, fmt.Errorf("marshal test commands: %w", err)
+	}
+	testResultsJSON, err := json.Marshal(bundle.TestResults)
+	if err != nil {
+		return types.ProofBundle{}, fmt.Errorf("marshal test results: %w", err)
+	}
+
+	_, err = q.db.ExecContext(ctx, `
+		INSERT INTO action_proof_bundles (
+			id, work_item_id, pr_number, summary,
+			evidence_refs_json, artifact_refs_json,
+			test_commands_json, test_results_json,
+			created_by, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, bundle.ID, bundle.WorkItemID, bundle.PRNumber, bundle.Summary,
+		string(evidenceRefsJSON), string(artifactRefsJSON),
+		string(testCommandsJSON), string(testResultsJSON),
+		bundle.CreatedBy, bundle.CreatedAt)
+	if err != nil {
+		return types.ProofBundle{}, fmt.Errorf("insert proof bundle: %w", err)
+	}
+
+	// Append bundle ID to item.ProofBundleRefs if absent
+	found := false
+	for _, ref := range item.ProofBundleRefs {
+		if ref == bundle.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		item.ProofBundleRefs = append(item.ProofBundleRefs, bundle.ID)
+	}
+
+	// Transition claimed -> preflighted once
+	if item.State == types.ActionWorkItemStateClaimed {
+		item.State = types.ActionWorkItemStatePreflighted
+		// Update work item with new state and ProofBundleRefs
+		if err := q.saveUnlocked(ctx, item); err != nil {
+			return types.ProofBundle{}, fmt.Errorf("save work item after proof attach: %w", err)
+		}
+		// Record transition
+		if err := q.appendTransitionUnlocked(ctx, item.ID, types.ActionWorkItemStateClaimed, types.ActionWorkItemStatePreflighted, workerID, "proof_attached"); err != nil {
+			return types.ProofBundle{}, fmt.Errorf("append transition: %w", err)
+		}
+	}
+
+	return bundle, nil
+}
+
+// GetProof retrieves a proof bundle by its ID.
+func (q *Queue) GetProof(ctx context.Context, id string) (types.ProofBundle, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.getProofUnlocked(ctx, id)
+}
+
+// getProofUnlocked retrieves a proof bundle by ID (internal, assumes lock held).
+func (q *Queue) getProofUnlocked(ctx context.Context, id string) (types.ProofBundle, error) {
+	var (
+		workItemID          string
+		prNumber            int
+		summary             string
+		evidenceRefsJSON    string
+		artifactRefsJSON    string
+		testCommandsJSON    string
+		testResultsJSON     string
+		createdBy, createdAt string
+	)
+	err := q.db.QueryRowContext(ctx, `
+		SELECT work_item_id, pr_number, summary, evidence_refs_json, artifact_refs_json,
+		       test_commands_json, test_results_json, created_by, created_at
+		FROM action_proof_bundles WHERE id = ?
+	`, id).Scan(&workItemID, &prNumber, &summary, &evidenceRefsJSON, &artifactRefsJSON,
+		&testCommandsJSON, &testResultsJSON, &createdBy, &createdAt)
+	if err != nil {
+		return types.ProofBundle{}, fmt.Errorf("get proof bundle %s: %w", id, err)
+	}
+	var evidenceRefs, artifactRefs, testCommands, testResults []string
+	if err := json.Unmarshal([]byte(evidenceRefsJSON), &evidenceRefs); err != nil {
+		return types.ProofBundle{}, fmt.Errorf("unmarshal evidence refs: %w", err)
+	}
+	if err := json.Unmarshal([]byte(artifactRefsJSON), &artifactRefs); err != nil {
+		return types.ProofBundle{}, fmt.Errorf("unmarshal artifact refs: %w", err)
+	}
+	if err := json.Unmarshal([]byte(testCommandsJSON), &testCommands); err != nil {
+		return types.ProofBundle{}, fmt.Errorf("unmarshal test commands: %w", err)
+	}
+	if err := json.Unmarshal([]byte(testResultsJSON), &testResults); err != nil {
+		return types.ProofBundle{}, fmt.Errorf("unmarshal test results: %w", err)
+	}
+	return types.ProofBundle{
+		ID:           id,
+		WorkItemID:   workItemID,
+		PRNumber:     prNumber,
+		Summary:      summary,
+		EvidenceRefs: evidenceRefs,
+		ArtifactRefs: artifactRefs,
+		TestCommands: testCommands,
+		TestResults:  testResults,
+		CreatedBy:    createdBy,
+		CreatedAt:    createdAt,
+	}, nil
+}
+
+// GetProofsForItem retrieves all proof bundles attached to a work item.
+func (q *Queue) GetProofsForItem(ctx context.Context, workItemID string) ([]types.ProofBundle, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	rows, err := q.db.QueryContext(ctx, `
+		SELECT id FROM action_proof_bundles WHERE work_item_id = ?
+	`, workItemID)
+	if err != nil {
+		return nil, fmt.Errorf("query proof bundles for work item %s: %w", workItemID, err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan proof bundle id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	bundles := make([]types.ProofBundle, 0, len(ids))
+	for _, id := range ids {
+		bundle, err := q.getProofUnlocked(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		bundles = append(bundles, bundle)
+	}
+	return bundles, nil
 }

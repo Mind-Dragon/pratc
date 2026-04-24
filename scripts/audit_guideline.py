@@ -710,6 +710,79 @@ def check_advisory_zero_write(action_plan: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def check_action_intent_completeness(action_plan: dict[str, Any]) -> dict[str, Any]:
+    """Check that every action intent has required fields populated."""
+    if not action_plan:
+        return {
+            'id': 'action_intent_completeness',
+            'label': 'every action intent has required fields populated',
+            'status': 'fail',
+            'expected': 'action plan with complete action intents',
+            'actual': 'missing action-plan.json',
+        }
+
+    intents = action_plan.get('action_intents') if isinstance(action_plan.get('action_intents'), list) else []
+    if not intents:
+        return {
+            'id': 'action_intent_completeness',
+            'label': 'every action intent has required fields populated',
+            'status': 'pass',
+            'expected': 'no action intents to check',
+            'actual': 'no action intents',
+        }
+
+    issues = []
+    for intent in intents:
+        if not isinstance(intent, dict):
+            issues.append('non_object_intent')
+            continue
+
+        intent_id = intent.get('id') or f"pr_{intent.get('pr_number', 'unknown')}"
+        pr_number = intent.get('pr_number', 'unknown')
+
+        # Check reasons
+        reasons = intent.get('reasons')
+        if not isinstance(reasons, list) or len(reasons) == 0:
+            issues.append(f'intent_{intent_id}_pr_{pr_number}_empty_reasons')
+
+        # Check evidence_refs
+        evidence_refs = intent.get('evidence_refs')
+        if not isinstance(evidence_refs, list) or len(evidence_refs) == 0:
+            issues.append(f'intent_{intent_id}_pr_{pr_number}_empty_evidence_refs')
+
+        # Check idempotency_key
+        idempotency_key = intent.get('idempotency_key')
+        if not isinstance(idempotency_key, str) or idempotency_key == '':
+            issues.append(f'intent_{intent_id}_pr_{pr_number}_empty_idempotency_key')
+
+        # Check confidence
+        confidence = intent.get('confidence')
+        if not isinstance(confidence, (int, float)):
+            issues.append(f'intent_{intent_id}_pr_{pr_number}_invalid_confidence')
+        elif confidence == 0.0:
+            issues.append(f'intent_{intent_id}_pr_{pr_number}_zero_confidence')
+        elif confidence < 0.0:
+            issues.append(f'intent_{intent_id}_pr_{pr_number}_invalid_confidence')
+
+        # Check preconditions presence; empty list is allowed, missing/null is not.
+        preconditions = intent.get('preconditions')
+        if not isinstance(preconditions, list):
+            issues.append(f'intent_{intent_id}_pr_{pr_number}_missing_preconditions')
+
+        # Check policy_profile
+        policy_profile = intent.get('policy_profile')
+        if not isinstance(policy_profile, str) or not policy_profile.strip():
+            issues.append(f'intent_{intent_id}_pr_{pr_number}_empty_policy_profile')
+
+    return {
+        'id': 'action_intent_completeness',
+        'label': 'every action intent has required fields populated',
+        'status': 'pass' if not issues else 'fail',
+        'expected': 'all action intents have reasons, evidence_refs, idempotency_key, positive confidence, preconditions, and policy_profile',
+        'actual': 'all action intents complete' if not issues else '; '.join(issues),
+    }
+
+
 def audit(run_dir: Path) -> dict[str, Any]:
     """Run all deterministic checks against a run directory."""
     analyze = load_json(run_dir / 'analyze.json') if (run_dir / 'analyze.json').exists() else {}
@@ -742,6 +815,7 @@ def audit(run_dir: Path) -> dict[str, Any]:
         check_action_plan_presence(action_plan),
         check_action_lane_coverage(action_plan),
         check_advisory_zero_write(action_plan),
+        check_action_intent_completeness(action_plan),
     ]
 
     passed = sum(1 for c in checks if c['status'] == 'pass')

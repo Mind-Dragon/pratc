@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
 type subscriber struct {
@@ -23,6 +25,8 @@ type Broadcaster struct {
 	done             chan struct{}
 	running          bool
 	inFlight         sync.WaitGroup
+	actionPlan       *types.ActionPlan
+	actionPlanHash   int
 }
 
 func NewBroadcaster(store *Store, rateLimitFetcher *RateLimitFetcher, timelineAgg *TimelineAggregator) *Broadcaster {
@@ -32,6 +36,24 @@ func NewBroadcaster(store *Store, rateLimitFetcher *RateLimitFetcher, timelineAg
 		rateLimitFetcher: rateLimitFetcher,
 		timelineAgg:      timelineAgg,
 	}
+}
+
+// SetActionPlan stores the provided ActionPlan and broadcasts it to subscribers.
+// If the plan is unchanged (by hash), no broadcast occurs.
+func (b *Broadcaster) SetActionPlan(plan *types.ActionPlan) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	hash := hashActionPlan(plan)
+	if b.actionPlanHash == hash && b.actionPlan != nil && plan != nil {
+		return
+	}
+	b.actionPlan = plan
+	b.actionPlanHash = hash
+	// Broadcast immediately
+	go b.broadcast(DataUpdate{
+		Timestamp:  time.Now(),
+		ActionPlan: plan,
+	})
 }
 
 func (b *Broadcaster) Subscribe() chan DataUpdate {
@@ -111,15 +133,18 @@ func (b *Broadcaster) run(ctx context.Context, stopCh chan struct{}, done chan s
 	var lastJobsHash int
 	var lastRateLimitHash int
 	var lastTimelineHash int
+	var lastActionPlanHash int
 
 	jobsTicker := time.NewTicker(2 * time.Second)
 	rateLimitTicker := time.NewTicker(10 * time.Second)
 	timelineTicker := time.NewTicker(30 * time.Second)
+	actionPlanTicker := time.NewTicker(30 * time.Second)
 
 	defer func() {
 		jobsTicker.Stop()
 		rateLimitTicker.Stop()
 		timelineTicker.Stop()
+		actionPlanTicker.Stop()
 	}()
 
 	for {
@@ -134,6 +159,8 @@ func (b *Broadcaster) run(ctx context.Context, stopCh chan struct{}, done chan s
 			b.pollAndBroadcastRateLimit(ctx, &lastRateLimitHash)
 		case <-timelineTicker.C:
 			b.pollAndBroadcastTimeline(ctx, &lastTimelineHash)
+		case <-actionPlanTicker.C:
+			b.pollAndBroadcastActionPlan(ctx, &lastActionPlanHash)
 		}
 	}
 }
@@ -181,6 +208,23 @@ func (b *Broadcaster) pollAndBroadcastTimeline(ctx context.Context, lastHash *in
 			ActivityBuckets: buckets,
 		}
 		b.broadcast(update)
+	}
+}
+
+func (b *Broadcaster) pollAndBroadcastActionPlan(ctx context.Context, lastHash *int) {
+	b.mu.RLock()
+	plan := b.actionPlan
+	hash := b.actionPlanHash
+	b.mu.RUnlock()
+	if plan == nil {
+		return
+	}
+	if hash != *lastHash {
+		*lastHash = hash
+		b.broadcast(DataUpdate{
+			Timestamp:  time.Now(),
+			ActionPlan: plan,
+		})
 	}
 }
 
@@ -232,6 +276,22 @@ func hashStrings(strs ...string) int {
 		for _, c := range s {
 			h ^= int(c)
 		}
+	}
+	return h
+}
+
+func hashActionPlan(plan *types.ActionPlan) int {
+	if plan == nil {
+		return 0
+	}
+	h := hashStrings(plan.RunID, plan.Repo, string(plan.PolicyProfile))
+	for _, lane := range plan.Lanes {
+		h ^= hashStrings(string(lane.Lane))
+		h ^= lane.Count
+	}
+	for _, wi := range plan.WorkItems {
+		h ^= hashStrings(wi.ID, string(wi.Lane), string(wi.State))
+		h ^= int(wi.PRNumber)
 	}
 	return h
 }

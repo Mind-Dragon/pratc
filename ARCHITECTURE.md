@@ -389,20 +389,23 @@ type PlanOptions struct {
 - Graph: 120s
 - Plan: 90s
 
-### Current full-corpus validation status (openclaw/openclaw, 2026-04-23)
+### Current full-corpus validation status (openclaw/openclaw, 2026-04-24)
 
-- v1.7.1 cache-first workflow: audit-green (`19` pass, `0` fail, `0` manual)
+- v1.7.1 current-HEAD workflow: audit-green (`22` pass, `0` fail, `0` manual)
+- Runtime commit: `8d80f7580c74`, `dirty=false` at proof time
 - Full corpus analyzed: `6,632` PRs
 - Cluster count: `81`
 - Duplicate groups: `95`
 - Collapsed duplicate groups: `85`
 - Conflict pairs after current filtering: `91`
 - Garbage PRs: `14`
-- Stale PRs: `4,248`
-- Snapshot PDF: `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z/report.pdf`
+- Stale PRs: `4,363`
+- ActionPlan: schema `2.0`, advisory, `6,632` work items, `182` action intents
+- Action lanes: `duplicate_close=91`, `human_escalate=6541`
+- Snapshot PDF: `projects/openclaw_openclaw/runs/v171-head-20260424T153126Z/report.pdf`
 - Runtime proof: `prATC 1.7.1`, API health green on port `7400`
 
-The v1.7.1 PDF is a point-in-time packet. The 2.0 dashboard should expose those same concepts as live navigable state backed by `ActionPlan`, queue, executor, and audit data.
+The v1.7.1 PDF and ActionPlan are point-in-time advisory artifacts. The 2.0 dashboard should expose those same concepts as live navigable state backed by `ActionPlan`, queue, executor, and audit data.
 
 ## Key design principle
 

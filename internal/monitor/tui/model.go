@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbletea"
 
 	"github.com/jeffersonnunn/pratc/internal/monitor/data"
+	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
 type Model struct {
@@ -21,6 +22,7 @@ type Model struct {
 	RateLimitPanel  *RateLimitPanel
 	ConsolePanel    *ConsolePanel
 	ActionLaneBoard *ActionLaneBoard
+	PRDetailBoard   *PRDetailBoard
 
 	// Zone state
 	width        int
@@ -30,6 +32,9 @@ type Model struct {
 	IsPaused     bool
 	IsRestarting bool
 	IsViewingJob bool
+
+	// Selected work item for detail view
+	SelectedWorkItem *types.ActionWorkItem
 
 	// Legacy fields for header/footer compatibility
 	BudgetRemaining int
@@ -67,6 +72,7 @@ func New(broadcaster *data.Broadcaster) Model {
 		RateLimitPanel:  NewRateLimitPanel(),
 		ConsolePanel:    NewConsolePanel(),
 		ActionLaneBoard: NewActionLaneBoard(),
+		PRDetailBoard:   NewPRDetailBoard(),
 		ActiveZone:      ZoneJobs,
 		BudgetRemaining: 4200,
 		BudgetTotal:     5000,

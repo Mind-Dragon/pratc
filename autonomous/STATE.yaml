@@ -2,24 +2,35 @@ mode: active
 repo: openclaw/openclaw
 branch: main
 baseline_commit: 09c3ea702239
-current_run_id: 20260423T203433Z
-corpus_dir: autonomous/runs/20260423T203433Z
-phase: complete
-current_wave: 1
+current_run_id: v171-head-20260424T153126Z
+corpus_dir: projects/openclaw_openclaw/runs/v171-head-20260424T153126Z
+phase: wave-a-integration-green
+current_wave: A
 open_gaps: []
 blocked_gaps: []
 completed_gaps: []
-last_audit_path: autonomous/runs/20260423T203433Z/AUDIT_RESULTS.json
-last_green_commit: 09c3ea702239
+last_audit_path: projects/openclaw_openclaw/runs/v171-head-20260424T153126Z/AUDIT_RESULTS.json
+last_green_commit: 8d80f7580c74
 paused: false
-stop_reason: OpenClaw live test prep recorded; secondary GitHub throttling window noted
+stop_reason: ''
 resume_command: python3 scripts/autonomous_controller.py resume
-updated_at: 2026-04-23T22:42:48.211725+00:00
+updated_at: '2026-04-24T17:35:46.604441+00:00'
 notes:
-  - Fresh current-HEAD audit has 19 passing checks, 0 failing checks, 0 manual/unverifiable checks.
-  - Service proof is recorded in autonomous/runtime/runtime-proof.json and live under tmux session pratc-autonomous.
-  - disposal_bucket_persistence and deeper_judgment_layers are now machine-checkable audit checks.
-  - Gap history preservation verified - fixed/deferred/blocked gaps survive generated GAP_LIST updates.
-  - D3 wave synthesis readiness verified - prompts expanded, TODO JSON emitted, wave summary hooks tested.
-  - v1.8 reprioritized toward ML automation and TUI feedback; web UI and multi-repo deferred; OpenClaw GitHub test prep recorded.
-  - OpenClaw live test prep updated - 25-PR smoke hit GitHub secondary limit; wait for reset before full live recapture.
+- 'Wave A tmux smoke passed on dirty v1.7.1 binary: loopback/VPN health OK, API ActionPlan
+  6632 work items/182 intents, queue status route OK, proof route validation returned
+  400 as expected; runtime proof intentionally deferred.'
+- 'Wave A ActionPlan audit passed: 23 checks, 0 failing, 0 manual; artifact projects/openclaw_openclaw/runs/v171-head-20260424T153126Z/AUDIT_RESULTS.json.'
+- Fresh current-HEAD audit has 19 passing checks, 0 failing checks, 0 manual/unverifiable
+  checks.
+- Service proof is recorded in autonomous/runtime/runtime-proof.json and live under
+  tmux session pratc-autonomous.
+- disposal_bucket_persistence and deeper_judgment_layers are now machine-checkable
+  audit checks.
+- Gap history preservation verified - fixed/deferred/blocked gaps survive generated
+  GAP_LIST updates.
+- D3 wave synthesis readiness verified - prompts expanded, TODO JSON emitted, wave
+  summary hooks tested.
+- v1.8 reprioritized toward ML automation and TUI feedback; web UI and multi-repo
+  deferred; OpenClaw GitHub test prep recorded.
+- OpenClaw live test prep updated - 25-PR smoke hit GitHub secondary limit; wait for
+  reset before full live recapture.

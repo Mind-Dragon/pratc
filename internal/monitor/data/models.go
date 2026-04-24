@@ -65,6 +65,27 @@ type ActivityBucket struct {
 	AvgDuration  time.Duration
 }
 
+// PRDetailView represents a pull request detail view for the monitor.
+// It combines PR metadata with action work item information for display.
+type PRDetailView struct {
+	Title          string
+	Author         string
+	Age            time.Duration
+	Status         string
+	Lane           types.ActionLane
+	Bucket         string
+	Confidence     float64
+	Reasons        []string
+	DecisionLayers []types.DecisionLayer
+	EvidenceRefs   []string
+	DuplicateRefs  []int
+	SynthesisRefs  []string
+	RiskFlags      []string
+	AllowedActions []types.ActionKind
+	WorkItemID     string
+	State          types.ActionWorkItemState
+}
+
 // DataUpdate is a container for all monitor view data.
 // It is sent by the broadcaster to all connected clients when state changes.
 type DataUpdate struct {

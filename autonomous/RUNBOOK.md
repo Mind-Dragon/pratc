@@ -235,10 +235,10 @@ If manual audit checks remain, record explicit operator acceptance in `autonomou
 Current v1.7.1 action-engine baseline:
 
 - repo: `openclaw/openclaw`
-- corpus dir: `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z`
-- action plan: `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z/action-plan.json`
-- audit: `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z/AUDIT_RESULTS.json` (`22` pass, `0` fail, `0` manual)
-- report: `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z/report.pdf`
+- corpus dir: `projects/openclaw_openclaw/runs/v171-head-20260424T153126Z`
+- action plan: `projects/openclaw_openclaw/runs/v171-head-20260424T153126Z/action-plan.json`
+- audit: `projects/openclaw_openclaw/runs/v171-head-20260424T153126Z/AUDIT_RESULTS.json` (`22` pass, `0` fail, `0` manual)
+- report: `projects/openclaw_openclaw/runs/v171-head-20260424T153126Z/report.pdf`
 - runtime proof: `autonomous/runtime/runtime-proof.json`
 - tmux session: `pratc-autonomous` on port `7400`
 - status: advisory ActionPlan and snapshot packet; not an execution manifest

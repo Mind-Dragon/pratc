@@ -14,6 +14,7 @@ import (
 	gh "github.com/jeffersonnunn/pratc/internal/github"
 	"github.com/jeffersonnunn/pratc/internal/settings"
 	"github.com/jeffersonnunn/pratc/internal/telemetry/ratelimit"
+	"github.com/jeffersonnunn/pratc/internal/workqueue"
 	"github.com/spf13/cobra"
 )
 
@@ -179,6 +180,24 @@ func openAuditStore() (*cache.AuditStore, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 	return cache.NewAuditStore(store), nil
+}
+
+func queueDBPathFromEnv() string {
+	path := strings.TrimSpace(os.Getenv("PRATC_QUEUE_DB_PATH"))
+	if path == "" {
+		home, _ := os.UserHomeDir()
+		path = filepath.Join(home, ".pratc", "queue.db")
+	}
+	return path
+}
+
+func openQueue() (*workqueue.Queue, error) {
+	path := queueDBPathFromEnv()
+	queue, err := workqueue.OpenSQLite(path)
+	if err != nil {
+		return nil, fmt.Errorf("open queue database: %w", err)
+	}
+	return queue, nil
 }
 
 func logAuditEntry(action, repo, details string) {

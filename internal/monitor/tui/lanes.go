@@ -20,6 +20,20 @@ func (a *ActionLaneBoard) SetPlan(plan *types.ActionPlan) {
 	a.plan = plan
 }
 
+func (a *ActionLaneBoard) GetWorkItem(index int) *types.ActionWorkItem {
+	if a == nil || a.plan == nil || index < 0 || index >= len(a.plan.WorkItems) {
+		return nil
+	}
+	return &a.plan.WorkItems[index]
+}
+
+func (a *ActionLaneBoard) WorkItemCount() int {
+	if a == nil || a.plan == nil {
+		return 0
+	}
+	return len(a.plan.WorkItems)
+}
+
 func (a *ActionLaneBoard) View(width int) string {
 	if width <= 0 {
 		width = 94
@@ -32,8 +46,7 @@ func (a *ActionLaneBoard) View(width int) string {
 	var sb strings.Builder
 	sb.WriteString(border)
 	sb.WriteString("\n")
-	sb.WriteString("|" + padRight("ACTIONS (read-only)", inner) + "|")
-	sb.WriteString("\n")
+	sb.WriteString("|" + padRight("ACTIONS (read-only)", inner) + "|\n")
 	sb.WriteString(border)
 	sb.WriteString("\n")
 	if a == nil || a.plan == nil {

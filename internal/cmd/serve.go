@@ -1190,6 +1190,12 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst,
 	}
 	defer settingsStore.Close()
 
+	queue, err := openQueue()
+	if err != nil {
+		return err
+	}
+	defer queue.Close()
+
 	repoSync := newRepoSyncManager("", "", defaultRepo)
 
 	mux := http.NewServeMux()
@@ -1237,6 +1243,8 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst,
 	mux.HandleFunc("/actions", func(w http.ResponseWriter, r *http.Request) {
 		handleActions(w, r, service, repoFromQuery(r, defaultRepo))
 	})
+
+	registerQueueRoutes(mux, queue, defaultRepo)
 
 	mux.HandleFunc("/api/repos/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path

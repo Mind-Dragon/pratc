@@ -1,6 +1,6 @@
 package tui
 
-import "github.com/charmbracelet/bubbletea"
+import tea "github.com/charmbracelet/bubbletea"
 
 // Zone represents the active focus zone in the TUI.
 type Zone int
@@ -10,15 +10,17 @@ const (
 	ZoneTimeline
 	ZoneRateLimit
 	ZoneConsole
+	numNavigableZones
+	ZoneDetail
 	numZones
 )
 
 // ZoneNames returns the display name for each zone.
-var ZoneNames = [...]string{"Jobs", "Timeline", "RateLimit", "Console"}
+var ZoneNames = [...]string{"Jobs", "Timeline", "RateLimit", "Console", "Detail"}
 
-// NextZone advances to the next zone in cycle.
+// NextZone advances to the next primary zone in cycle.
 func (z Zone) Next() Zone {
-	return Zone((z + 1) % numZones)
+	return Zone((z + 1) % numNavigableZones)
 }
 
 // String returns the zone name.
@@ -95,6 +97,11 @@ func (m *Model) HandleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				handled = true
 			case tea.KeyEnter:
 				m.IsViewingJob = true
+				// For demo, select first work item from ActionLaneBoard
+				if m.ActionLaneBoard != nil && m.ActionLaneBoard.WorkItemCount() > 0 {
+					m.SelectedWorkItem = m.ActionLaneBoard.GetWorkItem(0)
+				}
+				m.ActiveZone = ZoneDetail
 				handled = true
 			}
 
@@ -125,6 +132,15 @@ func (m *Model) HandleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.ConsolePanel.scrollPos = maxScroll
 				}
 				m.ConsolePanel.offset = m.ConsolePanel.scrollPos
+				handled = true
+			}
+		case ZoneDetail:
+			switch msg.Type {
+			case tea.KeyEsc, tea.KeyEnter:
+				// Exit detail view
+				m.IsViewingJob = false
+				m.SelectedWorkItem = nil
+				m.ActiveZone = ZoneJobs
 				handled = true
 			}
 		}

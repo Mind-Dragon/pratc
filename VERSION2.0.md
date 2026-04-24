@@ -8,18 +8,20 @@ Turn prATC from a full-corpus advisory triage engine into the engine a swarm can
 
 ## Current baseline
 
-Validated snapshot: `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z`
+Validated current-HEAD snapshot: `projects/openclaw_openclaw/runs/v171-head-20260424T153126Z`
 
-- prATC binary line: `1.7.1`
+- prATC binary line: `1.7.1`, commit `8d80f7580c74`, `dirty=false`
 - repo: `openclaw/openclaw`
 - corpus: `6,632` PRs
 - clusters: `81`
 - duplicate groups: `95`
 - collapsed duplicate groups: `85`
 - garbage PRs: `14`
-- stale PRs: `4,248`
+- stale PRs: `4,363`
 - conflict pairs: `91`
-- audit: `19 passed`, `0 failed`, `0 manual`
+- audit: `22 passed`, `0 failed`, `0 manual`
+- action plan: schema `2.0`, policy `advisory`, `6,632` work items, `182` intents
+- lanes: `duplicate_close=91`, `human_escalate=6541`
 - report: `report.pdf`, one-off snapshot artifact
 
 Important gap from this run:
@@ -513,7 +515,7 @@ Barrier check:
 ```bash
 go test ./internal/app ./internal/cmd ./internal/cache ./internal/actions ./internal/workqueue
 ./bin/pratc actions --repo openclaw/openclaw --force-cache --format=json > /tmp/action-plan.json
-python3 scripts/audit_guideline.py projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z
+python3 scripts/audit_guideline.py projects/openclaw_openclaw/runs/v171-head-20260424T153126Z
 ```
 
 ### Wave 3 — executor, proof, and TUI

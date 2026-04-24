@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/cache"
+	"github.com/jeffersonnunn/pratc/internal/types"
 )
 
 type mockStore struct {
@@ -604,6 +605,37 @@ func TestBroadcasterMultipleStartCalls(t *testing.T) {
 	}
 
 	b.Stop()
+}
+
+func TestBroadcasterBroadcastActionPlan(t *testing.T) {
+	b := NewBroadcaster(nil, nil, nil)
+	ch := b.Subscribe()
+
+	plan := &types.ActionPlan{
+		RunID:         "run-123",
+		Repo:          "owner/repo",
+		PolicyProfile: types.PolicyProfileAdvisory,
+		Lanes: []types.ActionLaneSummary{
+			{Lane: types.ActionLaneFastMerge, Count: 1},
+		},
+		WorkItems: []types.ActionWorkItem{
+			{ID: "wi-1", PRNumber: 42, Lane: types.ActionLaneFastMerge, State: types.ActionWorkItemStateProposed},
+		},
+	}
+
+	b.SetActionPlan(plan)
+
+	select {
+	case update := <-ch:
+		if update.ActionPlan == nil {
+			t.Error("expected ActionPlan in update")
+		}
+		if update.ActionPlan.RunID != plan.RunID {
+			t.Errorf("expected RunID %s, got %s", plan.RunID, update.ActionPlan.RunID)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Error("expected ActionPlan update to be broadcast")
+	}
 }
 
 func newTestCacheStoreForBroadcaster(t *testing.T) *cache.Store {

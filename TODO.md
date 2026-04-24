@@ -1,225 +1,175 @@
-# prATC TODO — v2.0 Action Engine
+# prATC TODO — Current Iteration Toward 2.0
 
-## Goal
+## Focus
 
-Build prATC 2.0 as the action engine for a swarm that can safely triage the entire OpenClaw PR corpus, group PRs into multiple action lanes, dispatch autonomous workers, and execute only policy-approved GitHub actions through an audited central executor.
+Current iteration: move from the verified `1.7.1` advisory baseline toward the `2.0` swarm action engine by closing ActionPlan completeness and building the first swarm API/proof surfaces.
+
+This TODO is intentionally narrow. The full 1.7.1 -> 2.0 roadmap lives in `PLAN.md` and `VERSION2.0.md`.
 
 ## Source of truth
 
-- `VERSION2.0.md` — v2.0 execution plan and 16-developer swarm map
+- `PLAN.md` — current phased implementation plan from 1.7.1 to 2.0
+- `VERSION2.0.md` — product/release plan and 16-lane ownership map
 - `GUIDELINE.md` — action policy, lanes, bucket rules, non-negotiables
-- `ARCHITECTURE.md` — product/system shape and data flow
+- `ARCHITECTURE.md` — system shape and component ownership
 - `AUTONOMOUS.md` — autonomous loop contract
 - `autonomous/RUNBOOK.md` — exact operator/controller commands
-- `scripts/audit_guideline.py` — deterministic guideline audit
-- `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z/` — current 1.7.1 OpenClaw snapshot baseline
+- `scripts/audit_guideline.py` — deterministic audit gate
 
-## Current baseline
+## Verified baseline
 
-- [x] prATC `1.7.1` builds and runs locally
-- [x] OpenClaw full-corpus run exists: `projects/openclaw_openclaw/runs/v171-analysis-20260423T234148Z`
-- [x] Corpus size: `6,632` PRs
-- [x] Audit: `22 passed`, `0 failed`, `0 manual` after v2 ActionPlan checks
-- [x] Snapshot PDF exists: `report.pdf`
-- [x] Key gap identified: current report/plan are advisory and not safe execution manifests
+- [x] Current HEAD: `8d80f7580c74`
+- [x] Runtime binary: `prATC v1.7.1 commit=8d80f7580c74 dirty=true` for Wave A tmux smoke; final proof deferred until commit boundary
+- [x] Runtime: tmux session `pratc-autonomous`, port `7400`, restarted with `--force-cache`
+- [x] Health: loopback and VPN OK
+- [x] Current-HEAD run: `projects/openclaw_openclaw/runs/v171-head-20260424T153126Z`
+- [x] Corpus: `6,632` PRs
+- [x] Audit: `23 passed`, `0 failed`, `0 manual`
+- [x] PDF: `report.pdf`, 29 pages
+- [x] ActionPlan: schema `2.0`, advisory, `6,632` work items, `182` intents
 
-## Active release path
+## Current dirty-state note
 
-### v1.8 — Action-readiness dry run
+- [x] Defer refreshed `autonomous/runtime/runtime-proof.json` until the next final runtime proof boundary; current Wave A source tree is intentionally dirty.
+- [x] Do not mix proof-only changes with implementation commits.
 
-Primary release goal: emit a full-corpus `ActionPlan` and TUI action dashboard in advisory mode with no GitHub writes.
+## Guardrails for this iteration
 
-- [x] Define action contracts
-  - Added `ActionLane`, `ActionIntent`, `ActionWorkItem`, `ActionPlan`, `PolicyProfile`, `ActionPreflight`, and `ProofBundle` types.
-  - Kept JSON tags stable and snake_case where existing contracts require it.
-  - Added Go/Python/TypeScript parity coverage and schema fixtures for `action-plan.json`.
-- [x] Build deterministic lane classifier
-  - Added `internal/actions.ClassifyLane` over review results plus explicit evidence hooks for duplicate, risk, ownership, and mergeability facts.
-  - Assigns exactly one primary lane: `fast_merge`, `fix_and_merge`, `duplicate_close`, `reject_or_close`, `focused_review`, `future_or_reengage`, `human_escalate`.
-  - Prevents contradictions such as blocked/high-risk PRs receiving merge actions.
-- [x] Add policy profiles
-  - `advisory`: no executable actions / zero writes.
-  - `guarded`: comments/labels only.
-  - `autonomous`: merge/close allowed only after required live preflight checks pass; executor ledger remains a v2.0 implementation item.
-  - Default remains `advisory`.
-- [x] Add product surfaces
-  - [x] CLI: `pratc actions --repo=owner/repo --format=json`.
-  - [x] API: `GET /api/repos/{owner}/{repo}/actions`.
-  - [x] TUI: read-only action-lane board.
-  - [ ] TUI: PR detail inspector.
-  - [ ] Report bridge: reuse PDF concepts as dashboard data, not only one-off PDF pages.
-- [x] Extend audit checks (Wave 4 run-dir checks)
-  - [x] Every PR has one primary action lane in an ActionPlan work-item set.
-  - [ ] Every action intent has reasons, evidence refs, confidence, policy, and preconditions.
-  - [x] Blocked/high-risk PRs cannot land in `fast_merge` without routing to review/escalation.
-  - [x] Advisory mode cannot emit executable mutation side effects.
+- Advisory/dry-run only. No live GitHub writes.
+- Controller owns docs, TODO, proof, integration, and commits.
+- Use controlled swarm: max 4 implementation workers for the first wave.
+- No two workers edit the same file group in the same wave.
+- Worker output is advisory until controller tests pass.
+- Every code task starts with tests or fixture/audit failure first.
+- Do not mark completion from TUI visuals alone; use tests/artifacts/audit.
+
+## Iteration A — v1.8 closeout + v1.9 swarm foundation
+
+### A0 — Baseline and design lock
+
+- [x] Reconcile `PLAN.md`, `VERSION2.0.md`, `GUIDELINE.md`, and `ARCHITECTURE.md` for policy/lanes/mutation rules.
+- [x] Record baseline before implementation:
+  ```bash
+  git status --short
+  make build
+  go test ./internal/types ./internal/app ./internal/cmd ./internal/actions ./internal/workqueue ./internal/executor ./internal/monitor/...
+  python -m pytest -q tests/test_audit_guideline.py scripts/test_autonomous_controller.py
+  git diff --check
+  ```
+- [x] Write file-ownership map for Wave A workers.
+
+### A1 — ActionIntent completeness
+
+Goal: every generated ActionIntent is complete enough for swarm/executor consumption.
+
+- [x] Add/verify fields on every intent:
+  - reasons
+  - evidence refs
+  - confidence
+  - policy profile
+  - preconditions
+  - idempotency key
+  - dry-run/write classification
+- [x] Add hard audit coverage for intent completeness.
+- [x] Regenerate/update current `action-plan.json` artifact; no checked-in fixture change required.
+- [x] Preserve Go/Python/TypeScript JSON parity where applicable.
 
 Verification:
 
 ```bash
-cd /home/agent/pratc
-make build
-go test ./internal/types ./internal/app ./internal/cmd
+go test ./internal/types ./internal/actions ./internal/app
 python -m pytest -q tests/test_audit_guideline.py
 ./bin/pratc actions --repo openclaw/openclaw --force-cache --policy=advisory --format=json > /tmp/pratc-action-plan.json
 ```
 
-### v1.9 — Swarm dry-run and proof loop
+### A2 — Swarm queue API foundation
 
-Primary release goal: let a 16-agent swarm claim action work, produce proof bundles, and exercise a dry-run executor without mutating GitHub.
+Goal: workers can claim, release, heartbeat, and inspect queue state without GitHub writes.
 
-- [x] Add durable work queue and leases
-  - Store work items, states, leases, claim owner, lease expiry, idempotency key, and proof refs.
-  - Expired leases return to `claimable` safely.
-  - Claims must be race-safe.
-- [ ] Add swarm APIs
-  - Claim/release/heartbeat endpoints.
-  - Lane filters and priority filters.
-  - Proof bundle upload/attach path.
-  - Queue status surface for TUI.
-- [x] Add dry-run executor
-  - Fake GitHub backend for merge/comment/label/close actions.
-  - Dry-run mutation records expected action without touching GitHub.
-  - Idempotency tests for repeated attempts.
-- [ ] Add `fix_and_merge` proof workflow
-  - Worktree/checkout preparation.
-  - Patch or rebase proof capture.
-  - Test command capture.
-  - Result attached to work item before executor approval.
-- [ ] Add TUI operational panels
-  - queue leases
-  - proof bundle status
-  - executor dry-run stream
-  - rate-limit/auth view
-  - audit ledger stream
+- [x] Add claim endpoint.
+- [x] Add release endpoint.
+- [x] Add heartbeat endpoint.
+- [x] Add queue status endpoint.
+- [x] Support filters for lane, priority, state, and expired leases.
+- [x] Add route tests and race-safe workqueue tests.
 
 Verification:
 
 ```bash
-cd /home/agent/pratc
-make build
-go test ./internal/cache ./internal/actions ./internal/workqueue ./internal/executor ./internal/monitor/...
-./bin/pratc actions --repo openclaw/openclaw --force-cache --policy=advisory --format=json > autonomous/runs/<run-id>/action-plan.json
-python3 scripts/audit_guideline.py autonomous/runs/<run-id>
+go test ./internal/workqueue ./internal/cache ./internal/cmd
 ```
 
-### v2.0 — Guarded autonomous mutation
+### A3 — Proof bundle attach path
 
-Primary release goal: central executor can perform guarded/autonomous GitHub actions only after live preflight, audit, and post-action verification.
+Goal: workers can attach proof to work items before executor approval.
 
-- [ ] Add live preflight executor
-  - PR still open.
-  - analyzed head SHA matches live head SHA or item is revalidated.
-  - CI/check suite green when merge is requested.
-  - mergeability clean when merge is requested.
-  - branch protection and required reviews satisfied.
-  - token permission sufficient.
-  - action policy allows requested mutation.
-- [ ] Add guarded actions
-  - comment duplicate/rejection recommendations.
-  - label action lanes where configured.
-  - never merge or close in guarded mode.
-- [ ] Add autonomous actions
-  - merge `fast_merge` only after all gates pass.
-  - close/comment `duplicate_close` and `reject_or_close` only with high-confidence disposal reasons.
-  - merge `fix_and_merge` only after proof bundle validation and fresh preflight.
-- [ ] Add audit ledger and verification
-  - append-only transition ledger.
-  - mutation result capture.
-  - post-action verification.
-  - failure returns item to blocked/escalated state.
-- [ ] Add operator controls
-  - TUI hold/resume.
-  - policy profile switch visibility.
-  - panic stop that prevents new executor actions.
+- [x] Define persisted proof bundle attachment shape if current type is insufficient.
+- [x] Add proof attach/store API.
+- [x] Validate work item id, worker id, lease ownership, artifact refs, command result, and proof status.
+- [x] Add tests for attach success, invalid item, stale lease, wrong owner, and duplicate/idempotent attach.
 
 Verification:
 
 ```bash
-cd /home/agent/pratc
-make build
-go test ./...
-make test-python
-python -m pytest -q tests/test_audit_guideline.py scripts/test_autonomous_controller.py
-./bin/pratc actions --repo openclaw/openclaw --force-cache --policy=advisory --format=json > autonomous/runs/<run-id>/action-plan.json
-python3 scripts/audit_guideline.py autonomous/runs/<run-id>
-git diff --check
+go test ./internal/workqueue ./internal/cache ./internal/cmd ./internal/executor
 ```
 
-## 16-developer swarm assignment
+### A4 — TUI PR detail inspector
 
-Controller owns integration, status, docs, and verification. Workers do not share mutable files inside the same wave.
+Goal: TUI shows the live per-PR decision truth, not only lane counts.
 
-1. Governance/contracts — root docs and terminology audit
-2. Go type surface — `internal/types/*`, `contracts/*`
-3. Python/TypeScript parity — `ml-service/src/pratc_ml/*`, retained TS types
-4. Lane classifier — `internal/actions/classifier.go`
-5. Policy profiles — `internal/actions/policy.go`
-6. ActionPlan service — `internal/app/*`
-7. CLI command — `cmd/pratc/*`, `internal/cmd/*`
-8. HTTP API — `internal/cmd/root.go`, route tests
-9. Persistence/migrations — `internal/cache/*`
-10. Queue/leases — `internal/workqueue/*` or action queue package
-11. Dry-run executor — `internal/executor/*`, fake GitHub backend
-12. Live preflight — `internal/github/*`, executor preflight
-13. Fix-and-merge sandbox — `internal/repo/*`, proof helpers
-14. TUI dashboard — `internal/monitor/tui/*`
-15. Audit checks — `scripts/audit_guideline.py`, audit tests
-16. Integration/e2e — end-to-end fixtures, runbook, smoke checks
+- [x] Add monitor data model for PR detail.
+- [x] Include title, author, age, status, lane, bucket, confidence, reasons, decision layers, evidence refs, duplicate/synthesis refs, risk flags, and allowed actions.
+- [x] Add testable render/snapshot path if interactive monitor cannot be tested directly.
+- [x] Add/extend TUI tests.
 
-## Barriered execution
+Verification:
 
-### Barrier 0 — design lock
+```bash
+go test ./internal/monitor/...
+./bin/pratc monitor --once || true
+```
 
-- [ ] `VERSION2.0.md`, `GUIDELINE.md`, and `ARCHITECTURE.md` agree on lanes, policy profiles, and mutation rules.
-- [ ] Controller records baseline `git status --short` and test status.
+### A5 — Controller integration and OpenClaw proof
 
-### Wave 1 — contracts and classifier foundation
+- [x] Integrate Wave A changes.
+- [x] Run targeted test bundle:
+  ```bash
+  go test ./internal/types ./internal/actions ./internal/app ./internal/cache ./internal/workqueue ./internal/cmd ./internal/executor ./internal/monitor/...
+  python -m pytest -q tests/test_audit_guideline.py scripts/test_autonomous_controller.py
+  git diff --check
+  ```
+- [x] Generate current ActionPlan artifact:
+  ```bash
+  RUN_DIR=autonomous/runs/<run-id>
+  mkdir -p "$RUN_DIR"
+  ./bin/pratc actions --repo openclaw/openclaw --force-cache --policy=advisory --format=json > "$RUN_DIR/action-plan.json"
+  python3 scripts/audit_guideline.py "$RUN_DIR"
+  ```
+- [x] Update `autonomous/GAP_LIST.md` and `autonomous/STATE.yaml` only from audit output, not chat summaries.
+- [x] Defer runtime proof refresh until implementation commit/final runtime probe boundary; Wave A dirty tmux smoke recorded in `autonomous/STATE.yaml`.
 
-Lanes: 1-5.
+## Stretch only after Iteration A is green
 
-- [x] action types
-- [x] schema fixtures
-- [x] lane classifier
-- [x] policy profile gates
-- [x] doc terminology synced
+- [ ] `fix_and_merge` sandbox workflow scaffold.
+- [ ] TUI queue/proof/executor/rate-limit/audit panels.
+- [ ] Live preflight checker scaffold.
+- [ ] Guarded comment/label executor in fake backend only.
 
-### Wave 2 — product surfaces and persistence
+## Not this iteration
 
-Lanes: 6-10.
+- [ ] Real GitHub mutation.
+- [ ] Autonomous merge/close.
+- [ ] Direct swarm-worker GitHub access.
+- [ ] Browser dashboard revival.
+- [ ] Multi-repo orchestration.
 
-- [x] service method
-- [x] CLI command
-- [x] HTTP route
-- [ ] migrations
-- [x] queue leases
+## Completion gate for this iteration
 
-### Wave 3 — executor, proof, TUI
-
-Lanes: 11-14.
-
-- [x] dry-run executor
-- [x] preflight checker
-- [x] proof bundle validation
-- [x] TUI action dashboard
-
-### Wave 4 — audit and OpenClaw dry run
-
-Lanes: 15-16 plus fix lanes.
-
-- [x] v2 audit checks
-- [x] OpenClaw ActionPlan artifact
-- [x] dry-run executor proof
-- [x] TUI smoke proof
-- [x] final docs/runbook sync
-
-## Done means
-
-- [x] every OpenClaw PR has one action lane
-- [ ] every action intent has reasons, evidence, confidence, preconditions, and idempotency key
-- [x] advisory mode proves no writes
-- [ ] guarded mode cannot merge or close
-- [ ] autonomous mode cannot bypass live preflight
-- [x] swarm workers never mutate GitHub directly
-- [x] TUI exposes the living version of the report concepts
-- [x] OpenClaw full-corpus v2 ActionPlan run is audit-green
+- [x] ActionIntent completeness is machine-audited.
+- [x] Queue API can claim/release/heartbeat/status safely.
+- [x] Proof bundle attach path works and is tested.
+- [x] TUI PR detail inspector has testable output.
+- [x] OpenClaw ActionPlan run remains audit-green.
+- [x] No GitHub writes occurred.
+- [x] Runtime proof deferred until implementation commit/final runtime probe boundary; no proof-only refresh mixed into Wave A source edits.

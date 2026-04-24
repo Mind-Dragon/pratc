@@ -207,3 +207,107 @@ func TestQueueEnqueueActionPlanMakesItemsClaimable(t *testing.T) {
 		t.Fatalf("claimed item drifted: %+v", claimed)
 	}
 }
+
+func sampleProofBundle(workItemID string, prNumber int) types.ProofBundle {
+	return types.ProofBundle{
+		ID:           "proof-" + workItemID,
+		WorkItemID:   workItemID,
+		PRNumber:     prNumber,
+		Summary:      "test proof",
+		EvidenceRefs: []string{"evidence:test"},
+		ArtifactRefs: []string{"artifact:test"},
+		TestCommands: []string{"go test ./..."},
+		TestResults:  []string{"PASS"},
+		CreatedBy:    "worker-a",
+		CreatedAt:    "2026-04-24T16:00:00Z",
+	}
+}
+
+func TestQueueAttachProof(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 4, 24, 10, 0, 0, 0, time.UTC)
+	q := testQueue(t, now)
+
+	// Create a work item and claim it
+	item := sampleItem("wi-attach")
+	if err := q.Upsert(ctx, "owner/repo", item); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	claimed, err := q.Claim(ctx, "wi-attach", "worker-a", 10*time.Minute)
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if claimed.State != types.ActionWorkItemStateClaimed {
+		t.Fatalf("expected claimed state, got %s", claimed.State)
+	}
+
+	// Test invalid item (non-existent work item ID)
+	bundle := sampleProofBundle("non-existent", 101)
+	_, err = q.AttachProof(ctx, "non-existent", "worker-a", bundle)
+	if err == nil {
+		t.Fatal("expected error for invalid work item")
+	}
+
+	// Test wrong owner (worker ID mismatch)
+	bundle = sampleProofBundle("wi-attach", 101)
+	_, err = q.AttachProof(ctx, "wi-attach", "worker-b", bundle)
+	if err == nil {
+		t.Fatal("expected error for wrong owner")
+	}
+
+	// Test stale lease (simulate lease expiration)
+	q.SetNow(func() time.Time { return now.Add(30 * time.Minute) }) // lease expired
+	_, err = q.AttachProof(ctx, "wi-attach", "worker-a", bundle)
+	if err == nil {
+		t.Fatal("expected error for stale lease")
+	}
+	// Reset lease
+	q.SetNow(func() time.Time { return now })
+
+	// Test duplicate idempotent attach (attach same bundle twice)
+	attached, err := q.AttachProof(ctx, "wi-attach", "worker-a", bundle)
+	if err != nil {
+		t.Fatalf("first attach failed: %v", err)
+	}
+	if attached.ID != bundle.ID {
+		t.Fatalf("attached bundle ID mismatch: got %s want %s", attached.ID, bundle.ID)
+	}
+	// Verify ProofBundleRefs includes the proof ID
+	itemAfterFirst, err := q.Get(ctx, "wi-attach")
+	if err != nil {
+		t.Fatalf("get work item after first attach: %v", err)
+	}
+	if len(itemAfterFirst.ProofBundleRefs) != 1 || itemAfterFirst.ProofBundleRefs[0] != bundle.ID {
+		t.Fatalf("ProofBundleRefs after first attach = %v", itemAfterFirst.ProofBundleRefs)
+	}
+
+	// Attach same bundle again (should be idempotent)
+	attached2, err := q.AttachProof(ctx, "wi-attach", "worker-a", bundle)
+	if err != nil {
+		t.Fatalf("second attach failed: %v", err)
+	}
+	if attached2.ID != bundle.ID {
+		t.Fatalf("second attached bundle ID mismatch: got %s want %s", attached2.ID, bundle.ID)
+	}
+	// Verify ProofBundleRefs still has only one entry
+	itemAfterSecond, err := q.Get(ctx, "wi-attach")
+	if err != nil {
+		t.Fatalf("get work item after second attach: %v", err)
+	}
+	if len(itemAfterSecond.ProofBundleRefs) != 1 || itemAfterSecond.ProofBundleRefs[0] != bundle.ID {
+		t.Fatalf("ProofBundleRefs after second attach = %v", itemAfterSecond.ProofBundleRefs)
+	}
+
+	// Test successful attach transitions claimed -> preflighted
+	// (Assuming that's the expected transition after proof attach)
+	// Let's verify the state after attach (should be preflighted?)
+	// According to task: "transition claimed -> preflighted once."
+	// We'll check that the state changed to preflighted.
+	itemAfterAttach, err := q.Get(ctx, "wi-attach")
+	if err != nil {
+		t.Fatalf("get work item after attach: %v", err)
+	}
+	if itemAfterAttach.State != types.ActionWorkItemStatePreflighted {
+		t.Fatalf("expected state preflighted after proof attach, got %s", itemAfterAttach.State)
+	}
+}

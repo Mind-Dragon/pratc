@@ -83,6 +83,61 @@ func TestAuditActionPlan_SkipsAdvisoryZeroWriteForNonAdvisoryPlan(t *testing.T) 
 	assertAuditStatus(t, audit, AuditCheckAdvisoryZeroWrite, "manual")
 }
 
+func TestAuditActionPlan_FailsIntentMissingReasons(t *testing.T) {
+	plan := sampleAuditedActionPlan()
+	plan.ActionIntents[0].Reasons = nil
+	audit := AuditActionPlan(plan)
+	assertAuditStatus(t, audit, AuditCheckIntentCompleteness, "fail")
+}
+
+func TestAuditActionPlan_FailsIntentMissingEvidenceRefs(t *testing.T) {
+	plan := sampleAuditedActionPlan()
+	plan.ActionIntents[0].EvidenceRefs = nil
+	audit := AuditActionPlan(plan)
+	assertAuditStatus(t, audit, AuditCheckIntentCompleteness, "fail")
+}
+
+func TestAuditActionPlan_FailsIntentMissingIdempotencyKey(t *testing.T) {
+	plan := sampleAuditedActionPlan()
+	plan.ActionIntents[0].IdempotencyKey = ""
+	audit := AuditActionPlan(plan)
+	assertAuditStatus(t, audit, AuditCheckIntentCompleteness, "fail")
+}
+
+func TestAuditActionPlan_FailsIntentMissingConfidence(t *testing.T) {
+	plan := sampleAuditedActionPlan()
+	plan.ActionIntents[0].Confidence = 0.0
+	audit := AuditActionPlan(plan)
+	assertAuditStatus(t, audit, AuditCheckIntentCompleteness, "fail")
+}
+
+func TestAuditActionPlan_FailsIntentNegativeConfidence(t *testing.T) {
+	plan := sampleAuditedActionPlan()
+	plan.ActionIntents[0].Confidence = -0.1
+	audit := AuditActionPlan(plan)
+	assertAuditStatus(t, audit, AuditCheckIntentCompleteness, "fail")
+}
+
+func TestAuditActionPlan_FailsIntentMissingPreconditions(t *testing.T) {
+	plan := sampleAuditedActionPlan()
+	plan.ActionIntents[0].Preconditions = nil
+	audit := AuditActionPlan(plan)
+	assertAuditStatus(t, audit, AuditCheckIntentCompleteness, "fail")
+}
+
+func TestAuditActionPlan_FailsIntentMissingPolicyProfile(t *testing.T) {
+	plan := sampleAuditedActionPlan()
+	plan.ActionIntents[0].PolicyProfile = ""
+	audit := AuditActionPlan(plan)
+	assertAuditStatus(t, audit, AuditCheckIntentCompleteness, "fail")
+}
+
+func TestAuditActionPlan_PassesIntentWithAllFieldsPopulated(t *testing.T) {
+	plan := sampleAuditedActionPlan()
+	audit := AuditActionPlan(plan)
+	assertAuditStatus(t, audit, AuditCheckIntentCompleteness, "pass")
+}
+
 func assertAuditStatus(t *testing.T, audit types.ActionPlanAudit, checkName, want string) {
 	t.Helper()
 	for _, check := range audit.Checks {

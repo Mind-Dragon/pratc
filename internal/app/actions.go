@@ -198,18 +198,33 @@ func actionIntentsFromDecision(repo, runID, createdAt string, decision actionpkg
 	intents := make([]types.ActionIntent, 0, len(gate.ProposedActions))
 	for _, action := range gate.ProposedActions {
 		dryRun := forceDryRun || gate.DryRun || !containsActionKind(gate.ExecutableActions, action)
+
+		policyProfile := actionpkg.NormalizePolicyProfile(gate.Profile)
+		reasons := append([]string(nil), decision.ReasonTrail...)
+		if len(reasons) == 0 {
+			reasons = []string{"no_reason_provided"}
+		}
+		evidenceRefs := append([]string(nil), decision.EvidenceRefs...)
+		if len(evidenceRefs) == 0 {
+			evidenceRefs = []string{fmt.Sprintf("classification:pr/%d", decision.PRNumber)}
+		}
+		preconditions := append([]types.ActionPreflight(nil), decision.RequiredPreflightChecks...)
+		if preconditions == nil {
+			preconditions = []types.ActionPreflight{}
+		}
+
 		intents = append(intents, types.ActionIntent{
 			ID:             fmt.Sprintf("intent-%d-%s", decision.PRNumber, action),
 			Action:         action,
 			PRNumber:       decision.PRNumber,
 			Lane:           decision.Lane,
 			DryRun:         dryRun,
-			PolicyProfile:  gate.Profile,
+			PolicyProfile:  policyProfile,
 			Confidence:     decision.Confidence,
 			RiskFlags:      append([]string(nil), decision.RiskFlags...),
-			Reasons:        append([]string(nil), decision.ReasonTrail...),
-			EvidenceRefs:   append([]string(nil), decision.EvidenceRefs...),
-			Preconditions:  append([]types.ActionPreflight(nil), decision.RequiredPreflightChecks...),
+			Reasons:        reasons,
+			EvidenceRefs:   evidenceRefs,
+			Preconditions:  preconditions,
 			IdempotencyKey: actionIdempotencyKey(repo, decision.PRNumber, decision.Lane, action),
 			CreatedAt:      createdAt,
 			Payload: map[string]any{

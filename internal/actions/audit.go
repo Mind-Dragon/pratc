@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	AuditCheckLaneCoverage      = "lane_coverage"
-	AuditCheckAdvisoryZeroWrite = "advisory_zero_write"
+	AuditCheckLaneCoverage       = "lane_coverage"
+	AuditCheckAdvisoryZeroWrite  = "advisory_zero_write"
+	AuditCheckIntentCompleteness = "intent_completeness"
 )
 
 // AuditActionPlan evaluates v2 action-plan invariants that are local to the
@@ -18,6 +19,7 @@ func AuditActionPlan(plan types.ActionPlan) types.ActionPlanAudit {
 		Checks: []types.ActionPlanAuditCheck{
 			auditLaneCoverage(plan),
 			auditAdvisoryZeroWrite(plan),
+			auditIntentCompleteness(plan),
 		},
 	}
 }
@@ -117,6 +119,43 @@ func auditAdvisoryZeroWrite(plan types.ActionPlan) types.ActionPlanAuditCheck {
 		if NormalizePolicyProfile(intent.PolicyProfile) != types.PolicyProfileAdvisory {
 			check.Status = "fail"
 			check.Reason = fmt.Sprintf("intent %s for PR #%d has policy %q under advisory plan", intent.ID, intent.PRNumber, intent.PolicyProfile)
+			return check
+		}
+	}
+	return check
+}
+
+func auditIntentCompleteness(plan types.ActionPlan) types.ActionPlanAuditCheck {
+	check := types.ActionPlanAuditCheck{Name: AuditCheckIntentCompleteness, Status: "pass", Reason: "every action intent has required fields populated"}
+	for _, intent := range plan.ActionIntents {
+		if len(intent.Reasons) == 0 {
+			check.Status = "fail"
+			check.Reason = fmt.Sprintf("intent %s for PR #%d has empty reasons", intent.ID, intent.PRNumber)
+			return check
+		}
+		if len(intent.EvidenceRefs) == 0 {
+			check.Status = "fail"
+			check.Reason = fmt.Sprintf("intent %s for PR #%d has empty evidence_refs", intent.ID, intent.PRNumber)
+			return check
+		}
+		if intent.IdempotencyKey == "" {
+			check.Status = "fail"
+			check.Reason = fmt.Sprintf("intent %s for PR #%d has empty idempotency_key", intent.ID, intent.PRNumber)
+			return check
+		}
+		if intent.Confidence <= 0.0 {
+			check.Status = "fail"
+			check.Reason = fmt.Sprintf("intent %s for PR #%d has invalid confidence %.2f", intent.ID, intent.PRNumber, intent.Confidence)
+			return check
+		}
+		if intent.Preconditions == nil {
+			check.Status = "fail"
+			check.Reason = fmt.Sprintf("intent %s for PR #%d has nil preconditions", intent.ID, intent.PRNumber)
+			return check
+		}
+		if intent.PolicyProfile == "" {
+			check.Status = "fail"
+			check.Reason = fmt.Sprintf("intent %s for PR #%d has empty policy_profile", intent.ID, intent.PRNumber)
 			return check
 		}
 	}

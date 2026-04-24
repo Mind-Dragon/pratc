@@ -37,6 +37,7 @@ from audit_guideline import (
     check_action_plan_presence,
     check_action_lane_coverage,
     check_advisory_zero_write,
+    check_action_intent_completeness,
     audit,
 )
 
@@ -493,6 +494,90 @@ class TestActionPlanV2Checks:
         result = check_advisory_zero_write(plan)
         assert result['status'] == 'fail'
         assert 'ai-1' in result['actual']
+
+
+class TestIntentCompletenessChecks:
+    def action_plan_with_all_fields(self):
+        return {
+            'schema_version': '2.0',
+            'repo': 'openclaw/openclaw',
+            'policy_profile': 'advisory',
+            'corpus_snapshot': {'total_prs': 1},
+            'lanes': [
+                {'lane': 'fast_merge', 'count': 1, 'work_item_ids': ['wi-1']},
+            ],
+            'work_items': [
+                {'id': 'wi-1', 'pr_number': 1, 'lane': 'fast_merge'},
+            ],
+            'action_intents': [
+                {
+                    'id': 'ai-1',
+                    'pr_number': 1,
+                    'action': 'merge',
+                    'dry_run': True,
+                    'policy_profile': 'advisory',
+                    'confidence': 0.9,
+                    'reasons': ['clean_fast_merge'],
+                    'evidence_refs': ['github:pr/1'],
+                    'preconditions': [],
+                    'idempotency_key': 'owner/repo#1:merge',
+                    'created_at': '2026-04-24T09:00:00Z',
+                },
+            ],
+        }
+
+    def test_passes_when_all_fields_populated(self):
+        result = check_action_intent_completeness(self.action_plan_with_all_fields())
+        assert result['status'] == 'pass'
+
+    def test_fails_missing_reasons(self):
+        plan = self.action_plan_with_all_fields()
+        plan['action_intents'][0]['reasons'] = []
+        result = check_action_intent_completeness(plan)
+        assert result['status'] == 'fail'
+        assert 'empty_reasons' in result['actual']
+
+    def test_fails_missing_evidence_refs(self):
+        plan = self.action_plan_with_all_fields()
+        plan['action_intents'][0]['evidence_refs'] = []
+        result = check_action_intent_completeness(plan)
+        assert result['status'] == 'fail'
+        assert 'empty_evidence_refs' in result['actual']
+
+    def test_fails_missing_idempotency_key(self):
+        plan = self.action_plan_with_all_fields()
+        plan['action_intents'][0]['idempotency_key'] = ''
+        result = check_action_intent_completeness(plan)
+        assert result['status'] == 'fail'
+        assert 'empty_idempotency_key' in result['actual']
+
+    def test_fails_missing_confidence(self):
+        plan = self.action_plan_with_all_fields()
+        plan['action_intents'][0]['confidence'] = 0.0
+        result = check_action_intent_completeness(plan)
+        assert result['status'] == 'fail'
+        assert 'zero_confidence' in result['actual']
+
+    def test_fails_negative_confidence(self):
+        plan = self.action_plan_with_all_fields()
+        plan['action_intents'][0]['confidence'] = -0.1
+        result = check_action_intent_completeness(plan)
+        assert result['status'] == 'fail'
+        assert 'invalid_confidence' in result['actual']
+
+    def test_fails_missing_preconditions(self):
+        plan = self.action_plan_with_all_fields()
+        plan['action_intents'][0]['preconditions'] = None
+        result = check_action_intent_completeness(plan)
+        assert result['status'] == 'fail'
+        assert 'missing_preconditions' in result['actual']
+
+    def test_fails_missing_policy_profile(self):
+        plan = self.action_plan_with_all_fields()
+        plan['action_intents'][0]['policy_profile'] = ''
+        result = check_action_intent_completeness(plan)
+        assert result['status'] == 'fail'
+        assert 'empty_policy_profile' in result['actual']
 
 
 class TestAuditIntegration:
