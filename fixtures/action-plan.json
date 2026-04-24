@@ -100,9 +100,9 @@
       ],
       "idempotency_key": "fixture:opencode-ai/opencode:1001:merge",
       "lease_state": {
-        "holder": "",
-        "leased_until": "",
-        "attempt": 0
+        "claimed_by": "",
+        "claimed_at": "",
+        "expires_at": ""
       },
       "allowed_actions": [
         "merge"
@@ -127,9 +127,9 @@
       "required_preflight_checks": [],
       "idempotency_key": "fixture:opencode-ai/opencode:1002:apply_fix",
       "lease_state": {
-        "holder": "",
-        "leased_until": "",
-        "attempt": 0
+        "claimed_by": "",
+        "claimed_at": "",
+        "expires_at": ""
       },
       "allowed_actions": [
         "apply_fix"
@@ -154,9 +154,9 @@
       "required_preflight_checks": [],
       "idempotency_key": "fixture:opencode-ai/opencode:1003:close",
       "lease_state": {
-        "holder": "",
-        "leased_until": "",
-        "attempt": 0
+        "claimed_by": "",
+        "claimed_at": "",
+        "expires_at": ""
       },
       "allowed_actions": [
         "close"
@@ -181,9 +181,9 @@
       "required_preflight_checks": [],
       "idempotency_key": "fixture:opencode-ai/opencode:1004:close",
       "lease_state": {
-        "holder": "",
-        "leased_until": "",
-        "attempt": 0
+        "claimed_by": "",
+        "claimed_at": "",
+        "expires_at": ""
       },
       "allowed_actions": [
         "close"
@@ -208,9 +208,9 @@
       "required_preflight_checks": [],
       "idempotency_key": "fixture:opencode-ai/opencode:1005:comment",
       "lease_state": {
-        "holder": "",
-        "leased_until": "",
-        "attempt": 0
+        "claimed_by": "",
+        "claimed_at": "",
+        "expires_at": ""
       },
       "allowed_actions": [
         "comment"
@@ -235,9 +235,9 @@
       "required_preflight_checks": [],
       "idempotency_key": "fixture:opencode-ai/opencode:1006:comment",
       "lease_state": {
-        "holder": "",
-        "leased_until": "",
-        "attempt": 0
+        "claimed_by": "",
+        "claimed_at": "",
+        "expires_at": ""
       },
       "allowed_actions": [
         "comment"
@@ -264,9 +264,9 @@
       "required_preflight_checks": [],
       "idempotency_key": "fixture:opencode-ai/opencode:1007:comment",
       "lease_state": {
-        "holder": "",
-        "leased_until": "",
-        "attempt": 0
+        "claimed_by": "",
+        "claimed_at": "",
+        "expires_at": ""
       },
       "allowed_actions": [
         "comment"

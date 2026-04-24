@@ -842,8 +842,10 @@ func TestActionPlanFixtureCoversAllLanes(t *testing.T) {
 	}
 
 	var plan ActionPlan
-	if err := json.Unmarshal(payload, &plan); err != nil {
-		t.Fatalf("decode action plan fixture: %v", err)
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&plan); err != nil {
+		t.Fatalf("decode action plan fixture with strict ActionPlan contract: %v", err)
 	}
 
 	want := []ActionLane{
