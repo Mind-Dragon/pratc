@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/jeffersonnunn/pratc/internal/repo"
@@ -21,9 +22,10 @@ type Config struct {
 }
 
 type MergeOptions struct {
-	CommitTitle   string
-	CommitMessage string
-	MergeMethod   string
+	CommitTitle     string
+	CommitMessage   string
+	MergeMethod     string
+	ExpectedHeadSHA string
 }
 
 type MergeResult struct {
@@ -80,14 +82,14 @@ type PRState struct {
 }
 
 type Executor struct {
-	cfg             Config
-	mutator         GitHubMutator
-	ledger          Ledger
-	now             func() time.Time
-	sandboxManager  *sandbox.SandboxManager
-	mirrorPath      string
-	mirrorPathErr   error
-	queue           *workqueue.Queue
+	cfg            Config
+	mutator        GitHubMutator
+	ledger         Ledger
+	now            func() time.Time
+	sandboxManager *sandbox.SandboxManager
+	mirrorPath     string
+	mirrorPathErr  error
+	queue          *workqueue.Queue
 }
 
 func New(cfg Config, mutator GitHubMutator, ledger Ledger) *Executor {
@@ -224,7 +226,15 @@ func (e *Executor) ExecuteIntent(ctx context.Context, intent types.ActionIntent)
 		}, nil
 	}
 	if err := e.policyAllows(intent); err != nil {
-		return types.ExecutionResult{}, err
+		result := types.ExecutionResult{
+			IntentID:   intent.ID,
+			Action:     intent.Action,
+			PRNumber:   intent.PRNumber,
+			DryRun:     effectiveDryRun(e.cfg, intent),
+			ExecutedAt: e.now().Format(time.RFC3339Nano),
+			Error:      err.Error(),
+		}
+		return e.failIntent(intent, result, err)
 	}
 
 	// Run all 9 preflight checks
@@ -239,7 +249,7 @@ func (e *Executor) ExecuteIntent(ctx context.Context, intent types.ActionIntent)
 
 	// Record "preflighted" transition
 	preflightResult := PreflightResult{
-		PRNumber: intent.PRNumber,
+		PRNumber:  intent.PRNumber,
 		AllPassed: true,
 		Timestamp: e.now().Format(time.RFC3339Nano),
 	}
@@ -260,10 +270,10 @@ func (e *Executor) ExecuteIntent(ctx context.Context, intent types.ActionIntent)
 
 	switch intent.Action {
 	case types.ActionKindMerge:
-		merge, err := e.mutator.Merge(ctx, e.cfg.Repo, intent.PRNumber, MergeOptions{}, dryRun)
+		merge, err := e.mutator.Merge(ctx, e.cfg.Repo, intent.PRNumber, mergeOptionsFromPayload(intent.Payload), dryRun)
 		if err != nil {
 			result.Error = err.Error()
-			return result, err
+			return e.failIntent(intent, result, err)
 		}
 		result.Executed = !dryRun
 		if merge.AlreadyMerged {
@@ -275,13 +285,29 @@ func (e *Executor) ExecuteIntent(ctx context.Context, intent types.ActionIntent)
 		if !dryRun {
 			if err := VerifyMerge(ctx, e.mutator, e.cfg.Repo, intent.PRNumber); err != nil {
 				result.Error = err.Error()
-				return result, err
+				return e.failIntent(intent, result, err)
 			}
 		}
 	case types.ActionKindClose:
-		if err := e.mutator.Close(ctx, e.cfg.Repo, intent.PRNumber, firstString(intent.Reasons, "closed by prATC"), dryRun); err != nil {
+		reason := firstString(intent.Reasons, "")
+		commentBody := stringFromPayload(intent.Payload, "comment")
+		if commentBody == "" {
+			commentBody = stringFromPayload(intent.Payload, "comment_body")
+		}
+		if strings.TrimSpace(reason) == "" && strings.TrimSpace(commentBody) == "" {
+			err := fmt.Errorf("close action requires reason or comment text")
 			result.Error = err.Error()
-			return result, err
+			return e.failIntent(intent, result, err)
+		}
+		if commentBody != "" {
+			if err := e.mutator.AddComment(ctx, e.cfg.Repo, intent.PRNumber, commentBody, dryRun); err != nil {
+				result.Error = err.Error()
+				return e.failIntent(intent, result, err)
+			}
+		}
+		if err := e.mutator.Close(ctx, e.cfg.Repo, intent.PRNumber, firstString([]string{reason, commentBody}, "closed by prATC"), dryRun); err != nil {
+			result.Error = err.Error()
+			return e.failIntent(intent, result, err)
 		}
 		result.Executed = !dryRun
 		result.Result = "closed"
@@ -289,14 +315,20 @@ func (e *Executor) ExecuteIntent(ctx context.Context, intent types.ActionIntent)
 		if !dryRun {
 			if err := VerifyClose(ctx, e.mutator, e.cfg.Repo, intent.PRNumber); err != nil {
 				result.Error = err.Error()
-				return result, err
+				return e.failIntent(intent, result, err)
+			}
+			if commentBody != "" {
+				if err := VerifyComment(ctx, e.mutator, e.cfg.Repo, intent.PRNumber, commentBody); err != nil {
+					result.Error = err.Error()
+					return e.failIntent(intent, result, err)
+				}
 			}
 		}
 	case types.ActionKindComment, types.ActionKindRequestChanges:
 		body := firstString(intent.Reasons, "prATC action intent")
 		if err := e.mutator.AddComment(ctx, e.cfg.Repo, intent.PRNumber, body, dryRun); err != nil {
 			result.Error = err.Error()
-			return result, err
+			return e.failIntent(intent, result, err)
 		}
 		result.Executed = !dryRun
 		result.Result = "commented"
@@ -304,14 +336,14 @@ func (e *Executor) ExecuteIntent(ctx context.Context, intent types.ActionIntent)
 		if !dryRun {
 			if err := VerifyComment(ctx, e.mutator, e.cfg.Repo, intent.PRNumber, body); err != nil {
 				result.Error = err.Error()
-				return result, err
+				return e.failIntent(intent, result, err)
 			}
 		}
 	case types.ActionKindLabel:
 		labels := []string{"pratc-action"}
 		if err := e.mutator.AddLabels(ctx, e.cfg.Repo, intent.PRNumber, labels, dryRun); err != nil {
 			result.Error = err.Error()
-			return result, err
+			return e.failIntent(intent, result, err)
 		}
 		result.Executed = !dryRun
 		result.Result = "labeled"
@@ -319,13 +351,13 @@ func (e *Executor) ExecuteIntent(ctx context.Context, intent types.ActionIntent)
 		if !dryRun {
 			if err := VerifyLabels(ctx, e.mutator, e.cfg.Repo, intent.PRNumber, labels); err != nil {
 				result.Error = err.Error()
-				return result, err
+				return e.failIntent(intent, result, err)
 			}
 		}
 	case types.ActionKindApplyFix:
 		if _, err := e.mutator.ApplyFix(ctx, e.cfg.Repo, intent.PRNumber, "", dryRun); err != nil {
 			result.Error = err.Error()
-			return result, err
+			return e.failIntent(intent, result, err)
 		}
 		result.Executed = !dryRun
 		result.Result = "fix_applied"
@@ -333,7 +365,7 @@ func (e *Executor) ExecuteIntent(ctx context.Context, intent types.ActionIntent)
 		if !dryRun {
 			if err := VerifyFixApplied(ctx, e.mutator, e.cfg.Repo, intent.PRNumber); err != nil {
 				result.Error = err.Error()
-				return result, err
+				return e.failIntent(intent, result, err)
 			}
 		}
 	default:
@@ -346,12 +378,12 @@ func (e *Executor) ExecuteIntent(ctx context.Context, intent types.ActionIntent)
 		return result, fmt.Errorf("marshal result: %w", err)
 	}
 	if err := e.ledger.RecordTransition(intent.IdempotencyKey, "executed", string(resultJSON), nil); err != nil {
-		return result, err
+		return e.failIntent(intent, result, err)
 	}
 
 	// For backward compatibility
 	if err := e.ledger.Record(intent.IdempotencyKey, result); err != nil {
-		return result, err
+		return e.failIntent(intent, result, err)
 	}
 
 	return result, nil
@@ -367,13 +399,7 @@ func (e *Executor) runPreflightChecks(ctx context.Context, intent types.ActionIn
 		}
 	}
 
-	// Get allowed branches from payload if available
-	allowedBranches := []string{}
-	if intent.Payload != nil {
-		if branches, ok := intent.Payload["allowed_branches"].([]string); ok {
-			allowedBranches = branches
-		}
-	}
+	allowedBranches := stringSliceFromPayload(intent.Payload, "allowed_branches")
 
 	// 1. checkPROpen - verify PR still open
 	if err := checkPROpen(ctx, e.mutator, e.cfg.Repo, intent.PRNumber); err != nil {
@@ -429,6 +455,45 @@ func (e *Executor) runPreflightChecks(ctx context.Context, intent types.ActionIn
 	return nil
 }
 
+func (e *Executor) failIntent(intent types.ActionIntent, result types.ExecutionResult, cause error) (types.ExecutionResult, error) {
+	if cause == nil {
+		cause = fmt.Errorf("intent failed")
+	}
+	if result.IntentID == "" {
+		result.IntentID = intent.ID
+	}
+	if result.Action == "" {
+		result.Action = intent.Action
+	}
+	if result.PRNumber == 0 {
+		result.PRNumber = intent.PRNumber
+	}
+	if result.ExecutedAt == "" {
+		result.ExecutedAt = e.now().Format(time.RFC3339Nano)
+	}
+	if result.Error == "" {
+		result.Error = cause.Error()
+	}
+	snapshotBytes, marshalErr := json.Marshal(map[string]any{
+		"intent_id":        intent.ID,
+		"action":           intent.Action,
+		"pr_number":        intent.PRNumber,
+		"dry_run":          result.DryRun,
+		"executed":         result.Executed,
+		"already_executed": result.AlreadyExecuted,
+		"result":           result.Result,
+		"error":            result.Error,
+		"timestamp":        result.ExecutedAt,
+	})
+	if marshalErr != nil {
+		return result, fmt.Errorf("%w; failed to marshal failure snapshot: %v", cause, marshalErr)
+	}
+	if err := e.ledger.RecordTransition(intent.IdempotencyKey, "failed", string(snapshotBytes), nil); err != nil {
+		return result, fmt.Errorf("%w; failed to record failure transition: %v", cause, err)
+	}
+	return result, cause
+}
+
 func (e *Executor) policyAllows(intent types.ActionIntent) error {
 	if intent.Action == "" {
 		return fmt.Errorf("action is required")
@@ -462,4 +527,66 @@ func firstString(values []string, fallback string) string {
 		}
 	}
 	return fallback
+}
+
+func mergeOptionsFromPayload(payload map[string]any) MergeOptions {
+	if payload == nil {
+		return MergeOptions{}
+	}
+	return MergeOptions{
+		CommitTitle:     stringFromPayload(payload, "commit_title"),
+		CommitMessage:   stringFromPayload(payload, "commit_message"),
+		MergeMethod:     stringFromPayload(payload, "merge_method"),
+		ExpectedHeadSHA: stringFromPayload(payload, "expected_head_sha"),
+	}
+}
+
+func stringFromPayload(payload map[string]any, key string) string {
+	if payload == nil {
+		return ""
+	}
+	value, ok := payload[key]
+	if !ok {
+		return ""
+	}
+	s, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(s)
+}
+
+func stringSliceFromPayload(payload map[string]any, key string) []string {
+	if payload == nil {
+		return nil
+	}
+	value, ok := payload[key]
+	if !ok {
+		return nil
+	}
+	switch typed := value.(type) {
+	case []string:
+		return compactStrings(typed)
+	case []any:
+		values := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if s, ok := item.(string); ok {
+				values = append(values, s)
+			}
+		}
+		return compactStrings(values)
+	default:
+		return nil
+	}
+}
+
+func compactStrings(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }

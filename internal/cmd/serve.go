@@ -1210,13 +1210,18 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst,
 			Token:   githubAccess.Token,
 		})
 		workerID := fmt.Sprintf("serve-%s", uuid.NewString()[:8])
+		breaker := executor.NewMutationCircuitBreaker(executor.CircuitBreakerConfig{
+			MaxGlobal:  intEnv("PRATC_LIVE_MAX_GLOBAL", 1),
+			MaxPerRepo: intEnv("PRATC_LIVE_MAX_PER_REPO", 1),
+		})
 		worker := executor.NewWorker(executor.WorkerConfig{
-			Repo:         defaultRepo,
-			WorkerID:     workerID,
-			LeaseTTL:     10 * time.Minute,
-			PollInterval: 2 * time.Second,
-			Concurrency:  1,
-			Live:         true,
+			Repo:           defaultRepo,
+			WorkerID:       workerID,
+			LeaseTTL:       10 * time.Minute,
+			PollInterval:   2 * time.Second,
+			Concurrency:    1,
+			Live:           true,
+			CircuitBreaker: breaker,
 		}, queue, executor.NewLiveGitHubMutator(client), cacheStore.ExecutorLedger())
 		go func() {
 			if err := worker.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {

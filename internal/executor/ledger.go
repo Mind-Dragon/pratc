@@ -46,8 +46,16 @@ func (l *MemoryLedger) RecordTransition(intentID, transition, preflightSnapshot 
 		MutationSnapshot:  mutationSnapshot,
 		Timestamp:         time.Now().UTC(),
 	}
-	
-	l.transitions[intentID] = append(l.transitions[intentID], record)
+
+	history := l.transitions[intentID]
+	for i := range history {
+		if history[i].Transition == transition {
+			history[i] = record
+			l.transitions[intentID] = history
+			return nil
+		}
+	}
+	l.transitions[intentID] = append(history, record)
 	return nil
 }
 

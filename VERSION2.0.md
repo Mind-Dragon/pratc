@@ -605,3 +605,26 @@ git diff --check
 - `README.md` summarizes public/current status.
 
 If documents conflict on action safety, `GUIDELINE.md` wins.
+
+
+## Wave D Closeout Notes
+
+Wave D hardens the first live mutation worker path without changing the default safety posture. Advisory/dry-run remains default. Real GitHub writes require `serve --live`, a persisted `ActionIntent`, policy approval, live preflight, circuit-breaker capacity, idempotency, ledger transitions, and post-action verification.
+
+Delivered in Wave D:
+
+- in-process live mutation circuit breaker with global and per-repo limits
+- `PRATC_LIVE_MAX_GLOBAL` and `PRATC_LIVE_MAX_PER_REPO` runtime controls
+- worker dry-run path executes proofs without acquiring breaker capacity or writing to GitHub
+- executor failure ledger transitions for mutation and verification failures
+- queue failure handling that clears leases instead of leaving work permanently claimed
+- merge payload support for `merge_method`, `commit_title`, `commit_message`, `expected_head_sha`, and `allowed_branches`
+- close action requirement for a reason or comment, with optional comment-before-close verification
+- HTTP-backed mutation retry tests for transient 5xx and fail-fast non-retryable 4xx
+- fake E2E proof for dry-run zero-write and explicit live fake write
+
+Deferred to Wave E/F:
+
+- API/TUI circuit-breaker status panels
+- larger merge/close/comment/label sandbox repo matrix
+- real disposable GitHub repository E2E gates

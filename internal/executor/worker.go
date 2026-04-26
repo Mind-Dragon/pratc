@@ -11,12 +11,13 @@ import (
 
 // WorkerConfig controls the central executor worker that consumes persisted ActionIntents.
 type WorkerConfig struct {
-	Repo         string
-	WorkerID     string
-	LeaseTTL     time.Duration
-	PollInterval time.Duration
-	Concurrency  int
-	Live         bool
+	Repo           string
+	WorkerID       string
+	LeaseTTL       time.Duration
+	PollInterval   time.Duration
+	Concurrency    int
+	Live           bool
+	CircuitBreaker *MutationCircuitBreaker
 }
 
 // Worker claims work items and executes their persisted intents through the central executor.
@@ -40,6 +41,9 @@ func NewWorker(cfg WorkerConfig, queue *workqueue.Queue, mutator GitHubMutator, 
 	}
 	if cfg.Concurrency <= 0 {
 		cfg.Concurrency = 1
+	}
+	if cfg.Live && cfg.CircuitBreaker == nil {
+		cfg.CircuitBreaker = NewMutationCircuitBreaker(CircuitBreakerConfig{MaxGlobal: 1, MaxPerRepo: 1})
 	}
 	if ledger == nil {
 		ledger = NewMemoryLedger()
@@ -118,16 +122,28 @@ func (w *Worker) ProcessOnce(ctx context.Context) (bool, error) {
 	}
 	current := claimed
 	for _, intent := range intents {
-		if !w.cfg.Live || intent.DryRun {
-			continue
+		actualLiveWrite := w.cfg.Live && !intent.DryRun
+		var release func()
+		if actualLiveWrite {
+			var err error
+			release, err = w.cfg.CircuitBreaker.Acquire(w.cfg.Repo)
+			if err != nil {
+				snapshot := fmt.Sprintf(`{"intent_id":%q,"repo":%q,"error":%q}`, intent.ID, w.cfg.Repo, err.Error())
+				_ = w.ledger.RecordTransition(intent.IdempotencyKey, "circuit_denied", snapshot, nil)
+				_ = w.fail(ctx, current, "circuit_breaker_denied")
+				return true, nil
+			}
 		}
-		exec := New(Config{Repo: w.cfg.Repo, DryRun: false, PolicyProfile: intent.PolicyProfile}, w.mutator, w.ledger)
+		exec := New(Config{Repo: w.cfg.Repo, DryRun: !actualLiveWrite, PolicyProfile: intent.PolicyProfile}, w.mutator, w.ledger)
 		result, err := exec.ExecuteIntent(ctx, intent)
+		if release != nil {
+			release()
+		}
 		if err != nil {
 			_ = w.fail(ctx, current, result.Error)
 			return true, err
 		}
-		if !result.Executed && !result.AlreadyExecuted {
+		if !result.Executed && !result.AlreadyExecuted && !result.DryRun {
 			_ = w.fail(ctx, current, "intent_not_executed")
 			return true, nil
 		}

@@ -2,7 +2,7 @@
 
 > Canonical forward plan for prATC (Pipeline for Automated Triaging & Corrections).
 > Live file: `PLANS.md` at repo root.
-> Last verified: 2026-04-26 16:51 Central from implementation boundary `2d2a36d4a897`.
+> Last verified: Wave D closeout gate from local implementation boundary after `b6925e6a` doc sync.
 
 ---
 
@@ -10,10 +10,10 @@
 
 **Product line:** prATC `1.7.1` → `2.0-dev` action engine
 **Branch:** `main`, local-only work ahead of `origin/main`
-**Current implementation boundary:** `2d2a36d4a897` — `feat: wire live executor worker`
-**Wave status:** Wave A complete, Wave B complete, Wave C worker-pool slice complete, Wave D active
+**Current implementation boundary:** local Wave D closeout patch on top of `b6925e6a` — live mutation hardening
+**Wave status:** Wave A complete, Wave B complete, Wave C worker-pool slice complete, Wave D implementation complete pending final commit
 **Safety posture:** dry-run/advisory remains default; live GitHub writes require explicit `serve --live`, policy approval, preflight, idempotency, ledger, and verification
-**Verified before this doc sync:** `git diff --check` and `go test ./internal/cmd ./internal/executor ./internal/workqueue ./internal/app ./internal/types/...` pass
+**Verified before final Wave D docs:** focused executor/github/workqueue tests pass; final full gate listed below
 **Runtime note:** `bin/pratc` is ignored build output. Rebuild on a clean commit before using binary version as runtime proof.
 
 ---
@@ -136,16 +136,16 @@ make build
 ./bin/pratc serve --help | grep -- --live
 ```
 
-### Wave D — Live mutation hardening — ACTIVE
+### Wave D — Live mutation hardening — COMPLETE
 
-Goal: make the first live mutation path safe enough for sandbox E2E, without broadening direct swarm permissions.
+Goal: make the first live mutation path safe enough for fake/sandbox E2E, without broadening direct swarm permissions.
 
-Workstreams:
+Delivered:
 
 1. **Safety circuit breaker**
    - enforce max concurrent live mutations per repo and globally
    - fail closed when limits are exceeded
-   - expose status for operator/TUI surfaces
+   - expose in-process status for later operator/TUI surfaces
 2. **Merge action hardening**
    - carry merge method, commit title/message, expected SHA, and idempotency key from intent payload
    - test squash/rebase/merge strategy routing against fake and HTTP-backed clients
@@ -161,10 +161,14 @@ Workstreams:
 5. **Ledger/state transition hardening**
    - record preflight, execution, verification, failure, and circuit-breaker denials
    - keep queue transitions safe on partial failure
-6. **Sandbox E2E preparation**
-   - use a disposable repo or fake HTTP GitHub server first
+6. **Fake/sandbox E2E preparation**
+   - use FakeGitHub first; disposable repo matrix deferred to Wave F
    - prove dry-run remains zero-write
    - prove live mode writes only after explicit gate acceptance
+7. **Operator/runbook sync**
+   - document `serve --live` worker path
+   - document `PRATC_LIVE_MAX_GLOBAL`, `PRATC_LIVE_MAX_PER_REPO`, `PRATC_QUEUE_DB_PATH`, and GitHub token source behavior
+   - document hold/recovery through stopping `serve --live` and restarting with safer breaker limits
 
 Exit gate:
 
@@ -178,7 +182,7 @@ make build
 
 ### Wave E — Ledger, API, and UI integration — NEXT
 
-- API endpoints for ledger and queue stats.
+- API endpoints for circuit-breaker status, ledger, and queue stats.
 - TUI real mutation status and circuit-breaker state.
 - Operator hold/resume controls.
 - Notification hooks only after ledger semantics are stable.
@@ -222,7 +226,7 @@ Known stable rule:
 
 | Date | Version | Change |
 |------|---------|--------|
-| 2026-04-26 | 2.0-dev Wave D | Rebased live roadmap around Wave C completion and the next live mutation hardening queue |
+| 2026-04-26 | 2.0-dev Wave D | Added live mutation circuit breaker, merge/close/retry hardening, failure ledger transitions, and fake dry-run/live E2E proof |
 | 2026-04-26 | 2.0-dev Wave C | Added `--live` flag, persisted executable intents, and wired `serve --live` to central `executor.Worker` |
 | 2026-04-26 | 2.0-dev Wave B | Completed guarded executor foundation: preflight, fake guarded actions, ledger, verification, sandbox, E2E harness |
 | 2026-04-26 | 2.0-dev Wave A | Completed ActionPlan, queue, proof, and TUI foundation |

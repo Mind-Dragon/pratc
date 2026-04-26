@@ -356,10 +356,59 @@ Live GitHub mutations require a GitHub Personal Access Token (PAT). The token is
 
 **Example:**
 ```bash
-export GITHUB_PAT="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-./bin/pratc execute --repo owner/repo --work-item-id 123 --live
+export GITHUB_PAT="ghp_xx...xxxx"
+export PRATC_QUEUE_DB_PATH=/home/agent/.pratc/queue.db
+export PRATC_LIVE_MAX_GLOBAL=1
+export PRATC_LIVE_MAX_PER_REPO=1
+./bin/pratc serve --repo owner/repo --live --force-cache
 ```
 
-**Validation:** When live mode is enabled, the token must be non-empty (trimmed of whitespace). The helper `GetGitHubToken()` enforces this.
+`serve --live` starts the central executor worker. It claims persisted `ActionWorkItem` rows, loads linked `ActionIntent` rows, and executes only through the guarded executor path. There is no supported direct swarm-worker GitHub mutation path.
+
+**Validation:** When live mode is enabled, token resolution must find at least one GitHub token from the configured token source or environment.
 
 **Security:** Never log the token value; only log "token present" or "token missing".
+
+
+## Wave D Live Worker Controls
+
+### Live worker launch
+
+```bash
+cd /home/agent/pratc
+export GITHUB_PAT="ghp_xx...xxxx"
+export PRATC_QUEUE_DB_PATH=/home/agent/.pratc/queue.db
+export PRATC_LIVE_MAX_GLOBAL=1
+export PRATC_LIVE_MAX_PER_REPO=1
+./bin/pratc serve --repo owner/repo --live --force-cache
+```
+
+Dry-run/advisory remains the default. Omit `--live` to keep the API server in zero-write mode. Dry-run intents still execute through the executor for proof/ledger purposes, but bypass the live mutation circuit breaker and perform no GitHub writes.
+
+### Intent payload keys
+
+Merge intents may use:
+
+- `merge_method`: `merge`, `squash`, or `rebase`
+- `commit_title`
+- `commit_message`
+- `expected_head_sha`
+- `allowed_branches`
+
+Close intents must include at least one reason or comment body. Optional comment keys are `comment` or `comment_body`; when present, the executor comments before closing and verifies both the closed state and comment presence.
+
+### Circuit breaker recovery / hold
+
+- Set `PRATC_LIVE_MAX_GLOBAL=1` and `PRATC_LIVE_MAX_PER_REPO=1` for safest live operation.
+- To hold all live mutations, stop the `serve --live` process or restart without `--live`.
+- A breaker denial records `circuit_denied` in the executor ledger and fails the claimed queue item safely with its lease cleared.
+- Restart with lower limits after any unexpected mutation failure; do not increase concurrency until ledger and queue status are inspected.
+
+### Verification commands
+
+```bash
+cd /home/agent/pratc
+GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod go test ./internal/executor ./internal/github ./internal/workqueue -count=1
+TMPDIR=$PWD/.gotmp GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod make build
+./bin/pratc serve --help | grep -n -- --live
+```

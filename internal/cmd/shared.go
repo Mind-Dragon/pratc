@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -189,6 +190,18 @@ func queueDBPathFromEnv() string {
 		path = filepath.Join(home, ".pratc", "queue.db")
 	}
 	return path
+}
+
+func intEnv(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
 }
 
 func openQueue() (*workqueue.Queue, error) {

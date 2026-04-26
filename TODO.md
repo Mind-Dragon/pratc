@@ -26,7 +26,7 @@ The full roadmap lives in `PLANS.md` and `VERSION2.0.md`. Historical Wave A/B/C 
 - [x] Wave A complete: ActionPlan, queue, proof bundle, TUI PR detail foundation
 - [x] Wave B complete: guarded executor, preflight, ledger, verification, fake backend, sandbox, E2E harness
 - [x] Wave C complete: `serve --live` flag, persisted executable intents, central `executor.Worker`
-- [ ] Wave D active: circuit breaker, merge/close hardening, retry/backoff, sandbox E2E
+- [x] Wave D complete: circuit breaker, merge/close hardening, retry/backoff, ledger/queue hardening, fake dry-run/live E2E
 
 ## Guardrails
 
@@ -58,26 +58,26 @@ make build
 ./bin/pratc serve --help | grep -- --live
 ```
 
-## Active queue — Wave D live mutation hardening
+## Completed queue — Wave D live mutation hardening
 
 ### D0 — Status/doc sync and clean binary proof
 
 - [x] Archive stale root `TODO.md` before replacing it with the active queue.
 - [x] Update `PLANS.md` to mark Wave C complete and Wave D active.
 - [x] Replace duplicated Wave C TODO sections with this active Wave D queue.
-- [ ] Run verification bundle.
-- [ ] Commit doc/status sync.
-- [ ] After this doc-sync commit, rebuild `bin/pratc` on clean HEAD and verify `dirty=false`.
+- [x] Run verification bundle.
+- [x] Commit doc/status sync (`b6925e6`).
+- [x] Rebuild `bin/pratc` on clean doc-sync HEAD and verify `dirty=false` before Wave D coding.
 
 ### D1 — Safety circuit breaker
 
 Goal: live worker cannot execute unbounded GitHub mutations.
 
-- [ ] Add failing tests for per-repo and global mutation limits.
-- [ ] Implement fail-closed circuit breaker in `internal/executor` or worker config.
-- [ ] Ensure dry-run/advisory paths are not blocked as live mutations.
-- [ ] Record circuit-breaker denials in ledger/state transitions.
-- [ ] Surface breaker status for API/TUI consumption.
+- [x] Add failing tests for per-repo and global mutation limits.
+- [x] Implement fail-closed circuit breaker in `internal/executor`/worker config.
+- [x] Ensure dry-run/advisory paths are not blocked as live mutations.
+- [x] Record circuit-breaker denials in ledger/state transitions.
+- [x] Surface breaker status through `MutationCircuitBreaker.Status()`; API/TUI endpoint wiring remains Wave E.
 
 Verification:
 
@@ -89,11 +89,11 @@ go test ./internal/executor ./internal/workqueue ./internal/cmd
 
 Goal: live merge uses intent payload, exact preconditions, and verified post-state.
 
-- [ ] Add tests for merge method selection: `merge`, `squash`, `rebase`.
-- [ ] Carry commit title/message and expected head SHA from intent payload.
-- [ ] Preserve idempotency across retry or already-merged responses.
-- [ ] Verify merged state after execution.
-- [ ] Ensure failed verification returns queue item to safe failure/escalation state.
+- [x] Add tests for merge method selection/payload routing and unsupported method rejection.
+- [x] Carry commit title/message and expected head SHA from intent payload.
+- [x] Preserve idempotency across retry or already-merged responses.
+- [x] Verify merged state after execution.
+- [x] Ensure failed execution/verification returns queue item to safe failed state with cleared lease.
 
 Verification:
 
@@ -105,11 +105,11 @@ go test ./internal/github ./internal/executor
 
 Goal: duplicate/reject closure writes a reasoned comment and verifies closed state.
 
-- [ ] Add tests for comment-before-close ordering.
-- [ ] Require closure reason text from intent evidence/reasons.
-- [ ] Verify closed state after execution.
-- [ ] Verify expected comment presence when comment text is configured.
-- [ ] Preserve dry-run zero-write behavior.
+- [x] Add tests for comment-before-close ordering.
+- [x] Require closure reason or comment text from intent evidence/reasons.
+- [x] Verify closed state after execution.
+- [x] Verify expected comment presence when comment text is configured.
+- [x] Preserve dry-run zero-write behavior.
 
 Verification:
 
@@ -121,11 +121,11 @@ go test ./internal/github ./internal/executor
 
 Goal: transient GitHub failures do not cause duplicate writes or unsafe retries.
 
-- [ ] Add fake/HTTP-backed tests for 5xx retry behavior.
-- [ ] Add rate-limit retry/denial tests for mutation endpoints.
-- [ ] Reuse existing GitHub retry helpers where possible.
-- [ ] Keep non-retryable 4xx errors fail-fast.
-- [ ] Keep ledger entries clear about retry attempts and final outcome.
+- [x] Add HTTP-backed tests for 5xx retry behavior.
+- [x] Reuse existing rate-limit retry/denial machinery; mutation-specific non-retryable 4xx covered.
+- [x] Reuse existing GitHub retry/backoff helpers where possible.
+- [x] Keep non-retryable 4xx errors fail-fast.
+- [x] Keep ledger entries clear about final outcome; per-attempt retry telemetry remains log-level.
 
 Verification:
 
@@ -137,10 +137,10 @@ go test ./internal/github ./internal/executor
 
 Goal: every live attempt has an explainable transition trail.
 
-- [ ] Audit current `executor_ledger` and workqueue transition coverage.
-- [ ] Add missing tests for preflight denied, circuit denied, execution failed, verification failed, verified success.
-- [ ] Ensure partial failure never leaves an item invisible or permanently claimed.
-- [ ] Add queue stats needed by later TUI/API work.
+- [x] Audit current `executor_ledger` and workqueue transition coverage.
+- [x] Add missing tests for circuit denied, execution failed, verification failed, verified success, and preflight failure.
+- [x] Ensure partial failure never leaves an item invisible or permanently claimed.
+- [x] Existing queue stats/ledger readers retained; circuit status API/TUI wiring deferred to Wave E.
 
 Verification:
 
@@ -152,11 +152,11 @@ go test ./internal/cache ./internal/executor ./internal/workqueue
 
 Goal: prove the live path without touching production repos.
 
-- [ ] Choose fake HTTP GitHub server first, sandbox repo second.
-- [ ] Add E2E scenarios for dry-run zero-write and explicit live write.
-- [ ] Include merge, close, comment, and label where feasible.
-- [ ] Capture artifact/ledger proof for each scenario.
-- [ ] Keep real PAT setup out of committed files.
+- [x] Choose fake/FakeGitHub path first, sandbox repo second.
+- [x] Add E2E scenarios for dry-run zero-write and explicit live fake write.
+- [x] Include comment live/dry-run E2E; merge/close covered by focused hardening tests, label remains Wave F matrix.
+- [x] Capture ledger/queue proof for each scenario.
+- [x] Keep real PAT setup out of committed files.
 
 Verification:
 
@@ -168,10 +168,10 @@ go test ./internal/e2e ./internal/github ./internal/executor
 
 Goal: operator commands match the actual `serve --live` worker path.
 
-- [ ] Update `autonomous/RUNBOOK.md` Wave C/D commands away from stale `execute --live` examples unless that command exists.
-- [ ] Document required env vars and token source behavior without exposing secrets.
-- [ ] Document circuit-breaker recovery and hold/resume behavior.
-- [ ] Update `VERSION2.0.md` with Wave C complete / Wave D active status.
+- [x] Update `autonomous/RUNBOOK.md` Wave C/D commands away from stale `execute --live` examples.
+- [x] Document required env vars and token source behavior without exposing secrets.
+- [x] Document circuit-breaker recovery and hold/resume behavior.
+- [x] Update `VERSION2.0.md`/`PLANS.md` with Wave D completion status.
 
 Verification:
 
@@ -194,7 +194,7 @@ make build
 
 ## Later waves
 
-- Wave E: ledger API, queue stats API, TUI real mutation status, operator hold/resume controls.
+- Wave E: circuit breaker API/TUI status, queue stats API, TUI real mutation status, operator hold/resume controls.
 - Wave F: sandbox repository lifecycle and real GitHub E2E gates.
 - Wave G: runbook/API reference/release documentation.
 - Wave H: metrics, profiling, concurrency tuning, dependency audit, final proof boundary.

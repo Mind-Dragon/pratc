@@ -8,14 +8,15 @@ import (
 )
 
 type FakePR struct {
-	Number    int
-	Title     string
-	State     string
-	Mergeable bool
-	HeadSHA   string
-	Labels    []string
-	Merged    bool
-	Closed    bool
+	Number     int
+	Title      string
+	State      string
+	Mergeable  bool
+	HeadSHA    string
+	Labels     []string
+	Merged     bool
+	Closed     bool
+	BaseBranch string
 }
 
 type FakeComment struct {
@@ -25,37 +26,38 @@ type FakeComment struct {
 }
 
 type ExecutorLogEntry struct {
-	At       time.Time
-	Action   string
-	PRNumber int
-	DryRun   bool
-	Result   string
+	At           time.Time
+	Action       string
+	PRNumber     int
+	DryRun       bool
+	Result       string
+	MergeOptions MergeOptions
 }
 
 type FakeGitHub struct {
-	mu                sync.Mutex
-	prs               map[int]FakePR
-	comments          map[int][]FakeComment
-	labels            map[int]map[string]bool
-	log               []ExecutorLogEntry
-	now               func() time.Time
-	ciStatus          string
-	mergeable         *bool  // nil means use PR's mergeable field
-	requiredReviews   bool
+	mu                 sync.Mutex
+	prs                map[int]FakePR
+	comments           map[int][]FakeComment
+	labels             map[int]map[string]bool
+	log                []ExecutorLogEntry
+	now                func() time.Time
+	ciStatus           string
+	mergeable          *bool // nil means use PR's mergeable field
+	requiredReviews    bool
 	rateLimitRemaining int
-	writes            int // count of non-dry-run writes
+	writes             int // count of non-dry-run writes
 }
 
 func NewFakeGitHub() *FakeGitHub {
 	return &FakeGitHub{
-		prs:               map[int]FakePR{},
-		comments:          map[int][]FakeComment{},
-		labels:            map[int]map[string]bool{},
-		now:               func() time.Time { return time.Now().UTC() },
-		ciStatus:          "success",  // default: CI is green
-		mergeable:         nil,        // default: use PR's mergeable field
-		requiredReviews:   true,       // default: reviews are satisfied
-		rateLimitRemaining: 5000,       // default: high rate limit
+		prs:                map[int]FakePR{},
+		comments:           map[int][]FakeComment{},
+		labels:             map[int]map[string]bool{},
+		now:                func() time.Time { return time.Now().UTC() },
+		ciStatus:           "success", // default: CI is green
+		mergeable:          nil,       // default: use PR's mergeable field
+		requiredReviews:    true,      // default: reviews are satisfied
+		rateLimitRemaining: 5000,      // default: high rate limit
 	}
 }
 
@@ -92,11 +94,15 @@ func (f *FakeGitHub) GetPRState(ctx context.Context, repo string, prNumber int) 
 	if !ok {
 		return PRState{}, fmt.Errorf("PR #%d not found", prNumber)
 	}
+	baseBranch := pr.BaseBranch
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
 	return PRState{
 		Number:     pr.Number,
 		State:      pr.State,
 		HeadSHA:    pr.HeadSHA,
-		BaseBranch: "main", // default for testing
+		BaseBranch: baseBranch,
 		Mergeable:  pr.Mergeable,
 		CIStatus:   f.ciStatus, // use configurable field
 	}, nil
@@ -118,7 +124,10 @@ func (f *FakeGitHub) GetBaseBranch(ctx context.Context, repo string, prNumber in
 	if _, ok := f.prs[prNumber]; !ok {
 		return "", fmt.Errorf("PR #%d not found", prNumber)
 	}
-	// For testing, return a default base branch
+	pr := f.prs[prNumber]
+	if pr.BaseBranch != "" {
+		return pr.BaseBranch, nil
+	}
 	return "main", nil
 }
 
@@ -181,7 +190,7 @@ func (f *FakeGitHub) Merge(ctx context.Context, repo string, prNumber int, opts 
 		return MergeResult{}, fmt.Errorf("PR #%d is closed", prNumber)
 	}
 	if pr.Merged || pr.State == "merged" {
-		f.appendLogLocked("merge", prNumber, dryRun, "already_merged")
+		f.appendLogLocked("merge", prNumber, dryRun, "already_merged", opts)
 		return MergeResult{Merged: true, SHA: pr.HeadSHA, AlreadyMerged: true}, nil
 	}
 	if !pr.Mergeable {
@@ -193,7 +202,7 @@ func (f *FakeGitHub) Merge(ctx context.Context, repo string, prNumber int, opts 
 		f.prs[prNumber] = pr
 		f.writes++
 	}
-	f.appendLogLocked("merge", prNumber, dryRun, "merged")
+	f.appendLogLocked("merge", prNumber, dryRun, "merged", opts)
 	return MergeResult{Merged: true, SHA: pr.HeadSHA}, nil
 }
 
@@ -213,7 +222,7 @@ func (f *FakeGitHub) Close(ctx context.Context, repo string, prNumber int, reaso
 		f.prs[prNumber] = pr
 		f.writes++
 	}
-	f.appendLogLocked("close", prNumber, dryRun, "closed")
+	f.appendLogLocked("close", prNumber, dryRun, "closed", MergeOptions{})
 	return nil
 }
 
@@ -227,7 +236,7 @@ func (f *FakeGitHub) AddComment(ctx context.Context, repo string, prNumber int, 
 		f.comments[prNumber] = append(f.comments[prNumber], FakeComment{PRNumber: prNumber, Body: body, At: f.now()})
 		f.writes++
 	}
-	f.appendLogLocked("comment", prNumber, dryRun, "commented")
+	f.appendLogLocked("comment", prNumber, dryRun, "commented", MergeOptions{})
 	return nil
 }
 
@@ -246,7 +255,7 @@ func (f *FakeGitHub) AddLabels(ctx context.Context, repo string, prNumber int, l
 		}
 		f.writes++
 	}
-	f.appendLogLocked("label", prNumber, dryRun, "labeled")
+	f.appendLogLocked("label", prNumber, dryRun, "labeled", MergeOptions{})
 	return nil
 }
 
@@ -256,7 +265,7 @@ func (f *FakeGitHub) ApplyFix(ctx context.Context, repo string, prNumber int, pa
 	if _, ok := f.prs[prNumber]; !ok {
 		return ApplyFixResult{}, fmt.Errorf("PR #%d not found", prNumber)
 	}
-	f.appendLogLocked("apply_fix", prNumber, dryRun, "fix_applied")
+	f.appendLogLocked("apply_fix", prNumber, dryRun, "fix_applied", MergeOptions{})
 	if !dryRun {
 		f.writes++
 	}
@@ -291,8 +300,14 @@ func (f *FakeGitHub) GetLabels(ctx context.Context, repo string, prNumber int) (
 	return result, nil
 }
 
-func (f *FakeGitHub) appendLogLocked(action string, prNumber int, dryRun bool, result string) {
-	f.log = append(f.log, ExecutorLogEntry{At: f.now(), Action: action, PRNumber: prNumber, DryRun: dryRun, Result: result})
+func (f *FakeGitHub) appendLogLocked(action string, prNumber int, dryRun bool, result string, opts MergeOptions) {
+	f.log = append(f.log, ExecutorLogEntry{At: f.now(), Action: action, PRNumber: prNumber, DryRun: dryRun, Result: result, MergeOptions: opts})
+}
+
+func (f *FakeGitHub) Log() []ExecutorLogEntry {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]ExecutorLogEntry(nil), f.log...)
 }
 
 // HasWritten returns true if any non-dry-run writes occurred.

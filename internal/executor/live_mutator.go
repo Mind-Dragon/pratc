@@ -97,7 +97,7 @@ func (m *LiveGitHubMutator) Merge(ctx context.Context, repo string, prNumber int
 	if dryRun {
 		return MergeResult{Merged: false, SHA: "", AlreadyMerged: false}, nil
 	}
-	sha, err := m.client.Merge(ctx, repo, prNumber, opts.CommitTitle, opts.CommitMessage, opts.MergeMethod)
+	sha, err := m.client.Merge(ctx, repo, prNumber, opts.CommitTitle, opts.CommitMessage, opts.MergeMethod, opts.ExpectedHeadSHA)
 	if err != nil {
 		return MergeResult{}, err
 	}

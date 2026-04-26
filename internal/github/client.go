@@ -62,7 +62,6 @@ type commentDTO struct {
 	Body string `json:"body"`
 }
 
-
 type PullRequestListOptions struct {
 	PerPage         int
 	Cursor          string
@@ -827,64 +826,64 @@ func (c *Client) GetPR(ctx context.Context, repo string, number int) (*restPRNod
 			return nil, fmt.Errorf("github error %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
 		}
 
-	var pr restPRNode
-	if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
+		var pr restPRNode
+		if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("decode pr: %w", err)
+		}
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("decode pr: %w", err)
-	}
-	_ = resp.Body.Close()
 
-	// Enrich: HeadSHA from Head.SHA
-	pr.HeadSHA = pr.Head.SHA
+		// Enrich: HeadSHA from Head.SHA
+		pr.HeadSHA = pr.Head.SHA
 
-	// Enrich: CI status via GraphQL
-	ciStatus, err := c.FetchPullRequestCIStatus(ctx, repo, number)
-	if err != nil {
-		c.log.Warn("failed to fetch CI status", "repo", repo, "pr", number, "error", err.Error())
-		pr.CIStatus = "unknown"
-	} else {
-		pr.CIStatus = ciStatus
-	}
-
-	// Enrich: RequiredReviews satisfaction (1 if satisfied, 0 otherwise)
-	// Compute: required count from branch protection; approvals from reviews
-	owner, name, err := splitRepo(repo)
-	if err != nil {
-		return nil, err
-	} // already have from above
-	requiredCount, err := c.getBranchProtectionRequiredCount(ctx, owner, name, pr.Base.Ref)
-	if err != nil {
-		c.log.Warn("failed to fetch branch protection", "repo", repo, "branch", pr.Base.Ref, "error", err.Error())
-		// If we can't determine, assume satisfied to avoid blocking
-		pr.RequiredReviews = 1
-	} else if requiredCount == 0 {
-		pr.RequiredReviews = 1
-	} else {
-		reviews, err := c.FetchPullRequestReviews(ctx, repo, number)
+		// Enrich: CI status via GraphQL
+		ciStatus, err := c.FetchPullRequestCIStatus(ctx, repo, number)
 		if err != nil {
-			c.log.Warn("failed to fetch reviews", "error", err.Error())
-			pr.RequiredReviews = 0
+			c.log.Warn("failed to fetch CI status", "repo", repo, "pr", number, "error", err.Error())
+			pr.CIStatus = "unknown"
 		} else {
-			approved := 0
-			for _, r := range reviews {
-				if r.State == "APPROVED" {
-					approved++
+			pr.CIStatus = ciStatus
+		}
+
+		// Enrich: RequiredReviews satisfaction (1 if satisfied, 0 otherwise)
+		// Compute: required count from branch protection; approvals from reviews
+		owner, name, err := splitRepo(repo)
+		if err != nil {
+			return nil, err
+		} // already have from above
+		requiredCount, err := c.getBranchProtectionRequiredCount(ctx, owner, name, pr.Base.Ref)
+		if err != nil {
+			c.log.Warn("failed to fetch branch protection", "repo", repo, "branch", pr.Base.Ref, "error", err.Error())
+			// If we can't determine, assume satisfied to avoid blocking
+			pr.RequiredReviews = 1
+		} else if requiredCount == 0 {
+			pr.RequiredReviews = 1
+		} else {
+			reviews, err := c.FetchPullRequestReviews(ctx, repo, number)
+			if err != nil {
+				c.log.Warn("failed to fetch reviews", "error", err.Error())
+				pr.RequiredReviews = 0
+			} else {
+				approved := 0
+				for _, r := range reviews {
+					if r.State == "APPROVED" {
+						approved++
+					}
+				}
+				if approved >= requiredCount {
+					pr.RequiredReviews = 1
+				} else {
+					pr.RequiredReviews = 0
 				}
 			}
-			if approved >= requiredCount {
-				pr.RequiredReviews = 1
-			} else {
-				pr.RequiredReviews = 0
-			}
 		}
-	}
 
-	return &pr, nil
+		return &pr, nil
 	}
 }
 
 // Merge merges a pull request via the GitHub REST API.
-func (c *Client) Merge(ctx context.Context, repo string, prNumber int, commitTitle, commitMessage, mergeMethod string) (string, error) {
+func (c *Client) Merge(ctx context.Context, repo string, prNumber int, commitTitle, commitMessage, mergeMethod, expectedHeadSHA string) (string, error) {
 	owner, name, err := splitRepo(repo)
 	if err != nil {
 		return "", err
@@ -892,15 +891,21 @@ func (c *Client) Merge(ctx context.Context, repo string, prNumber int, commitTit
 	url := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/merge", c.baseURL, owner, name, prNumber)
 
 	payload := map[string]any{
-		"commit_title":  commitTitle,
+		"commit_title":   commitTitle,
 		"commit_message": commitMessage,
-		"merge_method":  mergeMethod,
+		"merge_method":   mergeMethod,
 	}
 	if commitTitle == "" {
 		payload["commit_title"] = "Merge pull request"
 	}
 	if mergeMethod == "" {
 		payload["merge_method"] = "squash"
+	}
+	if mergeMethod != "" && mergeMethod != "merge" && mergeMethod != "squash" && mergeMethod != "rebase" {
+		return "", fmt.Errorf("unsupported merge method %q", mergeMethod)
+	}
+	if expectedHeadSHA != "" {
+		payload["sha"] = expectedHeadSHA
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -959,7 +964,7 @@ func (c *Client) Merge(ctx context.Context, repo string, prNumber int, commitTit
 
 		// Success: response contains {"sha": "..."}
 		var result struct {
-			SHA string `json:"sha"`
+			SHA     string `json:"sha"`
 			Message string `json:"message"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -1099,7 +1104,9 @@ func (c *Client) CreateComment(ctx context.Context, repo string, prNumber int, b
 			return fmt.Errorf("github comment failed %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
 		}
 		// Success — optionally read response for created comment ID
-		var commentResp struct{ ID int64 `json:"id"` }
+		var commentResp struct {
+			ID int64 `json:"id"`
+		}
 		if err := json.NewDecoder(resp.Body).Decode(&commentResp); err != nil {
 			// ignore, comment likely created
 			return nil
@@ -1215,7 +1222,7 @@ func (c *Client) GetRateLimit(ctx context.Context) (int, error) {
 		var rate struct {
 			Resources struct {
 				Core struct {
-					Remaining int `json:"remaining"`
+					Remaining int   `json:"remaining"`
 					ResetAt   int64 `json:"reset"`
 				} `json:"core"`
 			} `json:"resources"`
@@ -1228,7 +1235,6 @@ func (c *Client) GetRateLimit(ctx context.Context) (int, error) {
 		return rate.Resources.Core.Remaining, nil
 	}
 }
-
 
 // getBranchProtectionRequiredCount queries branch protection to get the number of
 // required approving reviews for the given branch. Returns 0 if protection is not enabled.
