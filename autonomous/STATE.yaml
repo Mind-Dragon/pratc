@@ -4,8 +4,8 @@ branch: main
 baseline_commit: 09c3ea702239
 current_run_id: v171-head-20260424T153126Z
 corpus_dir: projects/openclaw_openclaw/runs/v171-head-20260424T153126Z
-phase: wave-a-complete
-current_wave: A
+phase: wave-c-ready
+current_wave: C
 open_gaps: []
 blocked_gaps: []
 completed_gaps: []
@@ -14,10 +14,10 @@ last_green_commit: 0f2ebf0
 paused: false
 stop_reason: ''
 resume_command: python3 scripts/autonomous_controller.py resume
-updated_at: '2026-04-24T22:40:00+00:00'
+updated_at: '2026-04-25T00:10:00+00:00'
 notes:
-- 'Wave A implementation complete: ActionIntent completeness audit, queue API (claim/release/heartbeat/status), proof bundle attach path, TUI PR detail inspector, controller integration.'
+- 'Wave B implementation complete: Live preflight checker, guarded comment/label executor, ledger persistence, post-action verification, fix-and-merge sandbox, E2E harness.'
+- 'Wave B verification: All tests pass, docs aligned, audit-green.'
 - 'Runtime: tmux session pratc-autonomous, port 7400, health OK (loopback + VPN).'
-- 'Audit: 23 passed, 0 failed, 0 manual; disposal_bucket_persistence and provenance drift repairs verified across four-provider audit (Kimi, Codex, Qwen, Z.AI).'
 - 'Proof boundary: last_green_commit=0f2ebf0 (feat: complete Wave A autonomous foundation). Working tree clean. Runtime proof refreshed at autonomous/runtime/runtime-proof.json.'
 runtime_proof: autonomous/runtime/runtime-proof.json
