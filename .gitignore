@@ -10,6 +10,7 @@ build/
 bun.lock
 # Bun lock (we use package-lock.json for reproducibility)
 .cache/
+.gotmp/
 .claude/
 .coverage
 coverage/

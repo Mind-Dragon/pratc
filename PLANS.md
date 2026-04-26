@@ -1,172 +1,220 @@
 # prATC Development Roadmap — Version Plan
 
-> Canonical project plan for prATC (Pipeline for Automated Triaging & Corrections).  
-> Live file: `PLAN.md` at repo root.  
-> Last updated: Wave C implementation phase
+> Canonical forward plan for prATC (Pipeline for Automated Triaging & Corrections).
+> Live file: `PLANS.md` at repo root.
+> Last verified: 2026-04-26 16:51 Central from implementation boundary `2d2a36d4a897`.
 
 ---
 
 ## Current Status
 
-**Version:** 2.0-dev (Wave C)  
-**Branch:** main @ `1160092` (81 commits ahead of origin/main)  
-**Test Status:** 37/37 passing (github + executor packages)  
-**Hermes Integration:** 12 providers active, RunPod removed, vault migrated to env-file
+**Product line:** prATC `1.7.1` → `2.0-dev` action engine
+**Branch:** `main`, local-only work ahead of `origin/main`
+**Current implementation boundary:** `2d2a36d4a897` — `feat: wire live executor worker`
+**Wave status:** Wave A complete, Wave B complete, Wave C worker-pool slice complete, Wave D active
+**Safety posture:** dry-run/advisory remains default; live GitHub writes require explicit `serve --live`, policy approval, preflight, idempotency, ledger, and verification
+**Verified before this doc sync:** `git diff --check` and `go test ./internal/cmd ./internal/executor ./internal/workqueue ./internal/app ./internal/types/...` pass
+**Runtime note:** `bin/pratc` is ignored build output. Rebuild on a clean commit before using binary version as runtime proof.
+
+---
+
+## Document Hierarchy
+
+1. `GUIDELINE.md` owns action policy, lanes, bucket rules, and non-negotiables.
+2. `ARCHITECTURE.md` owns system shape, data flow, and component ownership.
+3. `VERSION2.0.md` owns the v2.0 product/release plan.
+4. `PLANS.md` owns the current wave roadmap and status boundaries.
+5. `TODO.md` owns the active implementation queue.
+6. `AUTONOMOUS.md` and `autonomous/RUNBOOK.md` own controller mechanics and operator commands.
+
+If documents conflict on safety or mutation policy, `GUIDELINE.md` wins.
 
 ---
 
 ## Architecture Overview
 
 ```
-prATC = Pipeline reconciler that detects divergence between codebase reality and planning documents,
-        then autonomously proposes/executes corrective actions via GitHub.
-
-Components:
-- Analyzer  : Reads codebase, compares against DESIGN.md / TODO.md / ARCHITECTURE.md
-- Planner   : Generates actionable correction tasks (diffs, refactors, file moves)
-- Executor  : Dispatches tasks to providers + applies changes
-- LiveMutator: GitHub API integration for PR creation, merging, closing
-- WorkQueue : Persistent job queue with claim/lease/transition states
-- Ledger    : Audit trail of all actions + verification results
-- Serve     : HTTP API + CLI server; orchestrates full pipeline
-- TUI       : Terminal UI for viewing pipeline state, interventions, logs
+GitHub corpus
+    ↓
+Sync/cache layer              internal/sync/, internal/github/, internal/cache/
+    ↓
+Analysis/review pipeline      internal/analysis/, internal/filter/, internal/review/, internal/planning/
+    ↓
+Action engine                 internal/actions/, internal/app/actions.go
+    ↓
+ActionPlan + work queue       internal/workqueue/, action_intents, proof bundles
+    ↓
+Central executor              internal/executor/
+    ↓
+GitHub mutations              only when explicit --live + policy + preflight + ledger + verification pass
 ```
+
+Key components:
+
+- **Analyzer**: reads cached/live PR corpus and produces explainable review data.
+- **Planner/action engine**: assigns action lanes and emits typed `ActionIntent` records.
+- **WorkQueue**: persists `ActionWorkItem`, executable `ActionIntent`, leases, proof bundles, and state transitions.
+- **Executor**: centralizes all GitHub mutation logic behind preflight and verification.
+- **LiveGitHubMutator**: wraps `github.Client` for real GitHub reads/writes while retaining dry-run controls.
+- **Serve**: HTTP API and optional live worker host.
+- **TUI/monitor**: operator view into lanes, queue, executor, proof, and audit state.
 
 ---
 
 ## Version History
 
-### v0.1–0.5 (Completed — commits 1–30)
+### v0.1–v0.5 — Foundation
+
 | Version | Features | Status |
 |---------|----------|--------|
-| 0.1 | Repo scaffolding, go.mod, basic CLI skeleton | ✓ |
-| 0.2 | Work queue (Redis/SQLite backend), state machine | ✓ |
-| 0.3 | Analyzer: doc-codebase reconciliation pass 1 | ✓ |
-| 0.4 | Planner: diff generation, plan → task breakdown | ✓ |
-| 0.5 | Executor: provider routing, dry-run mode, basic logging | ✓ |
+| 0.1 | Repo scaffolding, Go CLI skeleton | Complete |
+| 0.2 | Work queue and state machine | Complete |
+| 0.3 | Analyzer and doc/code reconciliation seed | Complete |
+| 0.4 | Planner, diff generation, task breakdown | Complete |
+| 0.5 | Executor scaffolding, provider routing, dry-run logging | Complete |
 
-### v1.0 (Completed — commits 31–60)
-| Feature | Description |
-|---------|-------------|
-| Serve command | `pratc serve` HTTP server with health, metrics, API endpoints |
-| TUI | `pratc tui` interactive terminal dashboard (bubbletea) |
-| Doc sync | Two-way DESIGN.md ⇄ codebase reconciliation |
-| Provider framework | Multi-LLM routing, Hermes integration, Fallback logic |
-| Test suite | Unit tests (github, executor), e2e sandbox harness |
-| CI | GitHub Actions: lint, test, gate checks |
+### v1.x — Advisory triage engine
+
+| Feature | Description | Status |
+|---------|-------------|--------|
+| Serve command | `pratc serve` API server with health, metrics, repo routes | Complete |
+| TUI | terminal dashboard for triage/control surfaces | Complete |
+| Full-corpus workflow | sync → analyze → cluster → graph → plan → report | Complete |
+| ActionPlan advisory surface | schema `2.0` action lanes, work items, intents | Complete |
+| Runtime proof baseline | OpenClaw full-corpus run, audit-green, PDF artifact | Complete |
 
 ---
 
 ## v2.0 — Wave-Based Release Plan
 
-Release strategy: incremental waves, each adding orthogonal capabilities.  
-All mutations default to `dry-run`; live GitHub ops gated behind `--live`.
+Release strategy: incremental waves, each adding one safe layer. Mutations default to dry-run/advisory; live operations require explicit opt-in and gates.
 
-### Wave A — Foundation (commits 61–70) ✓ COMPLETE
-- **LiveGitHubMutator** stub + `github.Client` wrapper
-- `internal/github` API methods: PR create/update, issues, labels, comments
-- `internal/executor/live_mutator.go` with dry-run guards
-- Work queue `GetClaimable` / `Transition` state transitions
-- Executor plumbing: `ExecuteIntent` accepts `Mutator` interface
-- **Tests:** 37/37 green (github + executor packages)
+### Wave A — ActionPlan + queue foundation — COMPLETE
 
-### Wave B — Safety & Observability (commits 71–75) — IN PROGRESS
-- **Circuit breaker**: maxConcurrentMutations per repo + global limit
-- **Ledger**: `internal/executor/ledger.go` — action log, PR linkage, audit fields
-- **Verification**: post-execution diff + LLM-as-judge correctness check
-- **Guarded executor**: wrap `ExecuteIntent` with pre/post verification hooks
-- **Auth**: provider token sourcing from `~/.vault/llm-provider-keys.env`
+Delivered:
 
-### Wave C (current) — Live Flag & Worker Pool (commits 76–80) — ACTIVE
-- **`--live` flag**: added to `internal/cmd/serve.go RegisterServeCommand`
-- **`runServer` signature extended**: `(..., live bool)`
-- **Intent linkage**: `ActionIntent.WorkItemID` links executable decisions to queue work items
-- **Intent persistence**: `internal/workqueue` stores `action_intents` and exposes `GetIntentsForWorkItem()`
-- **Live mutator**: `LiveGitHubMutator` satisfies `executor.GitHubMutator` with dry-run-aware methods
-- **Worker spawn**: `serve --live` starts `executor.Worker` instead of embedding mutation loops in `serve.go`
-- **Integration**: worker claims `ActionWorkItem`, loads persisted intents, and executes them through `executor.ExecuteIntent`
-- **Gate check**: focused tests, `make build`, `serve --help`, and `git diff --check` pass locally
+- `ActionIntent` completeness fields: reasons, evidence refs, confidence, policy profile, preconditions, idempotency key, dry-run/write classification.
+- Queue API: claim, release, heartbeat, status, filters.
+- Proof bundle attach/store path.
+- TUI PR detail inspector.
+- OpenClaw ActionPlan proof remained audit-green.
 
-### Wave D — Merge & Close Actions (commits 81–85)
-- **Merge strategies**: squash, rebase, merge commit; configurable per intent
-- **Close action**: PR/issue close with comment reason
-- **Retry logic**: exponential backoff on 5xx/rate-limit from GitHub
-- **State transitions**: `Claimed → Executed → Verified` (or `Failed`)
+### Wave B — Guarded executor foundation — COMPLETE
 
-### Wave E — Ledger & UI Integration (commits 86–90)
-- **Ledger persistence**: SQLite table `action_ledger` with indexes
-- **TUI updates**: live view of mutation queue, worker status, ledger entries
-- **API endpoints**: `/api/v1/ledger`, `/api/v1/queue/stats`
-- **Notification**: optional Slack/Discord webhook on merge/failure
+Delivered:
 
-### Wave F — Sandbox & E2E Tests (commits 91–95)
-- **Sandbox repo**: `pratc-e2e-test` org, disposable feature branches
-- **E2E scenarios**: dry-run → review → live merge full cycle
-- **Chaos tests**: simulate GitHub API 500/rate-limit; verify retry/backoff
-- **CI gate**: e2e test block until all Wave F scenarios pass
+- TUI queue/proof/executor/audit panels.
+- Live preflight checker gates.
+- Guarded comment/label executor with fake backend.
+- SQLite executor ledger persistence.
+- Post-action verification helpers.
+- Fix-and-merge sandbox proof path.
+- E2E harness and audit expansion.
+- Wave B docs/runbook sync.
 
-### Wave G — Documentation & Runbook (commits 96–98)
-- **RUNBOOK.md**: operational procedures (restart, recover failed workers, vault key rotation)
-- **VERSION2.0.md**: release notes, migration guide from v1.x
-- **API reference**: OpenAPI spec for `serve` endpoints
-- **Provider guide**: adding new LLM backends (env keys, model mapping)
+### Wave C — Live flag + central worker — COMPLETE
 
-### Wave H — Polishing & Optimization (commits 99–100)
-- **Concurrency tuning**: configurable worker pool size via flag/env
-- **Metrics**: Prometheus metrics (queue depth, mutation latency, success rate)
-- **Profiling**: pprof endpoints, flamegraph generation
-- **Final gate**: code review checklist, dependency audit, version bump
+Implementation boundary: `2d2a36d4a897`.
+
+Delivered:
+
+- Added `--live` flag to `serve`.
+- Extended `runServer(..., live bool)` and logged live mode.
+- Added `ActionIntent.WorkItemID` across Go/Python/TypeScript parity surfaces.
+- Persisted executable `action_intents` in `internal/workqueue`.
+- Added `GetIntentsForWorkItem()`.
+- Made `LiveGitHubMutator` satisfy `executor.GitHubMutator` with dry-run-aware methods.
+- Added `executor.Worker` to claim queue items, load persisted intents, and execute through `Executor.ExecuteIntent`.
+- Wired `serve --live` to spawn the central executor worker.
+
+Verified:
+
+```bash
+git diff --check
+go test ./internal/cmd ./internal/executor ./internal/workqueue ./internal/app ./internal/types/...
+make build
+./bin/pratc serve --help | grep -- --live
+```
+
+### Wave D — Live mutation hardening — ACTIVE
+
+Goal: make the first live mutation path safe enough for sandbox E2E, without broadening direct swarm permissions.
+
+Workstreams:
+
+1. **Safety circuit breaker**
+   - enforce max concurrent live mutations per repo and globally
+   - fail closed when limits are exceeded
+   - expose status for operator/TUI surfaces
+2. **Merge action hardening**
+   - carry merge method, commit title/message, expected SHA, and idempotency key from intent payload
+   - test squash/rebase/merge strategy routing against fake and HTTP-backed clients
+   - verify merged GitHub state after live execution
+3. **Close action hardening**
+   - require reason/comment text for duplicate/reject closures
+   - create comment before close when configured
+   - verify closed GitHub state and comment presence where applicable
+4. **Retry/backoff for live mutations**
+   - reuse existing GitHub transient/rate-limit behavior where possible
+   - add mutation-specific tests for 5xx/rate-limit retry boundaries
+   - preserve idempotency across retries
+5. **Ledger/state transition hardening**
+   - record preflight, execution, verification, failure, and circuit-breaker denials
+   - keep queue transitions safe on partial failure
+6. **Sandbox E2E preparation**
+   - use a disposable repo or fake HTTP GitHub server first
+   - prove dry-run remains zero-write
+   - prove live mode writes only after explicit gate acceptance
+
+Exit gate:
+
+```bash
+git diff --check
+gofmt -w <changed-go-files>
+go test ./internal/github ./internal/executor ./internal/workqueue ./internal/cmd
+make build
+./bin/pratc serve --help | grep -- --live
+```
+
+### Wave E — Ledger, API, and UI integration — NEXT
+
+- API endpoints for ledger and queue stats.
+- TUI real mutation status and circuit-breaker state.
+- Operator hold/resume controls.
+- Notification hooks only after ledger semantics are stable.
+
+### Wave F — Sandbox and E2E tests — NEXT
+
+- Sandbox repo lifecycle.
+- Dry-run → live mutation test path.
+- Merge/close/comment/label scenarios.
+- Chaos tests for GitHub 5xx, rate-limit, stale SHA, and verification failure.
+
+### Wave G — Documentation and runbook — NEXT
+
+- Update `autonomous/RUNBOOK.md` with actual `serve --live` worker commands.
+- Document circuit breaker recovery.
+- Update `VERSION2.0.md` release notes.
+- Add/refresh API reference for queue/ledger endpoints.
+
+### Wave H — Release hardening — NEXT
+
+- Worker pool/concurrency tuning.
+- Prometheus/pprof metrics.
+- Dependency and credential audit.
+- Final version/proof boundary.
 
 ---
 
-## v3.0 — Planned Features (post-2.0)
+## Provider Status
 
-| Feature | Target Wave | Notes |
-|---------|-------------|-------|
-| **Multi-repo support** | A | Single serve instance, multiple queue shards |
-| **Batch operations** | A | Apply same fix across 10+ repos (dependency upgrades) |
-| **AI review** | B | LLM-as-judge on PR diffs before auto-merge |
-| **Rollback** | C | Revert bad mutations via ledger |
-| **Webhooks** | C | GitHub webhook-driven pipeline (no polling) |
-| **RBAC** | D | Token-scoped permissions (write vs admin) |
-| **Plugin system** | D | External executor plugins (Python/JS) |
+Hermes provider config was refreshed during the Wave C prep pass. Runtime provider health is external to this repo and should be checked live before relying on it for implementation swarms.
 
----
+Known stable rule:
 
-## Gate Checklist (per wave)
-
-- [ ] `go vet ./...` passes
-- [ ] `go mod tidy` produces no changes
-- [ ] `gofmt -l` reports no modified files
-- [ ] Unit tests ≥ 80% coverage on new code
-- [ ] E2E tests pass (if applicable for wave)
-- [ ] Running `pratc serve --help` shows new flags
-- [ ] Docs updated in `/docs` or `RUNBOOK.md`
-- [ ] No credentials in logs or error messages
-- [ ] Graceful shutdown verified (SIGTERM → worker stop)
-- [ ] Hermes provider list still ≥ 10 active providers
-
----
-
-## Provider Status (Hermes)
-
-| Provider | Status | Model(s) |
-|----------|--------|----------|
-| kilocode | ✓ active | qwen3-235b, qwen3-32b |
-| nacrof | ✓ active | k3-mini, k2.6 |
-| deepseek | ✓ active | v3, r1 |
-| fireworks | ✓ active | qwen3-235b, v3 |
-| exa | ✓ active | exa-large, exa-pro |
-| kimi | ✓ active | k2.5, k2.5-thinking |
-| inception | ✓ active | incester-v3 |
-| xai | ✓ active | grok-3 |
-| zai | ✓ active | z-ai-pro |
-| openrouter | ✓ active | claude-3.7, gpt-4.1 |
-| opencode | ✓ active | o4-mini, o3 |
-| synthetic | ✓ active | synthetic-v1 |
-
-All keys sourced from `~/.vault/llm-provider-keys.env`.  
-RunPod removed (balance zero).
+- Use env-sourced provider keys, not committed secrets.
+- Do not reintroduce RunPod as an assumed provider while balance is zero.
+- Keep provider availability probes separate from prATC source status.
 
 ---
 
@@ -174,13 +222,15 @@ RunPod removed (balance zero).
 
 | Date | Version | Change |
 |------|---------|--------|
-| 2026-04-26 | 2.0-dev Wave C | Added `--live` flag, persisted executable intents, and wired serve to central executor worker |
-| 2026-04-26 | 2.0-dev Wave B | Vault migrated to env-file; Hermes provider config refreshed |
-| 2026-04-26 | 1.0 | First stable release; serve + TUI + provider routing |
+| 2026-04-26 | 2.0-dev Wave D | Rebased live roadmap around Wave C completion and the next live mutation hardening queue |
+| 2026-04-26 | 2.0-dev Wave C | Added `--live` flag, persisted executable intents, and wired `serve --live` to central `executor.Worker` |
+| 2026-04-26 | 2.0-dev Wave B | Completed guarded executor foundation: preflight, fake guarded actions, ledger, verification, sandbox, E2E harness |
+| 2026-04-26 | 2.0-dev Wave A | Completed ActionPlan, queue, proof, and TUI foundation |
+| 2026-04-24 | 1.7.1 | Verified advisory baseline on OpenClaw full-corpus run |
 
 ---
 
 ## Contact
 
-Maintained by Nous Research / Hermes Agent session.  
+Maintained by Nous Research / Hermes Agent session.
 Issues: `github.com/jeffersonnunn/pratc`
