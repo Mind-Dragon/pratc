@@ -140,7 +140,17 @@ func TestActionsBuildsCompleteActionIntents(t *testing.T) {
 		t.Fatalf("Actions: %v", err)
 	}
 
+	workItemIDs := make(map[string]bool, len(plan.WorkItems))
+	for _, item := range plan.WorkItems {
+		workItemIDs[item.ID] = true
+	}
 	for _, intent := range plan.ActionIntents {
+		if intent.WorkItemID == "" {
+			t.Fatalf("intent %s missing work item id", intent.ID)
+		}
+		if !workItemIDs[intent.WorkItemID] {
+			t.Fatalf("intent %s references unknown work item %s", intent.ID, intent.WorkItemID)
+		}
 		if intent.PolicyProfile == "" {
 			t.Fatalf("intent %s missing policy profile", intent.ID)
 		}
@@ -191,5 +201,8 @@ func TestActionIntentsFromDecisionAddsCompletenessFallbacks(t *testing.T) {
 	}
 	if intent.PolicyProfile != types.PolicyProfileAdvisory {
 		t.Fatalf("policy profile = %q, want advisory", intent.PolicyProfile)
+	}
+	if intent.WorkItemID != "wi-42" {
+		t.Fatalf("work item id = %q, want wi-42", intent.WorkItemID)
 	}
 }

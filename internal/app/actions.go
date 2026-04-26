@@ -215,6 +215,7 @@ func actionIntentsFromDecision(repo, runID, createdAt string, decision actionpkg
 
 		intents = append(intents, types.ActionIntent{
 			ID:             fmt.Sprintf("intent-%d-%s", decision.PRNumber, action),
+			WorkItemID:     actionWorkItemID(decision.PRNumber),
 			Action:         action,
 			PRNumber:       decision.PRNumber,
 			Lane:           decision.Lane,

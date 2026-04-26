@@ -186,6 +186,30 @@ func TestQueueEnqueueActionPlanMakesItemsClaimable(t *testing.T) {
 			sampleItem("wi-plan-one"),
 			sampleItem("wi-plan-two"),
 		},
+		ActionIntents: []types.ActionIntent{
+			{
+				ID:             "intent-plan-one-comment",
+				WorkItemID:     "wi-plan-one",
+				Action:         types.ActionKindComment,
+				PRNumber:       101,
+				Lane:           types.ActionLaneFocusedReview,
+				DryRun:         true,
+				PolicyProfile:  types.PolicyProfileAdvisory,
+				IdempotencyKey: "owner/repo#101:comment",
+				CreatedAt:      "2026-04-24T15:00:00Z",
+			},
+			{
+				ID:             "intent-plan-two-close",
+				WorkItemID:     "wi-plan-two",
+				Action:         types.ActionKindClose,
+				PRNumber:       102,
+				Lane:           types.ActionLaneDuplicateClose,
+				DryRun:         true,
+				PolicyProfile:  types.PolicyProfileAdvisory,
+				IdempotencyKey: "owner/repo#102:close",
+				CreatedAt:      "2026-04-24T15:00:01Z",
+			},
+		},
 	}
 	plan.WorkItems[1].PRNumber = 102
 	plan.WorkItems[1].Lane = types.ActionLaneDuplicateClose
@@ -205,6 +229,40 @@ func TestQueueEnqueueActionPlanMakesItemsClaimable(t *testing.T) {
 	}
 	if claimed.PRNumber != 102 || claimed.Lane != types.ActionLaneDuplicateClose {
 		t.Fatalf("claimed item drifted: %+v", claimed)
+	}
+
+	intents, err := q.GetIntentsForWorkItem(ctx, "owner/repo", "wi-plan-two")
+	if err != nil {
+		t.Fatalf("get intents for work item: %v", err)
+	}
+	if len(intents) != 1 {
+		t.Fatalf("intent count = %d, want 1", len(intents))
+	}
+	if intents[0].ID != "intent-plan-two-close" || intents[0].WorkItemID != "wi-plan-two" || intents[0].Action != types.ActionKindClose {
+		t.Fatalf("intent drifted: %+v", intents[0])
+	}
+}
+
+func TestQueueEnqueueActionPlanRejectsIntentWithoutWorkItemID(t *testing.T) {
+	ctx := context.Background()
+	q := testQueue(t, time.Date(2026, 4, 24, 15, 30, 0, 0, time.UTC))
+	plan := types.ActionPlan{
+		Repo:      "owner/repo",
+		WorkItems: []types.ActionWorkItem{sampleItem("wi-missing-link")},
+		ActionIntents: []types.ActionIntent{{
+			ID:             "intent-missing-link",
+			Action:         types.ActionKindComment,
+			PRNumber:       101,
+			Lane:           types.ActionLaneFocusedReview,
+			DryRun:         true,
+			PolicyProfile:  types.PolicyProfileAdvisory,
+			IdempotencyKey: "owner/repo#101:comment",
+			CreatedAt:      "2026-04-24T15:30:00Z",
+		}},
+	}
+
+	if err := q.EnqueueActionPlan(ctx, plan); err == nil {
+		t.Fatal("expected missing work item id error")
 	}
 }
 

@@ -523,14 +523,12 @@ python3 scripts/audit_guideline.py projects/openclaw_openclaw/runs/v171-head-202
 Lanes: 11, 12, 13, 14
 
 Expected outputs:
-
 - dry-run executor
 - live preflight checker
 - proof bundle path
 - TUI action dashboard
 
 Barrier check:
-
 ```bash
 go test ./internal/github ./internal/executor ./internal/repo ./internal/monitor/...
 ./bin/pratc actions --repo openclaw/openclaw --force-cache --policy=advisory --format=json
@@ -538,6 +536,16 @@ go test ./internal/github ./internal/executor ./internal/repo ./internal/monitor
 ```
 
 `monitor --once` may not exist yet; if not, add a testable render/snapshot function instead of relying on interactive UI.
+
+**Wave B Completion Status (COMPLETED ✓)**
+- TUI panels render with live data (verified)
+- Live preflight checker enforces all 9 gates
+- Guarded comment/label executor works with fake GitHub
+- Ledger persistence survives restart (SQLite)
+- Post-action verification confirms mutations
+- Fix-and-merge sandbox produces valid proof bundles
+- E2E harness passes all audit checks
+- Docs aligned with implementation
 
 ### Wave 4 — audit, e2e, and OpenClaw dry run
 

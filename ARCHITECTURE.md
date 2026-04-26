@@ -275,7 +275,36 @@ Autonomous runtime readiness requires a fresh binary and, when API readiness is 
 
 ## Technical reference
 
-This section keeps the concrete routes, command surface, and service contracts close to the architecture they support.
+### Document hierarchy
+
+This document sits in the middle of the doc suite:
+
+- **ROADMAP.md** — project scope, release milestones, wave sequencing
+- **PLANS.md** — phased implementation plans, task breakdown, completion gates
+- **VERSION2.0.md** — v2.0 action-engine product plan and 16-lane ownership
+- **GUIDELINE.md** — action policy, bucket rules, non-negotiables
+- **AUTONOMOUS.md** — autonomous loop policy and stop conditions
+- **ARCHITECTURE.md** — system shape, data flow, technical reference (this file)
+- **TODO.md** — current iteration tasks and gate checklist
+- **AUDIT.md** — audit procedures, failure modes, remediation workflows
+
+Each doc has a single responsibility. Changes to one usually require cross-references in the others.
+
+### Audit types
+
+The project uses a four-pillar audit model:
+
+1. **Readiness audit** — gate before merge: verifies docs exist and are consistent (PLANS.md present, TODO.md traceable, ARCHITECTURE.md hierarchy defined).
+2. **Plan compliance audit** — phase completion check: confirms each wave's acceptance criteria are met before advancing state.
+3. **Architecture audit** — structural integrity: validates package boundaries, interface sizes, dependency rules, and type-surface consistency.
+4. **Document reconciliation audit** — doc/code sync: ensures implementation matches declared architecture, interfaces, and contracts.
+
+Audit failures are categorized as:
+- **Blocker (exit 2)** — missing required artifact or contract violation; must fix before merge
+- **Warning (exit 1)** — stale metadata or missing optional section; should fix within same wave
+- **Info (exit 0)** — advisory only; no action required
+
+This document (ARCHITECTURE.md) must define the system shape and enumerate the audit expectations for layers, interfaces, and scaling rules.
 
 ### CLI surface
 

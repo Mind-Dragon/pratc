@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	supportedSchemaVersion = 7
+	supportedSchemaVersion = 8
 )
 
 func TestCacheUpsertAndQuery(t *testing.T) {
@@ -523,8 +523,8 @@ func TestMigrationFreshInstall(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT version, name, applied_at FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &name, &appliedAt); err != nil {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
-	if version != 7 || name != "repo_name_normalization" {
-		t.Fatalf("expected version=7 name=repo_name_normalization, got version=%d name=%s", version, name)
+	if version != 8 || name != "executor_ledger" {
+		t.Fatalf("expected version=8 name=executor_ledger, got version=%d name=%s", version, name)
 	}
 
 	requiredTables := []string{
@@ -622,8 +622,8 @@ func TestMigrationUpgradeFromNminus1(t *testing.T) {
 	if err := store.db.QueryRow(`SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1`).Scan(&version, &name); err != nil {
 		t.Fatalf("query schema_migrations after upgrade: %v", err)
 	}
-	if version != 7 || name != "repo_name_normalization" {
-		t.Fatalf("expected migration version=7 name=repo_name_normalization, got version=%d name=%s", version, name)
+	if version != 8 || name != "executor_ledger" {
+		t.Fatalf("expected migration version=8 name=executor_ledger, got version=%d name=%s", version, name)
 	}
 
 	requiredTables := []string{
@@ -975,8 +975,8 @@ func TestMigrationIdempotency(t *testing.T) {
 	if err := store2.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if count != 7 {
-		t.Fatalf("expected 7 migration records, got %d", count)
+	if count != 8 {
+		t.Fatalf("expected 8 migration records, got %d", count)
 	}
 
 	var userVersion int

@@ -261,6 +261,7 @@ if BaseModel is not None:
         model_config = ConfigDict(populate_by_name=True)
 
         id: str = ""
+        work_item_id: str | None = None
         action: str
         pr_number: int
         lane: str = ""
@@ -704,6 +705,7 @@ else:
         dry_run: bool
         created_at: str
         id: str = ""
+        work_item_id: str = ""
         lane: str = ""
         policy_profile: str = "advisory"
         confidence: float = 0.0

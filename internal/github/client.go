@@ -57,6 +57,12 @@ type RateLimitStatus struct {
 	ResetAt   time.Time
 }
 
+// commentDTO is used for comment payloads.
+type commentDTO struct {
+	Body string `json:"body"`
+}
+
+
 type PullRequestListOptions struct {
 	PerPage         int
 	Cursor          string
@@ -765,5 +771,613 @@ func (n pullRequestNode) toPR(repo string) types.PR {
 			"deletions":           "live_api",
 			"changed_files_count": "live_api",
 		},
+	}
+}
+
+// GetPR fetches a single pull request via REST.
+func (c *Client) GetPR(ctx context.Context, repo string, number int) (*restPRNode, error) {
+	owner, name, err := splitRepo(repo)
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/repos/%s/%s/pulls/%d", c.baseURL, owner, name, number)
+
+	var retries int
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("build get pr request: %w", err)
+		}
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+		if tok, tokErr := c.tokenSource.Token(ctx); tokErr == nil && tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			if isTransientTransportError(err) && retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest transport error, retrying", "url", url, "wait_seconds", wait.Seconds(), "error", err.Error())
+				c.sleep(wait)
+				retries++
+				continue
+			}
+			return nil, fmt.Errorf("perform rest request: %w", err)
+		}
+
+		if resp.StatusCode == http.StatusNotFound {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("PR #%d not found", number)
+		}
+		if resp.StatusCode >= 500 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest transient error", "url", url, "status", resp.StatusCode, "wait", wait.Seconds())
+				c.sleep(wait)
+				retries++
+				continue
+			}
+			return nil, fmt.Errorf("github error %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		}
+		if resp.StatusCode >= 300 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("github error %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		}
+
+	var pr restPRNode
+	if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("decode pr: %w", err)
+	}
+	_ = resp.Body.Close()
+
+	// Enrich: HeadSHA from Head.SHA
+	pr.HeadSHA = pr.Head.SHA
+
+	// Enrich: CI status via GraphQL
+	ciStatus, err := c.FetchPullRequestCIStatus(ctx, repo, number)
+	if err != nil {
+		c.log.Warn("failed to fetch CI status", "repo", repo, "pr", number, "error", err.Error())
+		pr.CIStatus = "unknown"
+	} else {
+		pr.CIStatus = ciStatus
+	}
+
+	// Enrich: RequiredReviews satisfaction (1 if satisfied, 0 otherwise)
+	// Compute: required count from branch protection; approvals from reviews
+	owner, name, err := splitRepo(repo)
+	if err != nil {
+		return nil, err
+	} // already have from above
+	requiredCount, err := c.getBranchProtectionRequiredCount(ctx, owner, name, pr.Base.Ref)
+	if err != nil {
+		c.log.Warn("failed to fetch branch protection", "repo", repo, "branch", pr.Base.Ref, "error", err.Error())
+		// If we can't determine, assume satisfied to avoid blocking
+		pr.RequiredReviews = 1
+	} else if requiredCount == 0 {
+		pr.RequiredReviews = 1
+	} else {
+		reviews, err := c.FetchPullRequestReviews(ctx, repo, number)
+		if err != nil {
+			c.log.Warn("failed to fetch reviews", "error", err.Error())
+			pr.RequiredReviews = 0
+		} else {
+			approved := 0
+			for _, r := range reviews {
+				if r.State == "APPROVED" {
+					approved++
+				}
+			}
+			if approved >= requiredCount {
+				pr.RequiredReviews = 1
+			} else {
+				pr.RequiredReviews = 0
+			}
+		}
+	}
+
+	return &pr, nil
+	}
+}
+
+// Merge merges a pull request via the GitHub REST API.
+func (c *Client) Merge(ctx context.Context, repo string, prNumber int, commitTitle, commitMessage, mergeMethod string) (string, error) {
+	owner, name, err := splitRepo(repo)
+	if err != nil {
+		return "", err
+	}
+	url := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/merge", c.baseURL, owner, name, prNumber)
+
+	payload := map[string]any{
+		"commit_title":  commitTitle,
+		"commit_message": commitMessage,
+		"merge_method":  mergeMethod,
+	}
+	if commitTitle == "" {
+		payload["commit_title"] = "Merge pull request"
+	}
+	if mergeMethod == "" {
+		payload["merge_method"] = "squash"
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshal merge payload: %w", err)
+	}
+
+	var retries int
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(body))
+		if err != nil {
+			return "", fmt.Errorf("build merge request: %w", err)
+		}
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+		req.Header.Set("Content-Type", "application/json")
+		if tok, tokErr := c.tokenSource.Token(ctx); tokErr == nil && tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			if isTransientTransportError(err) && retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest transport error, retrying merge", "url", url, "wait", wait.Seconds(), "error", err.Error())
+				c.sleep(wait)
+				retries++
+				continue
+			}
+			return "", fmt.Errorf("perform merge request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusConflict {
+			// Already merged or not mergeable — read body for detail
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			msg := strings.ToLower(string(bodyBytes))
+			if strings.Contains(msg, "already merged") || strings.Contains(msg, "no commits between") {
+				return "", nil // treat as success (no-op)
+			}
+			return "", fmt.Errorf("merge conflict: %s", strings.TrimSpace(string(bodyBytes)))
+		}
+		if resp.StatusCode >= 500 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			if retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest merge server error", "status", resp.StatusCode, "wait", wait.Seconds())
+				c.sleep(wait)
+				retries++
+				continue
+			}
+			return "", fmt.Errorf("github merge failed %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		}
+		if resp.StatusCode >= 300 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			return "", fmt.Errorf("github merge failed %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		}
+
+		// Success: response contains {"sha": "..."}
+		var result struct {
+			SHA string `json:"sha"`
+			Message string `json:"message"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			// ignore decode error, we can still return success
+			return "", nil
+		}
+		if result.SHA == "" && result.Message != "" {
+			// GitHub sometimes returns {"message":"No commits between..."} — treat as merged
+			return "", nil
+		}
+		return result.SHA, nil
+	}
+}
+
+// Close closes a pull request via the GitHub REST API.
+func (c *Client) Close(ctx context.Context, repo string, prNumber int) error {
+	owner, name, err := splitRepo(repo)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/repos/%s/%s/pulls/%d", c.baseURL, owner, name, prNumber)
+
+	payload := map[string]any{
+		"state": "closed",
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal close payload: %w", err)
+	}
+
+	var retries int
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPatch, url, bytes.NewReader(body))
+		if err != nil {
+			return fmt.Errorf("build close request: %w", err)
+		}
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+		req.Header.Set("Content-Type", "application/json")
+		if tok, tokErr := c.tokenSource.Token(ctx); tokErr == nil && tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			if isTransientTransportError(err) && retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest transport error, retrying close", "url", url, "wait", wait.Seconds(), "error", err.Error())
+				c.sleep(wait)
+				retries++
+				continue
+			}
+			return fmt.Errorf("perform close request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 500 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			if retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest close server error", "status", resp.StatusCode, "wait", wait.Seconds())
+				c.sleep(wait)
+				retries++
+				continue
+			}
+			return fmt.Errorf("github close failed %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		}
+		if resp.StatusCode >= 300 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("github close failed %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		}
+
+		// Success - optionally decode to verify state
+		var closedPR restPRNode
+		if err := json.NewDecoder(resp.Body).Decode(&closedPR); err != nil {
+			// ignore decode error — close succeeded even if we couldn't parse response
+			return nil
+		}
+		if strings.ToLower(closedPR.State) != "closed" {
+			c.log.Warn("close returned non-closed state", "state", closedPR.State)
+		}
+		return nil
+	}
+}
+
+// CreateComment adds a comment to a pull request.
+func (c *Client) CreateComment(ctx context.Context, repo string, prNumber int, body string) error {
+	owner, name, err := splitRepo(repo)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d/comments", c.baseURL, owner, name, prNumber)
+
+	payload := map[string]string{"body": body}
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal comment payload: %w", err)
+	}
+
+	var retries int
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
+		if err != nil {
+			return fmt.Errorf("build comment request: %w", err)
+		}
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+		req.Header.Set("Content-Type", "application/json")
+		if tok, tokErr := c.tokenSource.Token(ctx); tokErr == nil && tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			if isTransientTransportError(err) && retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest transport error, retrying comment", "url", url, "wait", wait.Seconds(), "error", err.Error())
+				c.sleep(wait)
+				retries++
+				continue
+			}
+			return fmt.Errorf("perform comment request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 500 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			if retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest comment server error", "status", resp.StatusCode, "wait", wait.Seconds())
+				c.sleep(wait)
+				retries++
+				continue
+			}
+			return fmt.Errorf("github comment failed %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		}
+		if resp.StatusCode >= 300 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("github comment failed %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		}
+		// Success — optionally read response for created comment ID
+		var commentResp struct{ ID int64 `json:"id"` }
+		if err := json.NewDecoder(resp.Body).Decode(&commentResp); err != nil {
+			// ignore, comment likely created
+			return nil
+		}
+		_ = commentResp.ID
+		return nil
+	}
+}
+
+// AddLabels adds labels to a pull request.
+func (c *Client) AddLabels(ctx context.Context, repo string, prNumber int, labels []string) error {
+	owner, name, err := splitRepo(repo)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d/labels", c.baseURL, owner, name, prNumber)
+
+	payload := labels
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal labels payload: %w", err)
+	}
+
+	var retries int
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
+		if err != nil {
+			return fmt.Errorf("build add-labels request: %w", err)
+		}
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+		req.Header.Set("Content-Type", "application/json")
+		if tok, tokErr := c.tokenSource.Token(ctx); tokErr == nil && tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			if isTransientTransportError(err) && retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest transport error, retrying add-labels", "url", url, "wait", wait.Seconds(), "error", err.Error())
+				c.sleep(wait)
+				retries++
+				continue
+			}
+			return fmt.Errorf("perform add-labels request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 500 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			if retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest add-labels server error", "status", resp.StatusCode, "wait", wait.Seconds())
+				c.sleep(wait)
+				retries++
+				continue
+			}
+			return fmt.Errorf("github add-labels failed %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		}
+		if resp.StatusCode >= 300 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("github add-labels failed %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		}
+		// Success — response is an array of label objects
+		return nil
+	}
+}
+
+// GetRateLimit queries the GitHub REST rate limit endpoint.
+func (c *Client) GetRateLimit(ctx context.Context) (int, error) {
+	url := c.baseURL + "/rate_limit"
+
+	var retries int
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return -1, fmt.Errorf("build rate limit request: %w", err)
+		}
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+		if tok, tokErr := c.tokenSource.Token(ctx); tokErr == nil && tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			if isTransientTransportError(err) && retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest transport error, retrying rate-limit", "url", url, "wait", wait.Seconds(), "error", err.Error())
+				c.sleep(wait)
+				retries++
+				continue
+			}
+			return -1, fmt.Errorf("perform rate limit request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 500 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			if retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest rate-limit server error", "status", resp.StatusCode, "wait", wait.Seconds())
+				c.sleep(wait)
+				retries++
+				continue
+			}
+			return -1, fmt.Errorf("github rate-limit failed %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		}
+		if resp.StatusCode >= 300 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			return -1, fmt.Errorf("github rate-limit failed %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		}
+
+		var rate struct {
+			Resources struct {
+				Core struct {
+					Remaining int `json:"remaining"`
+					ResetAt   int64 `json:"reset"`
+				} `json:"core"`
+			} `json:"resources"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&rate); err != nil {
+			// Fall back to header-based if parsing fails
+			remaining, _ := strconv.Atoi(resp.Header.Get("X-RateLimit-Remaining"))
+			return remaining, nil
+		}
+		return rate.Resources.Core.Remaining, nil
+	}
+}
+
+
+// getBranchProtectionRequiredCount queries branch protection to get the number of
+// required approving reviews for the given branch. Returns 0 if protection is not enabled.
+
+// GetLabels fetches the current labels on a PR.
+func (c *Client) GetLabels(ctx context.Context, repo string, prNumber int) ([]string, error) {
+	owner, name, err := splitRepo(repo)
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d/labels", c.baseURL, owner, name, prNumber)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build get-labels request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	if tok, tokErr := c.tokenSource.Token(ctx); tokErr == nil && tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("perform get-labels request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("github get-labels failed %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+	}
+
+	var labelNodes []struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&labelNodes); err != nil {
+		return nil, fmt.Errorf("decode labels: %w", err)
+	}
+	labels := make([]string, 0, len(labelNodes))
+	for _, n := range labelNodes {
+		labels = append(labels, n.Name)
+	}
+	return labels, nil
+}
+
+// FetchComments retrieves all comment bodies on a PR.
+func (c *Client) FetchComments(ctx context.Context, repo string, prNumber int) ([]commentDTO, error) {
+	owner, name, err := splitRepo(repo)
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d/comments", c.baseURL, owner, name, prNumber)
+
+	var all []commentDTO
+	page := 1
+	for {
+		paged := fmt.Sprintf("%s?page=%d&per_page=100", url, page)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, paged, nil)
+		if err != nil {
+			return nil, fmt.Errorf("build fetch-comments request: %w", err)
+		}
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+		if tok, tokErr := c.tokenSource.Token(ctx); tokErr == nil && tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("perform fetch-comments request: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 300 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("github fetch-comments failed %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		}
+		var pageComments []commentDTO
+		if err := json.NewDecoder(resp.Body).Decode(&pageComments); err != nil {
+			return nil, fmt.Errorf("decode comments: %w", err)
+		}
+		if len(pageComments) == 0 {
+			break
+		}
+		all = append(all, pageComments...)
+		if len(pageComments) < 100 {
+			break
+		}
+		page++
+		if page > 10 {
+			c.log.Warn("fetch-comments capped at 10 pages", "total", len(all))
+			break
+		}
+	}
+	return all, nil
+}
+
+func (c *Client) getBranchProtectionRequiredCount(ctx context.Context, owner, repo, branch string) (int, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/branches/%s/protection", c.baseURL, owner, repo, branch)
+
+	var retries int
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return 0, fmt.Errorf("build branch protection request: %w", err)
+		}
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+		if tok, tokErr := c.tokenSource.Token(ctx); tokErr == nil && tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			if isTransientTransportError(err) && retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest transport error, retrying branch protection", "url", url, "wait", wait.Seconds(), "error", err.Error())
+				c.sleep(wait)
+				retries++
+				continue
+			}
+			return 0, fmt.Errorf("perform branch protection request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusNotFound {
+			// Protection not enabled
+			return 0, nil
+		}
+		if resp.StatusCode >= 500 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			if retries < c.maxSecondaryRetries {
+				wait := transientBackoff(retries)
+				c.log.Warn("rest branch protection server error", "status", resp.StatusCode, "wait", wait.Seconds())
+				c.sleep(wait)
+				retries++
+				continue
+			}
+			return 0, fmt.Errorf("github branch protection failed %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		}
+		if resp.StatusCode >= 300 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			return 0, fmt.Errorf("github branch protection failed %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		}
+
+		var protection struct {
+			RequiredPullRequestReviews struct {
+				RequiredApprovingReviewCount int `json:"required_approving_review_count"`
+			} `json:"required_pull_request_reviews"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&protection); err != nil {
+			return 0, fmt.Errorf("decode branch protection: %w", err)
+		}
+		return protection.RequiredPullRequestReviews.RequiredApprovingReviewCount, nil
 	}
 }

@@ -49,6 +49,11 @@ type restPRNode struct {
 	Labels []struct {
 		Name string `json:"name"`
 	} `json:"labels"`
+
+	// Derived fields — populated by GetPR enrich step, not from JSON
+	HeadSHA         string `json:"-"` // pr.Head.SHA
+	CIStatus        string `json:"-"` // from commit status
+	RequiredReviews int    `json:"-"` // 1 if branch protection reviews satisfied, else 0
 }
 
 // FetchPullRequestsREST fetches open PRs using the GitHub REST API.

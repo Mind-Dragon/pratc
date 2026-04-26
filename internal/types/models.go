@@ -1,5 +1,11 @@
 package types
 
+import (
+	"fmt"
+	"strings"
+	"time"
+)
+
 // PR is the shared pull request payload exchanged by the CLI, API, ML service, and web UI.
 type PR struct {
 	ID                string            `json:"id"`
@@ -349,6 +355,7 @@ type ActionWorkItem struct {
 
 type ActionIntent struct {
 	ID             string            `json:"id"`
+	WorkItemID     string            `json:"work_item_id,omitempty"`
 	Action         ActionKind        `json:"action"`
 	PRNumber       int               `json:"pr_number"`
 	Lane           ActionLane        `json:"lane"`
@@ -847,3 +854,51 @@ const (
 	GraphSLOMS   = 120000 // 120 seconds
 	PlanSLOMS    = 90000  // 90 seconds
 )
+
+// ValidateProofBundle validates a proof bundle against a work item
+func ValidateProofBundle(item ActionWorkItem, bundle ProofBundle) error {
+	if bundle.ID == "" {
+		return fmt.Errorf("proof bundle id is required")
+	}
+	if bundle.WorkItemID != item.ID {
+		return fmt.Errorf("proof bundle work item mismatch: %s != %s", bundle.WorkItemID, item.ID)
+	}
+	if bundle.PRNumber != item.PRNumber {
+		return fmt.Errorf("proof bundle PR mismatch: %d != %d", bundle.PRNumber, item.PRNumber)
+	}
+	if strings.TrimSpace(bundle.Summary) == "" {
+		return fmt.Errorf("proof bundle summary is required")
+	}
+	if len(bundle.EvidenceRefs) == 0 || len(bundle.ArtifactRefs) == 0 {
+		return fmt.Errorf("proof bundle evidence and artifacts are required")
+	}
+	if len(bundle.TestCommands) == 0 || len(bundle.TestResults) == 0 {
+		return fmt.Errorf("proof bundle test commands and results are required")
+	}
+	if bundle.CreatedBy == "" || bundle.CreatedAt == "" {
+		return fmt.Errorf("proof bundle creator and timestamp are required")
+	}
+	return nil
+}
+
+// TransitionRecord represents a single transition in the executor ledger
+type TransitionRecord struct {
+	IntentID          string
+	Transition        string
+	PreflightSnapshot string
+	MutationSnapshot  *string
+	Timestamp         time.Time
+}
+
+// ExecutionResult represents the result of an execution
+type ExecutionResult struct {
+	IntentID        string     `json:"intent_id"`
+	Action          ActionKind `json:"action"`
+	PRNumber        int        `json:"pr_number"`
+	DryRun          bool       `json:"dry_run"`
+	Executed        bool       `json:"executed"`
+	AlreadyExecuted bool       `json:"already_executed"`
+	Result          string     `json:"result"`
+	Error           string     `json:"error,omitempty"`
+	ExecutedAt      string     `json:"executed_at"`
+}

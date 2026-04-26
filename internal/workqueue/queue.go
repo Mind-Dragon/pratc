@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jeffersonnunn/pratc/internal/executor"
 	"github.com/jeffersonnunn/pratc/internal/types"
 	_ "modernc.org/sqlite"
 )
@@ -89,6 +88,22 @@ func (q *Queue) init(ctx context.Context) error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_action_work_items_repo_lane_state ON action_work_items(repo, lane, state);`,
 		`CREATE INDEX IF NOT EXISTS idx_action_work_items_lease_expires ON action_work_items(lease_expires_at);`,
+		`CREATE TABLE IF NOT EXISTS action_intents (
+			id TEXT PRIMARY KEY,
+			repo TEXT NOT NULL,
+			work_item_id TEXT NOT NULL,
+			pr_number INTEGER NOT NULL,
+			action TEXT NOT NULL,
+			dry_run INTEGER NOT NULL,
+			policy_profile TEXT NOT NULL,
+			ordinal INTEGER NOT NULL,
+			idempotency_key TEXT NOT NULL UNIQUE,
+			payload_json TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_action_intents_work_item ON action_intents(repo, work_item_id, ordinal);`,
+		`CREATE INDEX IF NOT EXISTS idx_action_intents_idempotency ON action_intents(idempotency_key);`,
 		`CREATE TABLE IF NOT EXISTS action_state_transitions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			work_item_id TEXT NOT NULL,
@@ -166,6 +181,11 @@ func (q *Queue) EnqueueActionPlan(ctx context.Context, plan types.ActionPlan) er
 	if plan.Repo == "" {
 		return fmt.Errorf("action plan repo is required")
 	}
+	for _, intent := range plan.ActionIntents {
+		if intent.WorkItemID == "" {
+			return fmt.Errorf("action intent %s missing work item id", intent.ID)
+		}
+	}
 	for _, item := range plan.WorkItems {
 		item.State = types.ActionWorkItemStateClaimable
 		item.LeaseState = types.ActionLease{}
@@ -176,7 +196,91 @@ func (q *Queue) EnqueueActionPlan(ctx context.Context, plan types.ActionPlan) er
 			return err
 		}
 	}
+	for ordinal, intent := range plan.ActionIntents {
+		if err := q.UpsertIntent(ctx, plan.Repo, intent, ordinal); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func (q *Queue) UpsertIntent(ctx context.Context, repo string, intent types.ActionIntent, ordinal int) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.upsertIntentUnlocked(ctx, repo, intent, ordinal)
+}
+
+func (q *Queue) upsertIntentUnlocked(ctx context.Context, repo string, intent types.ActionIntent, ordinal int) error {
+	if repo == "" {
+		return fmt.Errorf("repo is required")
+	}
+	if intent.ID == "" {
+		return fmt.Errorf("action intent id is required")
+	}
+	if intent.WorkItemID == "" {
+		return fmt.Errorf("action intent %s missing work item id", intent.ID)
+	}
+	if intent.IdempotencyKey == "" {
+		return fmt.Errorf("action intent %s missing idempotency key", intent.ID)
+	}
+	now := q.now().UTC().Format(time.RFC3339Nano)
+	payload, err := json.Marshal(intent)
+	if err != nil {
+		return fmt.Errorf("marshal action intent %s: %w", intent.ID, err)
+	}
+	_, err = q.db.ExecContext(ctx, `
+		INSERT INTO action_intents (
+			id, repo, work_item_id, pr_number, action, dry_run, policy_profile, ordinal, idempotency_key, payload_json, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			repo = excluded.repo,
+			work_item_id = excluded.work_item_id,
+			pr_number = excluded.pr_number,
+			action = excluded.action,
+			dry_run = excluded.dry_run,
+			policy_profile = excluded.policy_profile,
+			ordinal = excluded.ordinal,
+			idempotency_key = excluded.idempotency_key,
+			payload_json = excluded.payload_json,
+			updated_at = excluded.updated_at
+	`, intent.ID, repo, intent.WorkItemID, intent.PRNumber, string(intent.Action), boolToInt(intent.DryRun), string(intent.PolicyProfile), ordinal, intent.IdempotencyKey, string(payload), now, now)
+	if err != nil {
+		return fmt.Errorf("upsert action intent %s: %w", intent.ID, err)
+	}
+	return nil
+}
+
+func (q *Queue) GetIntentsForWorkItem(ctx context.Context, repo, workItemID string) ([]types.ActionIntent, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if repo == "" {
+		return nil, fmt.Errorf("repo is required")
+	}
+	if workItemID == "" {
+		return nil, fmt.Errorf("work item id is required")
+	}
+	rows, err := q.db.QueryContext(ctx, `
+		SELECT payload_json FROM action_intents
+		WHERE repo = ? AND work_item_id = ?
+		ORDER BY ordinal ASC, id ASC
+	`, repo, workItemID)
+	if err != nil {
+		return nil, fmt.Errorf("query action intents for work item %s: %w", workItemID, err)
+	}
+	defer rows.Close()
+	intents := []types.ActionIntent{}
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		var intent types.ActionIntent
+		if err := json.Unmarshal([]byte(raw), &intent); err != nil {
+			return nil, fmt.Errorf("decode action intent for work item %s: %w", workItemID, err)
+		}
+		intents = append(intents, intent)
+	}
+	return intents, rows.Err()
 }
 
 func (q *Queue) Get(ctx context.Context, id string) (types.ActionWorkItem, error) {
@@ -425,6 +529,13 @@ func (q *Queue) appendTransitionUnlocked(ctx context.Context, id string, from, t
 	return nil
 }
 
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
+}
+
 func leaseExpired(raw string, now time.Time) bool {
 	if raw == "" {
 		return true
@@ -544,7 +655,7 @@ func (q *Queue) AttachProof(ctx context.Context, workItemID, workerID string, bu
 	}
 
 	// Validate proof bundle fields
-	if err := executor.ValidateProofBundle(item, bundle); err != nil {
+	if err := types.ValidateProofBundle(item, bundle); err != nil {
 		return types.ProofBundle{}, fmt.Errorf("proof bundle validation failed: %w", err)
 	}
 
@@ -619,13 +730,13 @@ func (q *Queue) GetProof(ctx context.Context, id string) (types.ProofBundle, err
 // getProofUnlocked retrieves a proof bundle by ID (internal, assumes lock held).
 func (q *Queue) getProofUnlocked(ctx context.Context, id string) (types.ProofBundle, error) {
 	var (
-		workItemID          string
-		prNumber            int
-		summary             string
-		evidenceRefsJSON    string
-		artifactRefsJSON    string
-		testCommandsJSON    string
-		testResultsJSON     string
+		workItemID           string
+		prNumber             int
+		summary              string
+		evidenceRefsJSON     string
+		artifactRefsJSON     string
+		testCommandsJSON     string
+		testResultsJSON      string
 		createdBy, createdAt string
 	)
 	err := q.db.QueryRowContext(ctx, `
@@ -735,8 +846,8 @@ func (q *Queue) GetActionQueueStats() (byLane map[string]map[string]int, err err
 
 // ExecutorLedger contains transitions and proof bundles for executor audit
 type ExecutorLedger struct {
-	Transitions   []ActionTransition `json:"transitions"`
-	ProofBundles  []ProofBundleView  `json:"proof_bundles"`
+	Transitions  []ActionTransition `json:"transitions"`
+	ProofBundles []ProofBundleView  `json:"proof_bundles"`
 }
 
 // ActionTransition represents a state change in the action work queue

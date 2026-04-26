@@ -19,7 +19,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jeffersonnunn/pratc/internal/app"
 	"github.com/jeffersonnunn/pratc/internal/cache"
+	"github.com/jeffersonnunn/pratc/internal/executor"
 	"github.com/jeffersonnunn/pratc/internal/formula"
+	"github.com/jeffersonnunn/pratc/internal/github"
 	"github.com/jeffersonnunn/pratc/internal/logger"
 	prsync "github.com/jeffersonnunn/pratc/internal/sync"
 	"github.com/jeffersonnunn/pratc/internal/types"
@@ -69,6 +71,7 @@ func RegisterServeCommand() {
 	var useCacheFirst bool
 	var resync bool
 	var forceCache bool
+	var live bool
 
 	command := &cobra.Command{
 		Use:   "serve",
@@ -77,21 +80,25 @@ func RegisterServeCommand() {
 
 By default, the server uses cached data when available and only fetches live
 data when the cache is stale or missing. Use --resync to force a live refresh.
+Use --live to enable live GitHub mutations (requires write permissions).
 
 Examples:
   # Start server with default cached-first behavior
   pratc serve --repo=owner/repo
 
   # Force live refresh on all API requests
-  pratc serve --repo=owner/repo --resync`,
+  pratc serve --repo=owner/repo --resync
+
+  # Enable live GitHub mutations (execute merge/close actions)
+  pratc serve --repo=owner/repo --live`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			requestID := uuid.New().String()
 			ctx := logger.ContextWithRequestID(cmd.Context(), requestID)
 			log := logger.FromContext(ctx)
 
 			repo = types.NormalizeRepoName(repo)
-			log.Info("starting server", "port", port, "repo", repo)
-			return runServer(ctx, port, repo, useCacheFirst, resync, forceCache)
+			log.Info("starting server", "port", port, "repo", repo, "live", live)
+			return runServer(ctx, port, repo, useCacheFirst, resync, forceCache, live)
 		},
 	}
 	command.Flags().IntVar(&port, "port", 7400, "Port to bind the API server to")
@@ -99,6 +106,7 @@ Examples:
 	command.Flags().BoolVar(&useCacheFirst, "use-cache-first", true, "Check cache before live fetch (default, cached-first mode is always on)")
 	command.Flags().BoolVar(&resync, "resync", false, "Force live refresh: skip cache and fetch fresh data from GitHub")
 	command.Flags().BoolVar(&forceCache, "force-cache", false, "Offline mode: use stale cached data, never contact GitHub")
+	command.Flags().BoolVar(&live, "live", false, "Enable live GitHub mutations (dangerous: executes merge/close actions)")
 	_ = command.Flags().MarkHidden("force-cache")
 	rootCmd.AddCommand(command)
 }
@@ -1157,7 +1165,7 @@ func authMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst, resync, forceCache bool) error {
+func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst, resync, forceCache, live bool) error {
 	// Resolve GitHub access using settings-driven config
 	githubAccess, err := ResolveGitHubAccess(ctx, defaultRepo)
 	if err != nil {
@@ -1195,6 +1203,28 @@ func runServer(ctx context.Context, port int, defaultRepo string, useCacheFirst,
 		return err
 	}
 	defer queue.Close()
+
+	if live {
+		client := github.NewClient(github.Config{
+			BaseURL: "https://api.github.com",
+			Token:   githubAccess.Token,
+		})
+		workerID := fmt.Sprintf("serve-%s", uuid.NewString()[:8])
+		worker := executor.NewWorker(executor.WorkerConfig{
+			Repo:         defaultRepo,
+			WorkerID:     workerID,
+			LeaseTTL:     10 * time.Minute,
+			PollInterval: 2 * time.Second,
+			Concurrency:  1,
+			Live:         true,
+		}, queue, executor.NewLiveGitHubMutator(client), cacheStore.ExecutorLedger())
+		go func() {
+			if err := worker.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				log.Error("live_worker_stopped", "worker_id", workerID, "error", err)
+			}
+		}()
+		log.Info("started live executor worker", "worker_id", workerID, "repo", defaultRepo)
+	}
 
 	repoSync := newRepoSyncManager("", "", defaultRepo)
 

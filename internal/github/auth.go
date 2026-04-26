@@ -365,7 +365,7 @@ func CheckAccessState(ctx context.Context) AccessState {
 // ResolveToken returns a GitHub token from the configured runtime sources.
 //
 // Resolution order:
-// 1. Explicit runtime env vars: GITHUB_TOKEN, GH_TOKEN, GITHUB_PAT
+// 1. Explicit runtime env vars: GITHUB_PAT, GITHUB_TOKEN, GH_TOKEN
 // 2. `gh auth token` from a logged-in gh CLI session
 //
 // The token is returned directly and must be passed explicitly to components
@@ -380,6 +380,24 @@ func ResolveToken(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("GitHub auth unavailable: no tokens found")
 	}
 	return tokens[0], nil
+}
+
+// GetGitHubToken returns a GitHub token from GITHUB_PAT or GITHUB_TOKEN environment variables.
+// Precedence: GITHUB_PAT > GITHUB_TOKEN.
+// The token is trimmed of whitespace; empty tokens are ignored.
+// Returns an error if no token is found.
+// NEVER log the token value; only log "token present" or "token missing".
+func GetGitHubToken() (string, error) {
+	// Check GITHUB_PAT first
+	if token := strings.TrimSpace(os.Getenv("GITHUB_PAT")); token != "" {
+		return token, nil
+	}
+	// Then GITHUB_TOKEN
+	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
+		return token, nil
+	}
+	// No token found
+	return "", fmt.Errorf("GitHub token not found: set GITHUB_PAT or GITHUB_TOKEN environment variable")
 }
 
 // DiscoverTokens discovers all available GitHub tokens from configured sources.
@@ -398,7 +416,7 @@ func DiscoverTokens(ctx context.Context) ([]string, error) {
 
 // DiscoverTokenInfos discovers GitHub tokens with redaction-safe source metadata.
 // Sources, in priority order:
-//  1. PRATC_GITHUB_TOKENS, GITHUB_TOKEN, GH_TOKEN, GITHUB_PAT
+//  1. PRATC_GITHUB_TOKENS, GITHUB_PAT, GITHUB_TOKEN, GH_TOKEN
 //  2. local .env-style files
 //  3. prATC settings DB token keys
 //  4. every cached gh account in ~/.config/gh/hosts.yml
@@ -411,7 +429,7 @@ func DiscoverTokenInfos(ctx context.Context) ([]TokenInfo, error) {
 	seen := map[string]struct{}{}
 
 	addTokenList(&infos, seen, os.Getenv("PRATC_GITHUB_TOKENS"), "env:PRATC_GITHUB_TOKENS")
-	for _, key := range []string{"GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT"} {
+	for _, key := range []string{"GITHUB_PAT", "GITHUB_TOKEN", "GH_TOKEN"} {
 		addTokenInfo(&infos, seen, os.Getenv(key), "env:"+key)
 	}
 

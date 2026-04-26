@@ -250,3 +250,116 @@ Required next corpus for guarded/autonomous v2.0:
 - policy: `guarded` or `autonomous` only after operator enablement
 - required new artifact: executor ledger plus post-action verification results
 - status: pending implementation
+
+## Wave B Commands
+
+### Preflight Checker Usage
+
+The live preflight checker enforces all 9 gates before any GitHub mutation:
+
+```bash
+cd /home/agent/pratc
+./bin/pratc actions --repo openclaw/openclaw --force-cache --policy=guarded --format=json > "$RUN_DIR/action-plan.json"
+```
+
+Preflight checks include:
+- PR still open
+- head SHA unchanged or revalidated
+- base branch allowed
+- CI/checks green for merge
+- mergeability clean for merge
+- branch protection/review requirements satisfied
+- token permission sufficient
+- rate-limit budget sufficient
+- policy allows action
+- idempotency key not already executed
+
+### Guarded Comment/Label Executor Usage
+
+The guarded executor performs safe non-destructive mutations:
+
+```bash
+cd /home/agent/pratc
+./bin/pratc execute --repo openclaw/openclaw --work-item-id <ID> --policy=guarded --format=json
+```
+
+Available actions in guarded mode:
+- `comment` - Add PR comment
+- `label` - Add/remove PR labels
+- `status` - Update PR status (if implemented)
+
+### Ledger Persistence
+
+The executor ledger uses SQLite for crash recovery:
+
+```bash
+# View ledger entries
+sqlite3 /home/agent/.pratc/pratc.db "SELECT * FROM executor_ledger ORDER BY timestamp DESC LIMIT 20;"
+
+# Check idempotency
+sqlite3 /home/agent/.pratc/pratc.db "SELECT intent_id, transition FROM executor_ledger WHERE intent_id='<INTENT_ID>';"
+```
+
+Ledger schema:
+- `executor_ledger` table with append-only writes
+- Tracks: intent_id, transition, preflight_snapshot, mutation_snapshot, timestamp
+- Enforces exactly-once execution via UNIQUE(intent_id, transition)
+
+### Fix-and-Merge Sandbox Usage
+
+The sandbox generates local proof bundles for `fix_and_merge` items:
+
+```bash
+cd /home/agent/pratc
+./bin/pratc sandbox --repo openclaw/openclaw --work-item-id <ID> --format=json > "$RUN_DIR/proof-bundle.json"
+```
+
+Sandbox workflow:
+1. Create isolated worktree/checkout per work item
+2. Apply patch/rebase and capture proof
+3. Run test command and capture output/exit code
+4. Attach proof bundle to queue item
+5. Dry-run only until v2 gates green
+
+### Wave B Verification Commands
+
+```bash
+cd /home/agent/pratc
+go test ./internal/executor ./internal/github ./internal/cache ./internal/monitor/...
+./bin/pratc monitor --once || true
+python -m pytest -q tests/test_audit_guideline.py scripts/test_autonomous_controller.py
+python3 scripts/autonomous_controller.py audit-state
+```
+
+### Wave B Completion Proof
+
+Current Wave B implementation status:
+- TUI panels render with live data (verified)
+- Live preflight checker enforces all 9 gates
+- Guarded comment/label executor works with fake GitHub
+- Ledger persistence survives restart
+- Post-action verification confirms mutations
+- Fix-and-merge sandbox produces valid proof bundles
+- E2E harness passes all audit checks
+- Docs aligned with implementation
+
+## Wave C Commands
+
+### GitHub Token Environment Variables
+
+Live GitHub mutations require a GitHub Personal Access Token (PAT). The token is read from environment variables with the following precedence:
+
+1. `GITHUB_PAT` (recommended for local development)
+2. `GITHUB_TOKEN` (common in CI environments)
+
+**Never commit tokens to version control.** Use `psst SECRET_NAME -- <command>` or a secret manager.
+
+**Example:**
+```bash
+export GITHUB_PAT="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+./bin/pratc execute --repo owner/repo --work-item-id 123 --live
+```
+
+**Validation:** When live mode is enabled, the token must be non-empty (trimmed of whitespace). The helper `GetGitHubToken()` enforces this.
+
+**Security:** Never log the token value; only log "token present" or "token missing".

@@ -4,13 +4,13 @@
 
 Current iteration: move from the verified `1.7.1` advisory baseline toward the `2.0` swarm action engine by closing ActionPlan completeness and building the first swarm API/proof surfaces.
 
-**Status:** Iteration A (Wave A) complete. Wave B implementation complete. Ready for final verification.
+**Status:** Iteration A (Wave A) complete. Wave B complete. Wave C in progress — live GitHub mutation (--live flag + worker pool).
 
-This TODO is intentionally narrow. The full 1.7.1 → 2.0 roadmap lives in `PLAN.md` and `VERSION2.0.md`.
+This TODO is intentionally narrow. The full 1.7.1 → 2.0 roadmap lives in `PLANS.md` and `VERSION2.0.md`.
 
 ## Source of truth
 
-- `PLAN.md` — current phased implementation plan from 1.7.1 to 2.0
+- `PLANS.md` — current phased implementation plan from 1.7.1 to 2.0
 - `VERSION2.0.md` — product/release plan and 16-lane ownership map
 - `GUIDELINE.md` — action policy, lanes, bucket rules, non-negotiables
 - `ARCHITECTURE.md` — system shape and component ownership
@@ -49,7 +49,7 @@ This TODO is intentionally narrow. The full 1.7.1 → 2.0 roadmap lives in `PLAN
 
 ### A0 — Baseline and design lock
 
-- [x] Reconcile `PLAN.md`, `VERSION2.0.md`, `GUIDELINE.md`, and `ARCHITECTURE.md` for policy/lanes/mutation rules.
+- [x] Reconcile `PLANS.md`, `VERSION2.0.md`, `GUIDELINE.md`, and `ARCHITECTURE.md` for policy/lanes/mutation rules.
 - [x] Record baseline before implementation:
   ```bash
   git status --short
@@ -361,6 +361,26 @@ git diff --check
   - [ ] Browser dashboard revival (Wave D+)
   - [ ] Multi-repo orchestration (Wave D+)
 
+
+## Wave C — Live GitHub Mutation (IN PROGRESS)
+
+### Implementation
+  - [x] Add `--live` flag to `serve` command
+  - [x] Extend `runServer` signature to accept `live` parameter
+  - [x] Link `ActionIntent.WorkItemID` to persisted queue work items
+  - [x] Persist `ActionIntent` records in `internal/workqueue` and expose `GetIntentsForWorkItem()`
+  - [x] Make `LiveGitHubMutator` satisfy `executor.GitHubMutator` with dry-run-aware methods
+  - [x] Add `executor.Worker` to claim work items and execute persisted intents through the central executor
+  - [x] Wire `serve --live` to start the executor worker
+  - [x] Verify focused tests, build, and `serve --help`
+
+### Verification
+```bash
+go test ./internal/cmd ./internal/executor ./internal/workqueue ./internal/app ./internal/types/...
+make build
+./bin/pratc serve --help | grep -- --live
+git diff --check
+```
 
 ## Not this iteration
 

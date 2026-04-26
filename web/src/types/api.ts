@@ -271,6 +271,7 @@ export interface ActionWorkItem {
  */
 export interface ActionIntent {
   id: string;
+  work_item_id?: string;
   action: ActionKind;
   pr_number: number;
   lane: ActionLane;

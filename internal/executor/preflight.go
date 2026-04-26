@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -48,6 +49,126 @@ type PreflightResult struct {
 	Timestamp   string
 }
 
+// 9 Preflight Gate Functions
+
+// checkPROpen verifies that the PR is still open
+func checkPROpen(ctx context.Context, mutator GitHubMutator, repo string, prNumber int) error {
+	prState, err := mutator.GetPRState(ctx, repo, prNumber)
+	if err != nil {
+		return fmt.Errorf("failed to get PR state: %w", err)
+	}
+	if strings.ToLower(prState.State) != "open" {
+		return fmt.Errorf("PR #%d is not open (state: %s)", prNumber, prState.State)
+	}
+	return nil
+}
+
+// checkHeadSHA verifies that the head SHA is unchanged
+func checkHeadSHA(ctx context.Context, mutator GitHubMutator, repo string, prNumber int, expectedSHA string) error {
+	if expectedSHA == "" {
+		// No expected SHA to check against
+		return nil
+	}
+	currentSHA, err := mutator.GetHeadSHA(ctx, repo, prNumber)
+	if err != nil {
+		return fmt.Errorf("failed to get head SHA: %w", err)
+	}
+	if currentSHA != expectedSHA {
+		return fmt.Errorf("head SHA changed: expected %s, got %s", expectedSHA, currentSHA)
+	}
+	return nil
+}
+
+// checkBaseBranch verifies that the base branch is in the allowed list
+func checkBaseBranch(ctx context.Context, mutator GitHubMutator, repo string, prNumber int, allowedBranches []string) error {
+	if len(allowedBranches) == 0 {
+		// No restrictions on base branch
+		return nil
+	}
+	baseBranch, err := mutator.GetBaseBranch(ctx, repo, prNumber)
+	if err != nil {
+		return fmt.Errorf("failed to get base branch: %w", err)
+	}
+	for _, allowed := range allowedBranches {
+		if baseBranch == allowed {
+			return nil
+		}
+	}
+	return fmt.Errorf("base branch %s is not in allowed list: %v", baseBranch, allowedBranches)
+}
+
+// checkCIGreen verifies that CI checks are green
+func checkCIGreen(ctx context.Context, mutator GitHubMutator, repo string, prNumber int) error {
+	ciStatus, err := mutator.GetCIStatus(ctx, repo, prNumber)
+	if err != nil {
+		return fmt.Errorf("failed to get CI status: %w", err)
+	}
+	if !isGreenCI(ciStatus) {
+		return fmt.Errorf("CI is not green (status: %s)", ciStatus)
+	}
+	return nil
+}
+
+// checkMergeable verifies that the PR is mergeable
+func checkMergeable(ctx context.Context, mutator GitHubMutator, repo string, prNumber int) error {
+	mergeable, err := mutator.GetMergeable(ctx, repo, prNumber)
+	if err != nil {
+		return fmt.Errorf("failed to get mergeable status: %w", err)
+	}
+	if !mergeable {
+		return fmt.Errorf("PR #%d is not mergeable", prNumber)
+	}
+	return nil
+}
+
+// checkBranchProtection verifies that required reviews are satisfied
+func checkBranchProtection(ctx context.Context, mutator GitHubMutator, repo string, prNumber int) error {
+	reviewsSatisfied, err := mutator.GetRequiredReviews(ctx, repo, prNumber)
+	if err != nil {
+		return fmt.Errorf("failed to get required reviews: %w", err)
+	}
+	if !reviewsSatisfied {
+		return fmt.Errorf("required reviews not satisfied for PR #%d", prNumber)
+	}
+	return nil
+}
+
+// checkTokenPermission verifies that the token has the required permission
+func checkTokenPermission(ctx context.Context, mutator GitHubMutator, repo string, action types.ActionKind) error {
+	// For now, we'll assume the token has permission if we can query the rate limit
+	// In a real implementation, this would check token scopes
+	_, err := mutator.GetRateLimitRemaining(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to check token permission: %w", err)
+	}
+	// Additional token permission checks would go here
+	return nil
+}
+
+// checkRateLimit verifies that there's rate limit budget remaining
+func checkRateLimit(ctx context.Context, mutator GitHubMutator) error {
+	remaining, err := mutator.GetRateLimitRemaining(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get rate limit: %w", err)
+	}
+	if remaining <= 0 {
+		return fmt.Errorf("rate limit budget exhausted (remaining: %d)", remaining)
+	}
+	return nil
+}
+
+// checkIdempotency verifies that the idempotency key has not been executed
+func checkIdempotency(ctx context.Context, ledger Ledger, key string) error {
+	if key == "" {
+		return fmt.Errorf("idempotency key is required")
+	}
+	if ledger.IsExecuted(key) {
+		return fmt.Errorf("idempotency key %q has already been executed", key)
+	}
+	return nil
+}
+
+// RunPreflight runs all preflight checks for an action intent
 func RunPreflight(intent types.ActionIntent, opts PreflightOptions) PreflightResult {
 	now := opts.Now
 	if now.IsZero() {

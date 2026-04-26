@@ -68,6 +68,11 @@ func (s *Store) JournalMode() (string, error) {
 	return mode, nil
 }
 
+// ExecutorLedger returns an executor ledger backed by this store's database
+func (s *Store) ExecutorLedger() *ExecutorLedger {
+	return NewExecutorLedger(s.db)
+}
+
 func (s *Store) UpsertPR(pr types.PR) error {
 	labelsJSON, err := json.Marshal(pr.Labels)
 	if err != nil {
@@ -1051,7 +1056,7 @@ func (s *Store) GetPausedSyncJobByRepo(repo string) (SyncJob, error) {
 }
 
 func (s *Store) init(ctx context.Context) error {
-	const supportedSchemaVersion = 7
+	const supportedSchemaVersion = 8
 
 	var currentVersion int
 	if err := s.db.QueryRowContext(ctx, `PRAGMA user_version;`).Scan(&currentVersion); err != nil {
@@ -1100,6 +1105,9 @@ func (s *Store) init(ctx context.Context) error {
 		`INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
 		 VALUES (7, 'repo_name_normalization', '2026-04-18T00:00:00Z');`,
 		`PRAGMA user_version = 7;`,
+		`INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
+		 VALUES (8, 'executor_ledger', '2026-04-24T00:00:00Z');`,
+		`PRAGMA user_version = 8;`,
 		`CREATE TABLE IF NOT EXISTS audit_log (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			timestamp TEXT NOT NULL,
@@ -1219,6 +1227,11 @@ func (s *Store) init(ctx context.Context) error {
 		}
 	}
 
+	// Initialize executor ledger table
+	if err := s.initExecutorLedger(ctx); err != nil {
+		return err
+	}
+
 	if err := s.addColumnIfNotExists("sync_progress", "next_scheduled_at", "TEXT"); err != nil {
 		return err
 	}
@@ -1313,6 +1326,40 @@ func (s *Store) addColumnIfNotExists(table, column, colType string) error {
 	if err != nil {
 		return fmt.Errorf("add column %s.%s: %w", table, column, err)
 	}
+	return nil
+}
+
+// initExecutorLedger creates the executor_ledger table and indexes
+func (s *Store) initExecutorLedger(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS executor_ledger (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			intent_id TEXT NOT NULL,
+			transition TEXT NOT NULL,
+			preflight_snapshot TEXT NOT NULL,
+			mutation_snapshot TEXT,
+			timestamp TEXT NOT NULL,
+			UNIQUE(intent_id, transition)
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("create executor_ledger table: %w", err)
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		CREATE INDEX IF NOT EXISTS idx_executor_ledger_intent_id ON executor_ledger(intent_id)
+	`)
+	if err != nil {
+		return fmt.Errorf("create intent_id index: %w", err)
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		CREATE INDEX IF NOT EXISTS idx_executor_ledger_timestamp ON executor_ledger(timestamp DESC)
+	`)
+	if err != nil {
+		return fmt.Errorf("create timestamp index: %w", err)
+	}
+
 	return nil
 }
 

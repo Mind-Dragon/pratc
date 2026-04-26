@@ -857,3 +857,61 @@ exit 1`
 		t.Errorf("GetActiveLogin() = %q, want Mind-Dragon", login)
 	}
 }
+
+// TestGetGitHubToken_Precedence verifies that GITHUB_PAT takes precedence over GITHUB_TOKEN.
+func TestGetGitHubToken_Precedence(t *testing.T) {
+	// Clear both env vars first
+	t.Setenv("GITHUB_PAT", "")
+	t.Setenv("GITHUB_TOKEN", "")
+
+	// Set both, GITHUB_PAT should win
+	t.Setenv("GITHUB_PAT", "pat-token")
+	t.Setenv("GITHUB_TOKEN", "env-token")
+
+	token, err := GetGitHubToken()
+	if err != nil {
+		t.Fatalf("GetGitHubToken() error = %v", err)
+	}
+	if token != "pat-token" {
+		t.Errorf("GetGitHubToken() = %q, want pat-token (GITHUB_PAT precedence)", token)
+	}
+
+	// Now only GITHUB_TOKEN set
+	t.Setenv("GITHUB_PAT", "")
+	t.Setenv("GITHUB_TOKEN", "env-token")
+	token, err = GetGitHubToken()
+	if err != nil {
+		t.Fatalf("GetGitHubToken() error = %v", err)
+	}
+	if token != "env-token" {
+		t.Errorf("GetGitHubToken() = %q, want env-token", token)
+	}
+}
+
+// TestGetGitHubToken_EmptyError verifies that GetGitHubToken returns error when no token env vars are set.
+func TestGetGitHubToken_EmptyError(t *testing.T) {
+	t.Setenv("GITHUB_PAT", "")
+	t.Setenv("GITHUB_TOKEN", "")
+
+	_, err := GetGitHubToken()
+	if err == nil {
+		t.Fatal("GetGitHubToken() error = nil, want error about missing token")
+	}
+	if !strings.Contains(err.Error(), "GITHUB_PAT") && !strings.Contains(err.Error(), "GITHUB_TOKEN") {
+		t.Errorf("error message should mention GITHUB_PAT or GITHUB_TOKEN, got: %v", err)
+	}
+}
+
+// TestGetGitHubToken_WhitespaceHandling verifies that whitespace is trimmed.
+func TestGetGitHubToken_WhitespaceHandling(t *testing.T) {
+	t.Setenv("GITHUB_PAT", "  pat-token-with-spaces  ")
+	t.Setenv("GITHUB_TOKEN", "")
+
+	token, err := GetGitHubToken()
+	if err != nil {
+		t.Fatalf("GetGitHubToken() error = %v", err)
+	}
+	if token != "pat-token-with-spaces" {
+		t.Errorf("GetGitHubToken() = %q, want trimmed token", token)
+	}
+}
